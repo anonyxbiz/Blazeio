@@ -21,7 +21,7 @@ class Request:
         r.method, r.tail, r.path, r.params = None, None, None, {}
 
     @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1, raw=False):
+    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=10, raw=False):
         if not "ip_host" in r.__dict__:
             continue_buffer = True
             await app.initate(r)
@@ -89,7 +89,6 @@ class Request:
     async def set_data(app, r):
         tries = 0
         async for chunk in app.stream_chunks(r):
-            tries += 1
             if (part_one := b"\r\n\r\n") in r.buffered_chunks:
                 all_ = r.buffered_chunks.split(part_one)
                 first = all_[0]
@@ -99,10 +98,6 @@ class Request:
                 r.buffered_chunks = part_one.join(all_)
                 await app.set_method(r, first)
                 break
-            else:
-                if tries >= 5:
-                    p("Reached max retries")
-                    break
 
         return r
         
