@@ -5,8 +5,7 @@ from aiofiles import open as iopen
 from mimetypes import guess_type
 from asyncio import to_thread, create_task
 from .streaming import Stream, Abort
-from ..Dependencies import p, Err
-
+from ..Dependencies import p, Err, Packdata
 
 class IN_MEMORY_STATIC_CACHE:
     home_dir = None
@@ -67,45 +66,43 @@ class IN_MEMORY_STATIC_CACHE:
         file_data["headers"]["Content-Type"] = guess_type(file_path)[0]
         file_data["headers"]["Content-Disposition"] = f'inline; filename="{(filename := path.basename(file_path))}"'
 
-        if not (route := item.get("route")):
+        if not (route_ := item.get("route")):
             route = "/%s" % filename
+        else:
+            route = route_
 
         app.cache[route] = file_data
 
     async def serve(app, r, route: str):
         file_data = app.cache.get(route)
-        headers = {a:b for a,b in file_data["headers"].items()} # hard copy
-        
+        headers = {a:b for a,b in file_data["headers"].items()}
+    
         is_being_cached = False
 
         if app.caching and file_data["headers"]["Content-Length"] == path.getsize(file_data["path"]) and file_data["raw_chunks"]:
             is_being_cached = True
-            if 1:
-                if file_data["raw_chunks"]:
-                    # Check if client accepts compressed_chunks
-                    accepts = True if "gzip" in r.headers.get("Accept-Encoding", "") else False
+            chunked_data = None
 
-                    selected_chunks = None
+            if file_data["compressed_chunks"] and "gzip" in r.headers.get("Accept-Encoding", ""):
+                chunked_data = await Packdata.add(**{"type": "compressed_chunks", "data": file_data["compressed_chunks"]})
+                headers["Content-Encoding"] = "gzip"
 
-                    if accepts and file_data["compressed_chunks"] and file_data["headers"]["Content-Type"] in app.compress_for:
-                        selected_chunks = file_data["compressed_chunks"]
-                        headers["Content-Encoding"] = "gzip"
+            elif file_data["raw_chunks"]:
+                chunked_data = await Packdata.add(**{"type": "raw_chunks", "data": file_data["raw_chunks"]})
 
-                    else:
-                        selected_chunks = file_data["raw_chunks"]
+            if chunked_data:
+                end = len(chunked_data.data)
+                cur = 0
 
-                    end = len(selected_chunks)
-                    cur = 0
-
-                    # Prepare response
-                    await Stream.init(r, headers, status=206)
+                # Prepare response
+                await Stream.init(r, headers, status=206)
     
-                    while True:
-                        chunk = selected_chunks[cur]
-                        await Stream.write(r, chunk)
-                        cur += 1
+                while True:
+                    chunk = chunked_data.data[cur]
+                    await Stream.write(r, chunk)
+                    cur += 1
     
-                        if cur >= end: break
+                    if cur >= end: break
 
         if is_being_cached:
             return
@@ -115,9 +112,6 @@ class IN_MEMORY_STATIC_CACHE:
         async with iopen(file_data["path"], mode="rb") as f:
             if app.caching:
                 file_data["raw_chunks"] = []
-                
-                if file_data["headers"]["Content-Type"] in app.compress_for:
-                        file_data["compressed_chunks"] = []
 
             # Prepare response
             await Stream.init(r, headers, status=206)
@@ -132,26 +126,29 @@ class IN_MEMORY_STATIC_CACHE:
                 except Exception as e:
                     p(e)
                     # Reset chunks since this is incomplete
-                    file_data["chunks"] = None
+                    file_data["raw_chunks"] = None
                     raise e
             
-            if app.caching and file_data["compressed_chunks"] == []:
-                task = create_task(app.compressed_chunk(file_data))
+            if app.caching:
+                if file_data["headers"]["Content-Type"] in app.compress_for:
+                    task = create_task(app.compressed_chunk(file_data))
 
     # all routes
     async def handler(app, r, override="/"):
         route = r.path
-        if route == "/":
-            route = override
 
         if not route in app.cache:
-            if path.exists((file_path := "/".join([app.home_dir, "static" + route]))):
-                await app.add_to_cache(file_path, {"route": route})
+            route, item = route, {"route": route}
+            if (i := "/") in route:
+                route = i.join(route.split(i)[1:])
+    
+            if path.exists((file_path := path.join(app.home_dir, "static", route))):
+                await app.add_to_cache(file_path, item)
             else:
                 raise Abort("The Content you\"re looking for, cannot be found", 404)
 
         try:
-            await app.serve(r, route)
+            await app.serve(r, r.path)
         except Exception as e:
             p(e)
             return

@@ -1,4 +1,3 @@
-"""Close sourced from version 1.4.7"""
 from setuptools import setup, find_packages
 
 data_path = "Blazeio/data_files/"
@@ -11,7 +10,7 @@ with open(f"{data_path}README.md", encoding="utf-8") as f:
 
 setup(
     name="Blazeio",
-    version="0.0.0.1",
+    version="0.0.0.2",
     description="Blazeio.",
     long_description=long_description,
     long_description_content_type="text/markdown",
