@@ -10,7 +10,7 @@ with open(f"{data_path}README.md", encoding="utf-8") as f:
 
 setup(
     name="Blazeio",
-    version="0.0.0.2",
+    version="0.0.0.5",
     description="Blazeio.",
     long_description=long_description,
     long_description_content_type="text/markdown",
