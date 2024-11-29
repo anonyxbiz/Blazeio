@@ -21,7 +21,7 @@ class Request:
         r.method, r.tail, r.path, r.params = None, None, None, {}
 
     @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=5, raw=False):
+    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1, raw=False):
         if not "ip_host" in r.__dict__:
             continue_buffer = True
             await app.initate(r)
