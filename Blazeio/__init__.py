@@ -6,7 +6,7 @@ from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler
 from .Modules.request import Request
 from .Modules.IN_MEMORY_STATIC_CACHE import IN_MEMORY_STATIC_CACHE
-from .Client import Session
+from .Client import Session, Client
 
 class App:
     event_loop = None

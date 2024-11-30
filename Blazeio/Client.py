@@ -2,25 +2,16 @@
 from asyncio import run, open_connection, IncompleteReadError, TimeoutError, wait_for
 from ssl import create_default_context, SSLError
 from json import loads
+from .Dependencies import Err, p
 
-p = print
+class Client:
+    APP = False
 
-class Session:
-    async def __aenter__(app):
-        return app
-        
-    async def __aexit__(app, exc_type, exc_val, exc_tb):
-        try:
-            app.request.close()
-            await app.request.wait_closed()
-        except SSLError as e:
-            return
-        except Exception as e:
-            p(e)
+    @classmethod
+    async def gen(app, url: str, method: str = "GET", headers: dict = {}, port:int = 443, connect_only=False, params=None):
+        app = app()
 
-    async def gen(app, url: str, method: str = "GET", headers: dict = {}, port: int = 443, connect_only=False, params=None):
-
-        if params is not None:
+        if params:
             prms = ""
             if not (i := "?") in url:
                 prms += i
@@ -37,17 +28,24 @@ class Session:
             url += prms
         
         app.host, app.path = await app.url_to_host(url)
-
+        
         if port == 443:
             try:
                 app.ssl_context = create_default_context()
                 app.response, app.request = await open_connection(app.host, port, ssl=app.ssl_context, server_hostname=app.host)
     
-            except SSLError:
-                p("SSLError")
-                quit()
+            except SSLError as e:
+                p(e)
+                raise Err("SSLError: " + str(e))
+            except Exception as e:
+                p(e)
+                raise Err("SSLError: " + str(e))
         else:
-            app.response, app.request = await open_connection(app.host, port)
+            try:
+                app.response, app.request = await open_connection(app.host, port)
+            except Exception as e:
+                p(e)
+                raise Err("SSLError: " + str(e))
 
         if connect_only: return app
 
@@ -60,6 +58,15 @@ class Session:
 
         await app.write("\r\n")
         return app
+
+    async def close(app):
+        try:
+            app.request.close()
+            await app.request.wait_closed()
+        except SSLError as e:
+            return
+        except Exception as e:
+            p(e)
 
     async def url_to_host(app, url):
         sepr = "://"
@@ -84,20 +91,16 @@ class Session:
         app.request.write(chunk)
         await app.request.drain()
     
-    async def stream(app, chunk_size = 1024, timeout=2, use_timeout=True):
+    async def stream(app, chunk_size = 1024, timeout=0.5, use_timeout=True):
         count = 0
         
         while 1:
             try:
                 if use_timeout:
-                    if count:
-                        chunk = await wait_for(app.response.read(chunk_size), timeout=timeout)
-                    else:
-                        chunk = await app.response.read(chunk_size)
-
+                    chunk = await wait_for(app.response.read(chunk_size), timeout=timeout)
                 else:
                     chunk = await app.response.read(chunk_size)
-                
+
                 if chunk == b'': break
                 yield chunk
                 count += 1
@@ -176,6 +179,13 @@ class Session:
 
         return text
 
+class Session:
+    async def __aenter__(app):
+        app.app = Client
+        return app.app
+        
+    async def __aexit__(app, exc_type, exc_val, exc_tb):
+        await app.app.close()
 
 if __name__ == "__main__":
     pass

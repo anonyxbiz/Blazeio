@@ -21,7 +21,7 @@ class Request:
         r.method, r.tail, r.path, r.params = None, None, None, {}
 
     @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1, raw=False):
+    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=5, raw=False):
         if not "ip_host" in r.__dict__:
             continue_buffer = True
             await app.initate(r)
@@ -36,13 +36,7 @@ class Request:
 
         while True:
             try:
-                # Read directly since it'll be manually break in set_data
-                if continue_buffer:
-                    # chunk = await r.request.read(CHUNK_SIZE)
-                    chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout=timeout)
-
-                else:
-                    chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout=timeout)
+                chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout=timeout)
 
                 if continue_buffer:
                     r.buffered_chunks += chunk

@@ -1,4 +1,6 @@
 from setuptools import setup, find_packages
+from datetime import datetime as dt
+from os import environ
 
 data_path = "Blazeio/data_files/"
 
@@ -8,9 +10,14 @@ with open(f"{data_path}requirements.txt") as f:
 with open(f"{data_path}README.md", encoding="utf-8") as f:
     long_description = f.read()
 
+if environ.get("local"):
+    version = "0.0.%s" % str(dt.now().timestamp())
+else:
+    version = "0.0.0.6"
+    
 setup(
     name="Blazeio",
-    version="0.0.0.5",
+    version=version,
     description="Blazeio.",
     long_description=long_description,
     long_description_content_type="text/markdown",
