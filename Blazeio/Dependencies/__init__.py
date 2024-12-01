@@ -1,5 +1,5 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for, to_thread
 
 from json import dumps, loads, JSONDecodeError
 from sys import exit
@@ -10,7 +10,9 @@ from typing import Callable
 """File serving"""
 from aiofiles import open as iopen
 from mimetypes import guess_type
-from os.path import basename, getsize, exists
+from os.path import basename, getsize, exists, join
+
+from gzip import compress as gzip_compress
 
 p = print
 

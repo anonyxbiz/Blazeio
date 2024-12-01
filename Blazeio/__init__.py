@@ -3,7 +3,7 @@ from .Dependencies import new_event_loop, io_run, CancelledError, get_event_loop
 
 from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
-from .Modules.static import StaticFileHandler
+from .Modules.static import StaticFileHandler, Smart_Static_Server
 from .Modules.request import Request
 from .Modules.IN_MEMORY_STATIC_CACHE import IN_MEMORY_STATIC_CACHE
 from .Client import Session, Client

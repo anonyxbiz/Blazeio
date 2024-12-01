@@ -91,7 +91,7 @@ class Client:
         app.request.write(chunk)
         await app.request.drain()
     
-    async def stream(app, chunk_size = 1024, timeout=0.5, use_timeout=True):
+    async def stream(app, chunk_size = 1024, timeout=1, use_timeout=True):
         count = 0
         
         while 1:

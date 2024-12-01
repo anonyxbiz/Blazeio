@@ -21,22 +21,29 @@ class Request:
         r.method, r.tail, r.path, r.params = None, None, None, {}
 
     @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=5, raw=False):
+    async def stream_chunks(app, r, CHUNK_SIZE=1024*10, timeout=0.5, raw=False):
         if not "ip_host" in r.__dict__:
             continue_buffer = True
             await app.initate(r)
             r.raw_chunks = b""
+            r.first = True
             
         else:
             continue_buffer = False
+            r.first = False
+
             if not raw:
                 yield r.buffered_chunks
             else:
                 yield r.raw_chunks
-
+        
         while True:
             try:
-                chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout=timeout)
+                if r.first:
+                    chunk = await r.request.read(200)
+
+                else:
+                    chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout=timeout)
 
                 if continue_buffer:
                     r.buffered_chunks += chunk
@@ -53,24 +60,22 @@ class Request:
     @classmethod
     async def set_method(app, r, chunk):
         if not (a := b' ') in chunk:
+            p(chunk)
             return
-        
-        chunk = chunk.decode("utf-8")
-        parts = chunk.split(
-            (a := a.decode("utf-8"))
-        )
 
-        r.method = parts[0]
-        r.tail = parts[1]
-        
+        parts = chunk.split(a)
+
+        r.method = parts[0].decode("utf-8")
+        r.tail = parts[1].decode("utf-8")
+
         if (c := "?") in r.tail:
             r.path = r.tail.split(c)[0]
         else:
             r.path = r.tail
-        
+
         if len(parts) <= 2: return
         
-        other_parts = a.join(parts[2:])
+        other_parts = a.join(parts[2:]).decode("utf-8")
 
         if (head_split := '\r\n') in other_parts:
             sepr = ': '
@@ -83,15 +88,12 @@ class Request:
                     
     @classmethod
     async def set_data(app, r):
-        tries = 0
+        
         async for chunk in app.stream_chunks(r):
             if (part_one := b"\r\n\r\n") in r.buffered_chunks:
                 all_ = r.buffered_chunks.split(part_one)
                 first = all_[0]
 
-                del all_[0]
-
-                r.buffered_chunks = part_one.join(all_)
                 await app.set_method(r, first)
                 break
 
@@ -101,22 +103,22 @@ class Request:
     async def get_json(app, r):
         temp = b""
         async for chunk in app.stream_chunks(r):
-            if (sepr := b'\r\n\r\n') in chunk:
-                chunk = sepr.join(chunk.split(sepr)[1:])
-            
             temp += chunk
-    
-            if b"{" in temp and b"}" in temp:
-                try:
-                    start = temp.find(b"{")
-                    end = temp.rfind(b"}") + 1
-                    json_bytes = temp[start:end]
-                    
-                    json_data = loads(json_bytes.decode())
-                    return json_data
-                except JSONDecodeError:
-                    raise Err("Malformed packets are not valid JSON.")
-        
+
+            if (sepr := b'\r\n\r\n') in temp:
+                temp = sepr.join(temp.split(sepr)[1:])
+
+                if b"{" in temp and b"}" in temp:
+                    try:
+                        start = temp.find(b"{")
+                        end = temp.rfind(b"}") + 1
+                        json_bytes = temp[start:end]
+                        
+                        json_data = loads(json_bytes.decode())
+                        return json_data
+                    except JSONDecodeError:
+                        raise Err("Malformed packets are not valid JSON.")
+
         raise Err("No valid JSON found in the stream.")
         
     @classmethod
