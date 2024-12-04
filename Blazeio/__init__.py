@@ -1,5 +1,5 @@
 # Blazeio/__init__.py
-from .Dependencies import new_event_loop, io_run, CancelledError, get_event_loop, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks
+from .Dependencies import io_run, CancelledError, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen
 
 from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
@@ -7,23 +7,29 @@ from .Modules.static import StaticFileHandler, Smart_Static_Server
 from .Modules.request import Request
 from .Modules.IN_MEMORY_STATIC_CACHE import IN_MEMORY_STATIC_CACHE
 from .Client import Session, Client
+from time import perf_counter
 
 class App:
-    event_loop = None
+    event_loop = loop
     REQUEST_COUNT = 0
     default_methods = ["GET", "POST", "OPTIONS", "PUT", "PATCH", "HEAD", "DELETE"]
     server = None
+    
+    memory = {
+        "routes": {},
+        "max_routes_in_memory": 20
+    }
 
     @classmethod
     async def init(app, **kwargs):
         app = app()
         app.__dict__.update(kwargs)
-        if app.event_loop is None:
-            app.event_loop = new_event_loop()
-
         app.declared_routes = {}
-
         return app
+
+    @classmethod
+    def init_sync(app, **kwargs):
+        return loop.run_until_complete(App.init(**kwargs))
 
     def add_route(app, func: Callable, route_name = None):
         if not route_name:
@@ -61,8 +67,6 @@ class App:
             route_name = route_name.replace("_", "/")
             
         app.declared_routes[route_name] = data
-        
-        p("Added route => %s." % route_name)
         return func
 
     async def append_class_routes(app, class_):
@@ -78,107 +82,134 @@ class App:
 
                 if not "r" in (params := dict((signature := sig(method)).parameters)):
                     raise ValueError()
+                    
+                if not name.endswith("_middleware"):
+                    route_name = name.replace("_", "/")
+                    await Log.info("Added route => %s." % route_name)
+                else:
+                    await Log.info("Added Middleware => %s." % name)
 
+                    
                 app.add_route(method, name)
 
             except ValueError:
                 pass
             except Exception as e:
-                p(e)
+                await Log.error(e)
     
     async def serve_route(app, r, route=None):
         await Request.set_data(r)
-        app.REQUEST_COUNT += 1
-        r.identifier = app.REQUEST_COUNT
-
-        await Log.m(r,
+        await Log.info(r,
             "=> %s@ %s" % (
                 r.method,
                 r.path
             )
         )
-
-        # Handle before_middleware
-        if (before_middleware := app.declared_routes.get("before_middleware")):
-            await before_middleware.get("func")(r)
-
-        if r.path in app.declared_routes:
-            route = app.declared_routes[r.path]
-
-        # Handle routes
-        if route:
-            await route.get("func")(r)
+        
+        if r.path not in app.memory["routes"]:
+            memory = await Packdata.add(actions=None)
+            if len(app.memory["routes"]) <= app.memory.get("max_routes_in_memory") or 20:
+                app.memory["routes"][r.path] = memory
         else:
-            if (handle_all_middleware := app.declared_routes.get("handle_all_middleware")):
-                await handle_all_middleware.get("func")(r)
+            memory = app.memory["routes"][r.path]
+
+        if not memory.actions:
+            memory.actions = []
+
+            # Handle before_middleware
+            if (before_middleware := app.declared_routes.get("before_middleware")):
+                memory.actions.append(before_middleware.get("func"))
+
+                await before_middleware.get("func")(r)
+
+            if r.path in app.declared_routes:
+                route = app.declared_routes[r.path]
+
+            # Handle routes
+            if route:
+                memory.actions.append(route.get("func"))
+                
+                await route.get("func")(r)
+                
             else:
-                raise Err("Not Found")
+                if (handle_all_middleware := app.declared_routes.get("handle_all_middleware")):
+                    memory.actions.append(handle_all_middleware.get("func"))
 
-        # Handle after_middleware
-        if (after_middleware := app.declared_routes.get("after_middleware")):
-            await after_middleware.get("func")(r)
+                    await handle_all_middleware.get("func")(r)
+                else:
+                    memory.actions = {
+                        "raise": Abort,
+                        "kwargs": {"message": "Not Found", "status": 404}
+                    }
+                    
+                    raise memory.actions["raise"](**memory.actions["kwargs"])
 
-    async def finalize(app, r):
-        try:
-            r.response.close()
-            await r.response.wait_closed()
-        except (
-            Err,
-            Abort,
-            ConnectionResetError,
-            BrokenPipeError,
-            CancelledError,
-            Exception
-        ) as e:
-            pass
+            # Handle after_middleware
+            if (after_middleware := app.declared_routes.get("after_middleware")):
+                memory.actions.append(after_middleware.get("func"))
+
+                await after_middleware.get("func")(r)
+        else:
+            # Use memory to remember actions
+            if isinstance(memory.actions, list):
+                for action in memory.actions: await action(r)
+            else:
+                raise memory.actions["raise"](**memory.actions["kwargs"])
 
     async def handle_client(app, reader, writer, r=None):
         try:
-            r = await Packdata.add(request=reader, response=writer, handler=None)
-
-            await app.serve_route(r)
-
-        except ServerGotInTrouble as e:
-            await Log.m(
-                r,
-                "ServerGotInTrouble: %s" % str(e)
-            )
-
-        except Err as e:
-            await Log.m(r, e)
-
-        except Abort as e:
             try:
-                # await Log.m(r, e)
-                await e.text(r)
-            except (Err, Abort, Exception) as e:
-                p(e)
+                app.REQUEST_COUNT += 1
+    
+                r = await Packdata.add(
+                    request=reader,
+                    response=writer,
+                    identifier = app.REQUEST_COUNT,
+                    perf_counter = perf_counter()
+                )
+    
+                await app.serve_route(r)
                 
+            except ServerGotInTrouble as e: await Log.warning(r, e)
+            except Err as e: await Log.warning(r, e)
+            
+            except Abort as e: await e.text(r)
+
+            except (
+                ConnectionResetError,
+                BrokenPipeError,
+                CancelledError,
+                Exception
+            ) as e:
+                await Log.critical(r, e)
+            finally:
+                r.response.close()
+                await r.response.wait_closed()
+
         except (
             ConnectionResetError,
             BrokenPipeError,
             CancelledError,
             Exception
         ) as e:
-            await Log.m(r, "Exception caught: %s" % str(e))
-
+            await Log.critical(r, e)
         finally:
-            await app.finalize(r)
+            await Log.debug(r, f"=> {r.method} {r.path}, Completed in {perf_counter() - r.perf_counter:.4f} seconds" )
 
     async def run(app, HOST, PORT, **kwargs):
         app.server = await io_start_server(app.handle_client, HOST, PORT, **kwargs)
     
         async with app.server:
-            p("Server running on http://%s:%s" % (HOST, PORT))
+            await Log.info("Blazeio", "Server running on http://%s:%s" % (HOST, PORT))
             await app.server.serve_forever()
 
     async def exit(app):
         try:
-            await Log.say("Blazeio", "KeyboardInterrupt Detected, Shutting down gracefully.")
+            await Log.info("Blazeio", "KeyboardInterrupt Detected, Shutting down gracefully.")
     
             to_wait_for = []
     
-            for task in all_tasks(loop=app.event_loop):
+            for task in all_tasks(loop=loop):
                 if task is not current_task():
                     data = str(task)
                     name = None
@@ -188,7 +219,7 @@ class App:
                     else:
                         name = data[:10]
                         
-                    await Log.say(
+                    await Log.info(
                         "Blazeio",
                         "Task %s Terminated" % name
                     )
@@ -202,22 +233,25 @@ class App:
                 except CancelledError:
                     pass
     
-            await Log.say("Blazeio", "Event loop wiped, ready to exit.")
+            await Log.info("Blazeio", "Event loop wiped, ready to exit.")
 
         except Exception as e:
-            await Log.say("Blazeio", e)
+            await Log.error("Blazeio", e)
         finally:
-            await Log.say("Blazeio", "Exited.")
+            await Log.info("Blazeio", "Exited.")
             exit()
 
     def runner(app, HOST, PORT, **kwargs):
         try:
-            app.event_loop.run_until_complete(app.run(HOST, PORT, **kwargs))
+            if not kwargs.get("backlog"):
+                kwargs["backlog"] = 5000
+
+            loop.run_until_complete(app.run(HOST, PORT, **kwargs))
         except KeyboardInterrupt:
-            app.event_loop.run_until_complete(app.exit())
+            loop.run_until_complete(app.exit())
 
 if __name__ == "__main__":
-    app = run(Server.setup())
+    app = App.init_sync()
     HOST = "0.0.0.0"
     PORT = "8080"
 

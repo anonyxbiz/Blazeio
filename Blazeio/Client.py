@@ -1,8 +1,17 @@
 # Blazeio.Client
 from asyncio import run, open_connection, IncompleteReadError, TimeoutError, wait_for
 from ssl import create_default_context, SSLError
-from json import loads
-from .Dependencies import Err, p
+from ujson import loads, dumps
+
+p = print
+
+class Err(Exception):
+    def __init__(app, message=None):
+        super().__init__(message)
+        app.message = str(message)
+
+    def __str__(app) -> str:
+        return app.message
 
 class Client:
     APP = False
@@ -92,18 +101,20 @@ class Client:
         await app.request.drain()
     
     async def stream(app, chunk_size = 1024, timeout=1, use_timeout=True):
-        count = 0
-        
+        a = 0
         while 1:
             try:
-                if use_timeout:
+                if a:
                     chunk = await wait_for(app.response.read(chunk_size), timeout=timeout)
                 else:
+                    a = 1
                     chunk = await app.response.read(chunk_size)
 
-                if chunk == b'': break
+                # if chunk == bytearray(b''): break
                 yield chunk
-                count += 1
+                if chunk.endswith(b'\n'):
+                    timeout=1
+                
             except TimeoutError:
                 break
             except Exception as e:
@@ -187,5 +198,7 @@ class Session:
     async def __aexit__(app, exc_type, exc_val, exc_tb):
         await app.app.close()
 
+
+     
 if __name__ == "__main__":
     pass

@@ -1,81 +1,22 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for, to_thread
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for, to_thread, sleep, gather
 
-from json import dumps, loads, JSONDecodeError
+from ujson import dumps, loads, JSONDecodeError
+
 from sys import exit
 from datetime import datetime as dt
 from inspect import signature as sig
 from typing import Callable
 
 """File serving"""
-from aiofiles import open as iopen
+from aiofile import async_open as iopen
 from mimetypes import guess_type
 from os.path import basename, getsize, exists, join
-
 from gzip import compress as gzip_compress
 
-p = print
+from aiologger import Logger
 
-from logging import StreamHandler, Formatter, getLogger, INFO
-
-class GreenLogHandler(StreamHandler):
-    def __init__(self, stream=None):
-        super().__init__(stream)
-        self.green = '\033[32m'  # ANSI escape code for green text
-        self.reset = '\033[39m'  # Reset color to default
-        self.setFormatter(Formatter('%(message)s'))
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            # Prefix the message with green color and reset it afterward
-            self.stream.write(f"{self.green}{msg}{self.reset}\n")
-        except Exception as e:
-            self.handleError(record)
-
-logger = getLogger('BlazeioLogger')
-logger.setLevel(INFO)
-
-green_handler = GreenLogHandler()
-logger.addHandler(green_handler)
-
-p = logger.info
-
-class Log:
-    known_exceptions = [
-        "[Errno 104] Connection reset by peer",
-        "Client has disconnected. Skipping write.",
-        "Connection lost",
-    ]
-
-    @classmethod
-    async def m(app, r, message):
-        message = str(message).strip()
-        
-        if message in app.known_exceptions:
-            return
-
-        p(
-            "{%s•%s} | [%s:%s] %s" % (
-                r.identifier,
-                str(r.connection_established_at),
-                r.ip_host,
-                str(r.ip_port),
-                message
-            )
-        )
-
-    @classmethod
-    async def say(app, identifier: str, message):
-        message = str(message).strip()
-
-        p(
-            "{%s•%s} | %s" % (
-                identifier,
-                str(dt.now()),
-                message
-            )
-        )
+logger = Logger.with_default_handlers(name='BlazeioLogger')
 
 class Err(Exception):
     def __init__(app, message=None):
@@ -100,3 +41,107 @@ class Packdata:
         app.__dict__.update(**kwargs)
         return app
 
+loop = get_event_loop()
+
+class Log:
+    known_exceptions = [
+        "[Errno 104] Connection reset by peer",
+        "Client has disconnected. Skipping write.",
+        "Connection lost",
+    ]
+
+    colors = {
+        'info': '\033[32m',
+        'error': '\033[31m',
+        'warning': '\033[33m',
+        'critical': '\033[38;5;1m',
+        'debug': '\033[34m',
+        #'reset': '\033[0m',
+        'reset': '\033[32m'
+    }
+
+    @classmethod
+    async def __log__(app, r=None, message=None, logger_=logger.info):
+        if isinstance(r, (str,)):
+            if message:
+                message = str(message).strip()
+            else:
+                message = str(r).strip()
+
+        else:
+            message = str(message).strip()
+            
+        if message in app.known_exceptions:
+            return
+
+        log_level = logger_.__name__.split('.')[-1]
+        
+        color = app.colors.get(log_level, app.colors['reset'])
+
+        message = f"{color}{message}{app.colors['reset']}"
+        
+        if isinstance(r, Packdata):
+            await logger_(
+                "%s•%s | [%s:%s] %s" % (
+                    r.identifier,
+                    str(r.connection_established_at),
+                    r.ip_host,
+                    str(r.ip_port),
+                    message
+                )
+            )
+        else:
+            await logger_(
+                "%s•%s | %s" % (
+                    r or "",
+                    str(dt.now()),
+                    message
+                )
+            )
+
+    @classmethod
+    async def info(app, *args): await app.__log__(*args, logger_=logger.info)
+
+    @classmethod
+    async def error(app, *args): await app.__log__(*args, logger_=logger.error)
+
+    @classmethod
+    async def warning(app, *args): await app.__log__(*args, logger_=logger.warning)
+
+    @classmethod
+    async def critical(app, *args): await app.__log__(*args, logger_=logger.critical)
+
+    @classmethod
+    async def debug(app, *args): await app.__log__(*args, logger_=logger.debug)
+
+    @classmethod
+    async def m(app, *args): await app.__log__(*args, logger_=logger.error)
+
+    @classmethod
+    async def bench(app):
+        start_time = dt.now().timestamp()
+
+        async def w(task):
+            for method in dir(app):
+                method = getattr(app, method)
+    
+                if isinstance(method, Callable) and not (name := method.__name__).startswith((sepr := "__")) and not name.endswith(sepr) and method != app.bench and not name in ["type"]:
+    
+                    await method(None, name)
+            
+            await app.info("Task %s completed successfully in %s seconds" % (task, dt.now().timestamp() - start_time))
+
+        tasks = []
+
+        while len(tasks) < 500:
+            task = loop.create_task( w(len(tasks) +1 ) )
+            tasks.append(task)
+
+        await gather(*tasks)
+
+        exit()
+            
+
+p = Log.info
+
+# loop.run_until_complete(Log.bench())
