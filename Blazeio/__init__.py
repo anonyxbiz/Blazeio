@@ -5,7 +5,7 @@ from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server
 from .Modules.request import Request
-from .Modules.IN_MEMORY_STATIC_CACHE import IN_MEMORY_STATIC_CACHE
+# from .Modules.IN_MEMORY_STATIC_CACHE import IN_MEMORY_STATIC_CACHE
 from .Client import Session, Client
 from time import perf_counter
 
