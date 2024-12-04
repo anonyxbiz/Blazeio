@@ -1,5 +1,5 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen
+from .Dependencies import io_run, CancelledError, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type
 
 from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort

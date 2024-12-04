@@ -18,7 +18,7 @@ class Request:
         r.stream_started = NotImplemented
 
     @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=None):
+    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1):
         if not "stream_started" in r.__dict__:
             await app.initate(r)
         else:
@@ -26,19 +26,8 @@ class Request:
 
         while True:
             try:
-                if r.stream_started is not NotImplemented and r.request.__dict__['_buffer'] == r.stream_started:
-                    pass
-                    #if timeout is None: break
-                else:
-                    r.stream_started = bytearray()
-                    
-                if timeout is not None:
-                    chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout)
-                else:
-                    # chunk = await r.request.read(CHUNK_SIZE)
-                    chunk = await wait_for(r.request.read(CHUNK_SIZE), 0.5)
-                
-                # if chunk == b'': break
+                chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout)
+
                 yield chunk
             except TimeoutError:
                 break
@@ -84,6 +73,7 @@ class Request:
                 first = all_[0]
                 await app.set_method(r, first)
                 break
+
         return r
         
     @classmethod
