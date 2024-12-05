@@ -8,6 +8,12 @@ from .Modules.request import Request
 from .Client import Session, Client
 from time import perf_counter
 
+try:
+    import uvloop
+    uvloop.install()
+except:
+    pass
+
 class Protocol(asyncProtocol):
     def __init__(r, on_client_connected):
         r.on_client_connected = on_client_connected
@@ -39,8 +45,8 @@ class Protocol(asyncProtocol):
             loop
         )
         
-        for item in ["identifier", "headers", "method", "tail", "path", "params", "exploited", "identifier"]:
-            r.__dict__[item] = None
+        #for item in ["identifier", "headers", "method", "tail", "path", "params", "exploited", "identifier"]: r.__dict__[item] = None
+        r.exploited = None
 
         r.ip_host, r.ip_port = r.response.get_extra_info('peername')
 
