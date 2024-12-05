@@ -20,16 +20,16 @@ class Stream:
 
         if await SafeGuards.is_alive(r):
             r.response.write(f"HTTP/1.1 {status} {reason}\r\n".encode())
-            await r.response.drain()
+            #await r.response.drain()
 
             for key, val in headers.items():
                 if await SafeGuards.is_alive(r):
                     r.response.write(f"{key}: {val}\r\n".encode())
-                    await r.response.drain()
+                    #await r.response.drain()
 
             if await SafeGuards.is_alive(r):
                 r.response.write(b"\r\n")
-                await r.response.drain()
+                #await r.response.drain()
 
             r.prepared = True
     
@@ -37,7 +37,7 @@ class Stream:
     async def write(app, r, data: bytes):
         if await SafeGuards.is_alive(r):
             r.response.write(data)
-            await r.response.drain()
+            #await r.response.drain()
 
 class Deliver:
     @classmethod

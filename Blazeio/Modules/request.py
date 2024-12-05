@@ -6,7 +6,7 @@ from .safeguards import SafeGuards
 
 class Request:
     @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=5):
+    async def _stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1):
 
         if not r.exploited:
             r.exploited = True
@@ -25,9 +25,18 @@ class Request:
                 break    
     
     @classmethod
+    async def stream_chunks(app, r, CHUNK_SIZE=100, timeout=1):
+        if "buffered_chunks" in r.__dict__:
+            yield r.buffered_chunks
+
+        async for chunk in r.request(CHUNK_SIZE):
+            #print(chunk)
+            yield chunk
+
+    @classmethod
     async def set_method(app, r, chunk):
         if not (a := b' ') in chunk:
-            p(chunk)
+            print(chunk)
             return
 
         parts = chunk.split(a)
@@ -44,8 +53,6 @@ class Request:
         
         other_parts = a.join(parts[2:]).decode("utf-8")
 
-        r.headers = {}
-
         if (head_split := '\r\n') in other_parts:
             sepr = ': '
             for i in other_parts.split(head_split):
@@ -60,6 +67,7 @@ class Request:
         r.buffered_chunks = b""
         async for chunk in app.stream_chunks(r):
             r.buffered_chunks += chunk
+            
             if (part_one := b"\r\n\r\n") in r.buffered_chunks:
                 all_ = r.buffered_chunks.split(part_one)
                 first = all_[0]

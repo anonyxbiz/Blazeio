@@ -7,6 +7,7 @@ from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielde
 from .Modules.request import Request
 from .Client import Session, Client
 from time import perf_counter
+from asyncio import sleep
 
 try:
     import uvloop
@@ -15,46 +16,57 @@ except:
     pass
 
 class Protocol(asyncProtocol):
-    def __init__(r, on_client_connected):
-        r.on_client_connected = on_client_connected
+    stream = b""
+    exploited = False
+    
+    def __init__(app, on_client_connected):
+        app.on_client_connected = on_client_connected
 
-    def connection_made(r, transport):
-        loop.create_task(
-            r.transporter(transport)
-        )
+    def connection_made(app, transport):
+        app.transport = transport
+        loop.create_task(app.transporter(transport))
 
-    def data_received(r, data):
-        r.reader_protocol.data_received(data)
+    def data_received(app, data):
+        app.stream += data
 
-    def connection_lost(r, exc):
-        r.reader_protocol.connection_lost(exc)
+    def connection_lost(app, exc):
+        app.exploited = True
+        app.transport.close()
 
-    async def transporter(r, transport):
-        #r.perf_counter = perf_counter()
+    def eof_received(app, *args, **kwargs):
+        app.exploited = True
+    
+    async def read(app, chunk_size=1, timeout=0):
+        while True:
+            await sleep(0)
 
-        r.transport = transport
-        r.request = StreamReader()
-        r.reader_protocol = StreamReaderProtocol(r.request)
+            if len(app.stream) >= chunk_size:
+                data = app.stream[:chunk_size]
+                app.stream = app.stream.replace(data, b"")
+                timeout = 0
+                yield data
+                
+            else:
+                timeout += 1
 
-        r.reader_protocol.connection_made(r.transport)
+                if timeout >= 200:
+                    yield app.stream
+                    break
 
-        r.response = StreamWriter(
-            transport,
-            r.reader_protocol,
-            None,
-            loop
-        )
-        
-        #for item in ["identifier", "headers", "method", "tail", "path", "params", "exploited", "identifier"]: r.__dict__[item] = None
-        r.exploited = None
+            if app.exploited: break
+
+    async def transporter(app, transport):
+        r = await Packdata.add(request = app.read, response=transport, perf_counter = perf_counter(), identifier=None, headers={}, method=None, tail=None, path=None, params=None, exploited=app.exploited)
 
         r.ip_host, r.ip_port = r.response.get_extra_info('peername')
-
-        # await Log.debug(f"Request initalization Completed in {perf_counter() - r.perf_counter:.4f} seconds")
-
-        await r.on_client_connected(r)
         
-        #await Log.debug(r, f"=> {r.method} {r.path}, Completed in {perf_counter() - r.perf_counter:.4f} seconds" )
+        await app.on_client_connected(r)
+
+        r.response.close()
+
+        await Log.debug(f"Completed in {perf_counter() - r.perf_counter:.4f} seconds" )
+
+
 
 class App:
     event_loop = loop
@@ -212,20 +224,22 @@ class App:
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
         except Abort as e: await e.text(r)
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e: await Log.critical(r, e)
-        finally:
-            try:
-                r.response.close()
-                await r.response.wait_closed()
-            except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
-                    await Log.critical(r, e)
 
     async def run(app, HOST, PORT, **kwargs):
-        app.server = await loop.create_server(
-            lambda: Protocol(app.handle_client),
-            HOST,
-            PORT,
-            **kwargs
-        )
+        if 1:#not "Protocol" in kwargs:
+            app.server = await loop.create_server(
+                lambda: Protocol(app.handle_client),
+                HOST,
+                PORT,
+                **kwargs
+            )
+        else:
+            app.server = await loop.create_server(
+                app.handle_client,
+                HOST,
+                PORT,
+                **kwargs
+            )
         
         async with app.server:
             await Log.info("Blazeio", "Server running on http://%s:%s" % (HOST, PORT))
