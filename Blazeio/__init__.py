@@ -1,13 +1,54 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type
+from .Dependencies import io_run, CancelledError, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, StreamReader, StreamWriter, StreamReaderProtocol
 
 from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
-from .Modules.static import StaticFileHandler, Smart_Static_Server
+from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
-# from .Modules.IN_MEMORY_STATIC_CACHE import IN_MEMORY_STATIC_CACHE
 from .Client import Session, Client
 from time import perf_counter
+
+class Protocol(asyncProtocol):
+    def __init__(r, on_client_connected):
+        r.on_client_connected = on_client_connected
+
+    def connection_made(r, transport):
+        loop.create_task(
+            r.transporter(transport)
+        )
+
+    def data_received(r, data):
+        r.reader_protocol.data_received(data)
+
+    def connection_lost(r, exc):
+        r.reader_protocol.connection_lost(exc)
+
+    async def transporter(r, transport):
+        #r.perf_counter = perf_counter()
+
+        r.transport = transport
+        r.request = StreamReader()
+        r.reader_protocol = StreamReaderProtocol(r.request)
+
+        r.reader_protocol.connection_made(r.transport)
+
+        r.response = StreamWriter(
+            transport,
+            r.reader_protocol,
+            None,
+            loop
+        )
+        
+        for item in ["identifier", "headers", "method", "tail", "path", "params", "exploited", "identifier"]:
+            r.__dict__[item] = None
+
+        r.ip_host, r.ip_port = r.response.get_extra_info('peername')
+
+        # await Log.debug(f"Request initalization Completed in {perf_counter() - r.perf_counter:.4f} seconds")
+
+        await r.on_client_connected(r)
+        
+        #await Log.debug(r, f"=> {r.method} {r.path}, Completed in {perf_counter() - r.perf_counter:.4f} seconds" )
 
 class App:
     event_loop = loop
@@ -156,49 +197,30 @@ class App:
             else:
                 raise memory.actions["raise"](**memory.actions["kwargs"])
 
-    async def handle_client(app, reader, writer, r=None):
+    async def handle_client(app, r):
         try:
-            try:
-                app.REQUEST_COUNT += 1
-    
-                r = await Packdata.add(
-                    request=reader,
-                    response=writer,
-                    identifier = app.REQUEST_COUNT,
-                    perf_counter = perf_counter()
-                )
-    
-                await app.serve_route(r)
-                
-            except ServerGotInTrouble as e: await Log.warning(r, e)
-            except Err as e: await Log.warning(r, e)
-            
-            except Abort as e: await e.text(r)
+            app.REQUEST_COUNT += 1
+            r.identifier = app.REQUEST_COUNT
+            await app.serve_route(r)
 
-            except (
-                ConnectionResetError,
-                BrokenPipeError,
-                CancelledError,
-                Exception
-            ) as e:
-                await Log.critical(r, e)
-            finally:
+        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
+        except Abort as e: await e.text(r)
+        except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e: await Log.critical(r, e)
+        finally:
+            try:
                 r.response.close()
                 await r.response.wait_closed()
-
-        except (
-            ConnectionResetError,
-            BrokenPipeError,
-            CancelledError,
-            Exception
-        ) as e:
-            await Log.critical(r, e)
-        finally:
-            await Log.debug(r, f"=> {r.method} {r.path}, Completed in {perf_counter() - r.perf_counter:.4f} seconds" )
+            except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
+                    await Log.critical(r, e)
 
     async def run(app, HOST, PORT, **kwargs):
-        app.server = await io_start_server(app.handle_client, HOST, PORT, **kwargs)
-    
+        app.server = await loop.create_server(
+            lambda: Protocol(app.handle_client),
+            HOST,
+            PORT,
+            **kwargs
+        )
+        
         async with app.server:
             await Log.info("Blazeio", "Server running on http://%s:%s" % (HOST, PORT))
             await app.server.serve_forever()

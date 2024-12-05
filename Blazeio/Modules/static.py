@@ -113,36 +113,36 @@ class StaticFileHandler:
 
     @classmethod
     async def stream_file(app, r, file_path, headers={}, CHUNK_SIZE=1024, prepared=False):
-        if not prepared:
-            await StaticFileHandler.prepare(r, file_path, headers, CHUNK_SIZE)
-
-        await Stream.init(r, r.StaticFileHandler.headers, status=r.StaticFileHandler.status_code, reason=r.StaticFileHandler.reason)
-
+        headers, status_code, reason, range_header, start, end = await app.prepare_static(r, file_path, headers, CHUNK_SIZE)
+        
+        if "Content-Length" in headers:
+            del headers["Content-Length"]
+        
+        await Stream.init(r, headers, status=status_code, reason=reason)
+        
         async with iopen(file_path, mode="rb") as file:
-            if r.StaticFileHandler.range_header:
-                file.seek(r.StaticFileHandler.start)
-
             while True:
-                try:
-                    chunk = await file.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    else:
-                        start += len(r.StaticFileHandler.start)
+                file.seek(start)
 
-                    yield chunk
-                except Abort as e:
-                    await Log.m(r, e)
-                    raise e
+                if not (chunk := await file.read(length = CHUNK_SIZE)):
                     break
-                except Err as e:
-                    await Log.m(r, e)
-                    raise e
-                    break
-                except Exception as e:
-                    await Log.m(r, e)
-                    break
+                else:
+                    start += len(chunk)
 
+                yield chunk
+
+class Staticwielder:
+    async def __aenter__(app):
+        return app
+    
+    async def stream_file(app, *args, **kwargs):
+        async for chunk in StaticFileHandler.stream_file(*args, **kwargs):
+            yield chunk
+    
+    async def __aexit__(app, ext_type, ext, tb):
+        pass
+    
+    
 class Smart_Static_Server:
     async def attach(app, parent):
         app.root = "./static"

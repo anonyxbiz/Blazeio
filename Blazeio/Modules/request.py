@@ -6,21 +6,10 @@ from .safeguards import SafeGuards
 
 class Request:
     @classmethod
-    async def initate(app, r):
-        r.connection_established_at = dt.now()
-        r.ip_host, r.ip_port = r.response.get_extra_info('peername')
+    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=5):
 
-        r.headers = {}
- 
-        r.method, r.tail, r.path, r.params = None, None, None, {}
-
-        r.buffered_chunks = b""
-        r.stream_started = NotImplemented
-
-    @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1):
-        if not "stream_started" in r.__dict__:
-            await app.initate(r)
+        if not r.exploited:
+            r.exploited = True
         else:
             yield r.buffered_chunks
 
@@ -55,6 +44,8 @@ class Request:
         
         other_parts = a.join(parts[2:]).decode("utf-8")
 
+        r.headers = {}
+
         if (head_split := '\r\n') in other_parts:
             sepr = ': '
             for i in other_parts.split(head_split):
@@ -66,6 +57,7 @@ class Request:
                     
     @classmethod
     async def set_data(app, r):
+        r.buffered_chunks = b""
         async for chunk in app.stream_chunks(r):
             r.buffered_chunks += chunk
             if (part_one := b"\r\n\r\n") in r.buffered_chunks:
@@ -107,7 +99,7 @@ class Request:
         parts = b''
         ready = True
 
-        async for chunk in app.stream_chunks(r, timeout=1):
+        async for chunk in app.stream_chunks(r, timeout=5):
             if signal in chunk and temp == b'':
                 chunk = signal.join(chunk.split(signal)[1:])
                 

@@ -1,5 +1,5 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for, to_thread, sleep, gather
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for, to_thread, sleep, gather, Protocol as asyncProtocol, StreamReader, StreamWriter, run, StreamReaderProtocol
 
 from ujson import dumps, loads, JSONDecodeError
 
@@ -41,6 +41,12 @@ class Packdata:
         app.__dict__.update(**kwargs)
         return app
 
+    @classmethod
+    def add_sync(app, **kwargs):
+        app = app()
+        app.__dict__.update(**kwargs)
+        return app
+
 loop = get_event_loop()
 
 class Log:
@@ -62,7 +68,7 @@ class Log:
 
     @classmethod
     async def __log__(app, r=None, message=None, logger_=logger.info):
-        if isinstance(r, (str,)):
+        if isinstance(r, str):
             if message:
                 message = str(message).strip()
             else:
@@ -80,11 +86,11 @@ class Log:
 
         message = f"{color}{message}{app.colors['reset']}"
         
-        if isinstance(r, Packdata):
+        if not isinstance(r, str):
             await logger_(
                 "%s•%s | [%s:%s] %s" % (
                     r.identifier,
-                    str(r.connection_established_at),
+                    str(dt.now()),
                     r.ip_host,
                     str(r.ip_port),
                     message
