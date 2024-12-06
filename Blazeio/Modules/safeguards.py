@@ -7,8 +7,8 @@ class SafeGuards:
         if r.exploited:
             raise Err("Client has disconnected. Skipping write.")
             
-        if not "read=polling" in str(r.response):
-            raise Err("Client has disconnected. Skipping write.")
+        #if not "read=polling" in str(r.response):
+            #raise Err("Client has disconnected. Skipping write.")
         else:
             return True
 

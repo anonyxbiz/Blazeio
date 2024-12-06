@@ -38,20 +38,16 @@ class Protocol(asyncProtocol):
     
     async def read(app, chunk_size=1024, timeout=0):
         while True:
-            if 1:#len(app.stream) >= chunk_size:
+            if app.stream:#len(app.stream) >= chunk_size:
                 data = app.stream[:chunk_size]
-                app.stream = app.stream.replace(data, b"")
-                timeout = 0
                 yield data
+                app.stream = app.stream[chunk_size:]
                 
+                # app.stream = app.stream.replace(data, b"")
+                #print(data)
             else:
-                await sleep(0.01)
-
-                timeout += 1
-
-                if timeout >= 100:
-                    yield app.stream
-                    break
+                #print("sleep")
+                await sleep(0)
 
             if app.exploited: break
 
