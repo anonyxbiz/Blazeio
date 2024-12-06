@@ -16,18 +16,17 @@ except:
     pass
 
 class Protocol(asyncProtocol):
-    stream = b""
-    exploited = False
-    
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
 
     def connection_made(app, transport):
         app.transport = transport
+        app.stream = b""
+        app.exploited = False
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        app.stream += data
+        app.stream = data
 
     def connection_lost(app, exc):
         app.exploited = True
@@ -38,13 +37,8 @@ class Protocol(asyncProtocol):
     
     async def read(app, chunk_size=1024, timeout=0):
         while True:
-            if app.stream:#len(app.stream) >= chunk_size:
-                data = app.stream[:chunk_size]
-                yield data
-                app.stream = app.stream[chunk_size:]
-                
-                # app.stream = app.stream.replace(data, b"")
-                #print(data)
+            if app.stream:
+                yield app.stream
             else:
                 #print("sleep")
                 await sleep(0)
