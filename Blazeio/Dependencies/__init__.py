@@ -52,7 +52,7 @@ loop = get_event_loop()
 class Log:
     known_exceptions = [
         "[Errno 104] Connection reset by peer",
-        "Client has disconnected. Skipping write.",
+        "Client has disconnected.",
         "Connection lost",
     ]
 

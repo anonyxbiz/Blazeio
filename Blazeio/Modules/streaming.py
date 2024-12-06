@@ -1,5 +1,4 @@
 from ..Dependencies import p, dumps, loads, Err, Log
-from .safeguards import SafeGuards
 
 class Stream:
     response_headers = {
@@ -11,34 +10,29 @@ class Stream:
     }
 
     @classmethod
-    async def prepared(app, r):
-        if "prepared" in r.__dict__: return True
-
-    @classmethod
     async def init(app, r, headers={}, status=206, reason="Partial Content"):
         headers.update(app.response_headers)
 
-        if await SafeGuards.is_alive(r):
-            r.response.write(f"HTTP/1.1 {status} {reason}\r\n".encode())
-            #await r.response.drain()
+        await app.write(r, f"HTTP/1.1 {status} {reason}\r\n".encode())
 
-            for key, val in headers.items():
-                if await SafeGuards.is_alive(r):
-                    r.response.write(f"{key}: {val}\r\n".encode())
-                    #await r.response.drain()
+        for key, val in headers.items():
+            await app.write(r, f"{key}: {val}\r\n".encode())
+        
+        await app.write(r, b"\r\n")
 
-            if await SafeGuards.is_alive(r):
-                r.response.write(b"\r\n")
-                #await r.response.drain()
-
-            r.prepared = True
+        r.prepared = True
     
     @classmethod
     async def write(app, r, data: bytes):
-        if await SafeGuards.is_alive(r):
+        if r.__is_alive__:
             r.response.write(data)
-            #await r.response.drain()
+        else:
+            raise Err("Client has disconnected.")
 
+    @classmethod
+    async def prepared(app, r):
+        if "prepared" in r.__dict__: return True
+            
 class Deliver:
     @classmethod
     async def json(app, r, data, _dump=True, _encode=True, status=206, headers={}, reason="Partial Content"):

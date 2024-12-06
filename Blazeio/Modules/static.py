@@ -109,7 +109,9 @@ class StaticFileHandler:
                     break
                 else:
                     start += len(chunk)
+
                 await Stream.write(r, chunk)
+                if start >= end: break
 
     @classmethod
     async def stream_file(app, r, file_path, headers={}, CHUNK_SIZE=1024, prepared=False):

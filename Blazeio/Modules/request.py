@@ -6,32 +6,13 @@ from .safeguards import SafeGuards
 
 class Request:
     @classmethod
-    async def _stream_chunks(app, r, CHUNK_SIZE=1024, timeout=1):
-
-        if not r.exploited:
-            r.exploited = True
-        else:
-            yield r.buffered_chunks
-
-        while True:
-            try:
-                chunk = await wait_for(r.request.read(CHUNK_SIZE), timeout)
-
-                yield chunk
-            except TimeoutError:
-                break
-            except Exception as e:
-                p(e)
-                break    
-    
-    @classmethod
-    async def stream_chunks(app, r, CHUNK_SIZE=100, timeout=1):
+    async def stream_chunks(app, r):
         if "buffered_chunks" in r.__dict__:
             yield r.buffered_chunks
 
-        async for chunk in r.request(CHUNK_SIZE):
-            #print(chunk)
-            yield chunk
+        async for chunk in r.request():
+            if chunk:
+                yield chunk
 
     @classmethod
     async def set_method(app, r, chunk):
@@ -107,7 +88,7 @@ class Request:
         parts = b''
         ready = True
 
-        async for chunk in app.stream_chunks(r, timeout=5):
+        async for chunk in app.stream_chunks(r):
             if signal in chunk and temp == b'':
                 chunk = signal.join(chunk.split(signal)[1:])
                 
@@ -150,13 +131,12 @@ class Request:
         return json_data
 
     @classmethod
-    async def get_upload(app, r, CHUNK_SIZE=1024):
-        async for chunk in app.stream_chunks(r, CHUNK_SIZE, timeout=5):
+    async def get_upload(app, r):
+        async for chunk in app.stream_chunks(r):
             sepr = b'\r\n\r\n'
             
             if sepr in chunk:
                 chunk = sepr.join(chunk.split(sepr)[1:])
-                # p(chunk)
                 
             yield chunk
 

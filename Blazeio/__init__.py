@@ -18,44 +18,52 @@ except:
 class Protocol(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.received = Event()
         
     def connection_made(app, transport):
-        app.transport = transport
-        app.stream = b""
-        app.exploited = False
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        app.stream = data
-        app.received.set()
+        app.r.__stream__ = data
+        app.r.__received__ = True
 
     def connection_lost(app, exc):
-        app.exploited = True
-        app.transport.close()
+        app.r.__is_alive__ = False
 
     def eof_received(app, *args, **kwargs):
-        app.exploited = True
-    
-    async def read(app, chunk_size=1024, timeout=0):
+        app.r.__exploited__ = True
 
-        while not app.exploited:
-            await app.received.wait()
-            app.received.clear()
-
-            if app.stream:
-                yield app.stream
+    async def read(app):
+        while app.r.__is_alive__:
+            if app.r.__received__:
+                app.__received__ = False
+                yield app.r.__stream__
+            else:
+                yield None
+                await sleep(0)
 
     async def transporter(app, transport):
-        r = await Packdata.add(request = app.read, response=transport, perf_counter = perf_counter(), identifier=None, headers={}, method=None, tail=None, path=None, params=None, exploited=app.exploited)
-
-        r.ip_host, r.ip_port = r.response.get_extra_info('peername')
+        app.r = await Packdata.add(
+            __perf_counter__ = perf_counter(),
+            __exploited__ = False,
+            __received__ = False,
+            __stream__ = b"",
+            __is_alive__ = True,
+            request = app.read,
+            response = transport,
+            headers = {},
+            method = None,
+            tail = None,
+            path = None,
+            params = None,
+        )
         
-        await app.on_client_connected(r)
+        app.r.ip_host, app.r.ip_port = app.r.response.get_extra_info('peername')
+        
+        await app.on_client_connected(app.r)
 
-        r.response.close()
+        app.r.response.close()
 
-        await Log.debug(f"Completed in {perf_counter() - r.perf_counter:.4f} seconds" )
+        await Log.debug(f"Completed in {perf_counter() - app.r.__perf_counter__:.4f} seconds" )
 
 
 
