@@ -7,7 +7,7 @@ from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielde
 from .Modules.request import Request
 from .Client import Session, Client
 from time import perf_counter
-from asyncio import sleep
+from asyncio import sleep, Event
 
 try:
     import uvloop
@@ -18,7 +18,8 @@ except:
 class Protocol(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-
+        app.received = Event()
+        
     def connection_made(app, transport):
         app.transport = transport
         app.stream = b""
@@ -27,6 +28,7 @@ class Protocol(asyncProtocol):
 
     def data_received(app, data):
         app.stream = data
+        app.received.set()
 
     def connection_lost(app, exc):
         app.exploited = True
@@ -36,14 +38,13 @@ class Protocol(asyncProtocol):
         app.exploited = True
     
     async def read(app, chunk_size=1024, timeout=0):
-        while True:
+
+        while not app.exploited:
+            await app.received.wait()
+            app.received.clear()
+
             if app.stream:
                 yield app.stream
-            else:
-                #print("sleep")
-                await sleep(0)
-
-            if app.exploited: break
 
     async def transporter(app, transport):
         r = await Packdata.add(request = app.read, response=transport, perf_counter = perf_counter(), identifier=None, headers={}, method=None, tail=None, path=None, params=None, exploited=app.exploited)
