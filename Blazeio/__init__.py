@@ -36,20 +36,20 @@ class Protocol(asyncProtocol):
     def eof_received(app, *args, **kwargs):
         app.exploited = True
     
-    async def read(app, chunk_size=1, timeout=0):
+    async def read(app, chunk_size=1024, timeout=0):
         while True:
-            await sleep(0)
-
-            if len(app.stream) >= chunk_size:
+            if 1:#len(app.stream) >= chunk_size:
                 data = app.stream[:chunk_size]
                 app.stream = app.stream.replace(data, b"")
                 timeout = 0
                 yield data
                 
             else:
+                await sleep(0.01)
+
                 timeout += 1
 
-                if timeout >= 10000:
+                if timeout >= 100:
                     yield app.stream
                     break
 
