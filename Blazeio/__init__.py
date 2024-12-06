@@ -49,7 +49,7 @@ class Protocol(asyncProtocol):
             else:
                 timeout += 1
 
-                if timeout >= 1000:
+                if timeout >= 10000:
                     yield app.stream
                     break
 
