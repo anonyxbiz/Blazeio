@@ -24,7 +24,7 @@ class Protocol(asyncProtocol):
         app.r.__exploited__ = True
 
     async def remove(app, count):
-        await sleep(1)
+        await sleep(0.01)
         app.r.buffer[count] = b""
 
     async def read(app):
