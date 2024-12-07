@@ -1,30 +1,21 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, io_start_server, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, StreamReader, StreamWriter, StreamReaderProtocol
+from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter
 
 from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
 from .Client import Session, Client
-from time import perf_counter
-from asyncio import sleep, Event
-
-try:
-    import uvloop
-    uvloop.install()
-except:
-    pass
 
 class Protocol(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        
+
     def connection_made(app, transport):
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        app.r.__stream__ = data
-        app.r.__received__ = True
+        app.r.buffer.append(data)
 
     def connection_lost(app, exc):
         app.r.__is_alive__ = False
@@ -34,9 +25,10 @@ class Protocol(asyncProtocol):
 
     async def read(app):
         while app.r.__is_alive__:
-            if app.r.__received__:
-                app.__received__ = False
-                yield app.r.__stream__
+            if len(app.r.buffer) > app.r.__count__:
+                yield app.r.buffer[app.r.__count__]
+                app.r.buffer[app.r.__count__] = b""
+                app.r.__count__ += 1
             else:
                 yield None
                 await sleep(0)
@@ -48,6 +40,7 @@ class Protocol(asyncProtocol):
             __received__ = False,
             __stream__ = b"",
             __is_alive__ = True,
+            buffer = [b""],
             request = app.read,
             response = transport,
             headers = {},
@@ -55,10 +48,12 @@ class Protocol(asyncProtocol):
             tail = None,
             path = None,
             params = None,
+            __count__ = 0,
+            __retries__ = 0,
         )
-        
+
         app.r.ip_host, app.r.ip_port = app.r.response.get_extra_info('peername')
-        
+
         await app.on_client_connected(app.r)
 
         app.r.response.close()
@@ -72,7 +67,7 @@ class App:
     REQUEST_COUNT = 0
     default_methods = ["GET", "POST", "OPTIONS", "PUT", "PATCH", "HEAD", "DELETE"]
     server = None
-    
+
     memory = {
         "routes": {},
         "max_routes_in_memory": 20
@@ -111,7 +106,7 @@ class App:
             methods = {methods: True}
 
         params_ = {}
-        
+
         for k, v in params.items():
             params_[k] = v.default
 
@@ -123,7 +118,7 @@ class App:
 
         if not route_name.endswith("_middleware"):
             route_name = route_name.replace("_", "/")
-            
+
         app.declared_routes[route_name] = data
         return func
 
@@ -140,21 +135,21 @@ class App:
 
                 if not "r" in (params := dict((signature := sig(method)).parameters)):
                     raise ValueError()
-                    
+
                 if not name.endswith("_middleware"):
                     route_name = name.replace("_", "/")
                     await Log.info("Added route => %s." % route_name)
                 else:
                     await Log.info("Added Middleware => %s." % name)
 
-                    
+
                 app.add_route(method, name)
 
             except ValueError:
                 pass
             except Exception as e:
                 await Log.error(e)
-    
+
     async def serve_route(app, r, route=None):
         await Request.set_data(r)
         await Log.info(r,
@@ -163,7 +158,7 @@ class App:
                 r.path
             )
         )
-        
+
         if r.path not in app.memory["routes"]:
             memory = await Packdata.add(actions=None)
             if len(app.memory["routes"]) <= app.memory.get("max_routes_in_memory") or 20:
@@ -186,9 +181,9 @@ class App:
             # Handle routes
             if route:
                 memory.actions.append(route.get("func"))
-                
+
                 await route.get("func")(r)
-                
+
             else:
                 if (handle_all_middleware := app.declared_routes.get("handle_all_middleware")):
                     memory.actions.append(handle_all_middleware.get("func"))
@@ -199,7 +194,7 @@ class App:
                         "raise": Abort,
                         "kwargs": {"message": "Not Found", "status": 404}
                     }
-                    
+
                     raise memory.actions["raise"](**memory.actions["kwargs"])
 
             # Handle after_middleware
@@ -239,7 +234,7 @@ class App:
                 PORT,
                 **kwargs
             )
-        
+
         async with app.server:
             await Log.info("Blazeio", "Server running on http://%s:%s" % (HOST, PORT))
             await app.server.serve_forever()
@@ -247,33 +242,33 @@ class App:
     async def exit(app):
         try:
             await Log.info("Blazeio", "KeyboardInterrupt Detected, Shutting down gracefully.")
-    
+
             to_wait_for = []
-    
+
             for task in all_tasks(loop=loop):
                 if task is not current_task():
                     data = str(task)
                     name = None
-    
+
                     if (spr := "name='") in data:
                         name = data.split(spr)[1].split("'")[0]
                     else:
                         name = data[:10]
-                        
+
                     await Log.info(
                         "Blazeio",
                         "Task %s Terminated" % name
                     )
-            
+
                     task.cancel()
                     to_wait_for.append(task)
-            
+
             for t in to_wait_for:
                 try:
                     await t
                 except CancelledError:
                     pass
-    
+
             await Log.info("Blazeio", "Event loop wiped, ready to exit.")
 
         except Exception as e:

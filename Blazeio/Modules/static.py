@@ -143,8 +143,7 @@ class Staticwielder:
     
     async def __aexit__(app, ext_type, ext, tb):
         pass
-    
-    
+
 class Smart_Static_Server:
     async def attach(app, parent):
         app.root = "./static"

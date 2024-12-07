@@ -1,5 +1,5 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, start_server as io_start_server, current_task, all_tasks, TimeoutError, wait_for, to_thread, sleep, gather, Protocol as asyncProtocol, StreamReader, StreamWriter, run, StreamReaderProtocol
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run
 
 from ujson import dumps, loads, JSONDecodeError
 
@@ -14,7 +14,11 @@ from mimetypes import guess_type
 from os.path import basename, getsize, exists, join
 from gzip import compress as gzip_compress
 
+"""logging"""
 from aiologger import Logger
+
+"""analytics"""
+from time import perf_counter
 
 logger = Logger.with_default_handlers(name='BlazeioLogger')
 
@@ -68,10 +72,9 @@ class Log:
 
     @classmethod
     async def __log__(app, r=None, message=None, logger_=logger.info):
-        if isinstance(r, str):
-            if message:
-                message = str(message).strip()
-            else:
+
+        if not isinstance(r, Packdata):
+            if not isinstance(message, str):
                 message = str(r).strip()
 
         else:
@@ -84,9 +87,9 @@ class Log:
         
         color = app.colors.get(log_level, app.colors['reset'])
 
-        message = f"{color}{message}{app.colors['reset']}"
-        
-        if not isinstance(r, str):
+        if isinstance(r, Packdata):
+            message = f"{color}{message}{app.colors['reset']}"
+
             await logger_(
                 "%s•%s | [%s:%s] %s" % (
                     r.identifier,
@@ -97,9 +100,16 @@ class Log:
                 )
             )
         else:
+            msg = message
+            message = f"{color}{message}{app.colors['reset']}"
+
+            if msg == "":
+                await logger_(message)
+                return
+            
             await logger_(
                 "%s•%s | %s" % (
-                    r or "",
+                    "",
                     str(dt.now()),
                     message
                 )
@@ -149,5 +159,4 @@ class Log:
             
 
 p = Log.info
-
-# loop.run_until_complete(Log.bench())
+loop.run_until_complete(Log.debug(""))
