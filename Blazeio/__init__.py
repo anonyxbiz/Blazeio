@@ -23,12 +23,18 @@ class Protocol(asyncProtocol):
     def eof_received(app, *args, **kwargs):
         app.r.__exploited__ = True
 
+    async def remove(app, count):
+        await sleep(1)
+        app.r.buffer[count] = b""
+
     async def read(app):
         while app.r.__is_alive__:
             if len(app.r.buffer) > app.r.__count__:
+                loop.create_task(app.remove(app.r.__count__))
                 yield app.r.buffer[app.r.__count__]
-                app.r.buffer[app.r.__count__] = b""
                 app.r.__count__ += 1
+                
+                
             else:
                 yield None
                 await sleep(0)
