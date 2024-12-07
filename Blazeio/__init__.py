@@ -15,7 +15,8 @@ class Protocol(asyncProtocol):
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        app.r.buffer.append(data)
+        app.r.buffer += 1
+        app.r.__stream__ = data
 
     def connection_lost(app, exc):
         app.r.__is_alive__ = False
@@ -29,9 +30,10 @@ class Protocol(asyncProtocol):
 
     async def read(app):
         while app.r.__is_alive__:
-            if len(app.r.buffer) > app.r.__count__:
-                loop.create_task(app.remove(app.r.__count__))
-                yield app.r.buffer[app.r.__count__]
+            if app.r.buffer > app.r.__count__:
+                #loop.create_task(app.remove(app.r.__count__))
+                yield app.r.__stream__
+                #yield app.r.buffer[app.r.__count__]
                 app.r.__count__ += 1
                 
                 
@@ -46,7 +48,7 @@ class Protocol(asyncProtocol):
             __received__ = False,
             __stream__ = b"",
             __is_alive__ = True,
-            buffer = [b""],
+            buffer = 0,
             request = app.read,
             response = transport,
             headers = {},
