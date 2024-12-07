@@ -15,7 +15,7 @@ class Protocol(asyncProtocol):
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        app.r.__stream__ = data
+        app.r.__stream__ += data
         app.r.__received__ = True
 
     def connection_lost(app, exc):
@@ -24,14 +24,13 @@ class Protocol(asyncProtocol):
     def eof_received(app, *args, **kwargs):
         app.r.__exploited__ = True
 
-    async def remove(app, count):
-        await sleep(0.01)
-        app.r.buffer[count] = b""
-
     async def read(app):
         while app.r.__is_alive__:
             if app.r.__received__:
-                yield app.r.__stream__
+                app.r.__count__ += len(app.r.__stream__)
+                chunk, app.r.__stream__ = app.r.__stream__[:app.r.__count__], app.r.__stream__[app.r.__count__:]
+                yield chunk
+                
                 app.r.__received__ = False
             else:
                 yield None

@@ -28,7 +28,7 @@ class Request:
         else:
             r.path = r.tail
         
-        #if len(parts) <= 2: return
+        if len(parts) <= 2: return
 
         other_parts = a.join(parts[2:]).decode("utf-8")
 
@@ -52,7 +52,7 @@ class Request:
                     all_ = r.buffered_chunks.split(part_one)
                     first = all_[0]
                     
-                    #r.buffered_chunks = part_one.join(all_[1:])
+                    r.buffered_chunks = part_one.join(all_[1:])
                     
                     await app.set_method(r, first)
                     break
