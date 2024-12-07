@@ -16,7 +16,7 @@ class Protocol(asyncProtocol):
 
     def data_received(app, data):
         app.r.__stream__ = data
-        app.r.buffer += 1
+        app.r.__received__ = True
 
     def connection_lost(app, exc):
         app.r.__is_alive__ = False
@@ -30,9 +30,9 @@ class Protocol(asyncProtocol):
 
     async def read(app):
         while app.r.__is_alive__:
-            if app.r.buffer > app.r.__count__:
+            if app.r.__received__:
                 yield app.r.__stream__
-                app.r.__count__ += 1
+                app.r.__received__ = False
             else:
                 yield None
                 await sleep(0)
