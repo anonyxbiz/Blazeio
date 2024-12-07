@@ -6,6 +6,7 @@ from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
 from .Client import Session, Client
+from time import sleep as tsleep
 
 class Protocol(asyncProtocol):
     def __init__(app, on_client_connected):
@@ -15,8 +16,8 @@ class Protocol(asyncProtocol):
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        if "__stream__" in app.r.__dict__:
-            app.r.__stream__.extend(data)
+        app.r.__stream__ = data
+        
         
     def connection_lost(app, exc):
         app.r.__is_alive__ = False
@@ -27,8 +28,9 @@ class Protocol(asyncProtocol):
     async def read(app):
         while app.r.__is_alive__:
             if app.r.__stream__:
-                yield app.r.__stream__[:]
-                app.r.__stream__.clear()  # Clear the bytearray efficiently
+                yield app.r.__stream__
+                #app.r.__stream__ = None
+
             else:
                 yield None
                 await sleep(0)
@@ -38,7 +40,7 @@ class Protocol(asyncProtocol):
             __perf_counter__ = perf_counter(),
             __exploited__ = False,
             __received__ = False,
-            __stream__ = bytearray(),
+            __stream__ = None,
             __is_alive__ = True,
             buffer = 0,
             request = app.read,
