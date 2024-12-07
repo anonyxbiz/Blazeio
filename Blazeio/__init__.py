@@ -27,10 +27,11 @@ class Protocol(asyncProtocol):
     async def read(app):
         while app.r.__is_alive__:
             if app.r.__received__:
-                app.r.__count__ += len(app.r.__stream__)
-                chunk, app.r.__stream__ = app.r.__stream__[:app.r.__count__], app.r.__stream__[app.r.__count__:]
+                chunk = app.r.__stream__
                 yield chunk
-                
+                if len(chunk) >= 8*1024:
+                    app.r.__stream__ = b""
+
                 app.r.__received__ = False
             else:
                 yield None
