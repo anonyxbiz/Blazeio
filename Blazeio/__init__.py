@@ -15,8 +15,7 @@ class Protocol(asyncProtocol):
         loop.create_task(app.transporter(transport))
 
     def data_received(app, data):
-        app.r.__stream__ += data
-        app.r.__received__ = True
+        app.r.__stream__ = data
 
     def connection_lost(app, exc):
         app.r.__is_alive__ = False
@@ -25,14 +24,13 @@ class Protocol(asyncProtocol):
         app.r.__exploited__ = True
 
     async def read(app):
+        buffer = b""
+        
         while app.r.__is_alive__:
-            if app.r.__received__:
-                chunk = app.r.__stream__
-                yield chunk
-                if len(chunk) >= 8*1024:
-                    app.r.__stream__ = b""
+            if buffer != app.r.__stream__:
+                buffer = app.r.__stream__
+                yield buffer
 
-                app.r.__received__ = False
             else:
                 yield None
                 await sleep(0)
