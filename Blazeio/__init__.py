@@ -7,17 +7,20 @@ from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielde
 from .Modules.request import Request
 from .Client import Session, Client
 from asyncio import Queue
+from collections import deque
 
 class Protocol(asyncProtocol):
-    def __init__(app, on_client_connected):
+    def __init__(app, on_client_connected, **kwargs):
+        app.__dict__.update(kwargs)
         app.on_client_connected = on_client_connected
+        app.__stream__ = deque()
 
     def connection_made(app, transport):
         loop.create_task(app.transporter(transport))
 
-    def data_received(app, data):
-        app.r.__stream__.put_nowait(data)
-        
+    def data_received(app, chunk):
+        app.__stream__.append(chunk)
+
     def connection_lost(app, exc):
         app.r.__is_alive__ = False
 
@@ -26,36 +29,37 @@ class Protocol(asyncProtocol):
 
     async def read(app):
         while app.r.__is_alive__:
-            if not app.r.__stream__.empty():
-                yield await app.r.__stream__.get()  # Get data from queue
-            else:
+            try:
+                if app.__stream__: yield app.__stream__.popleft()
+                else: yield None
+            except IndexError:
                 yield None
                 await sleep(0)
+            finally:
+                await sleep(0)
+
 
     async def transporter(app, transport):
         app.r = await Packdata.add(
             __perf_counter__ = perf_counter(),
             __exploited__ = False,
-            __received__ = False,
-            __stream__ = Queue(),
             __is_alive__ = True,
-            buffer = 0,
             request = app.read,
-            response = transport,
+            write = transport.write,
+            close = transport.close,
+            get_extra_info = transport.get_extra_info,
             headers = {},
             method = None,
             tail = None,
             path = None,
-            params = None,
-            __count__ = 0,
-            __retries__ = 0,
+            params = None
         )
 
-        app.r.ip_host, app.r.ip_port = app.r.response.get_extra_info('peername')
+        app.r.ip_host, app.r.ip_port = app.r.get_extra_info('peername')
 
         await app.on_client_connected(app.r)
 
-        app.r.response.close()
+        app.r.close()
 
         await Log.debug(f"Completed in {perf_counter() - app.r.__perf_counter__:.4f} seconds" )
 

@@ -1,72 +1,17 @@
 from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError
 
 from .streaming import Stream, Deliver, Abort
-from .safeguards import SafeGuards
+from collections import defaultdict
+from types import MappingProxyType
+from time import perf_counter
 
 class Request:
     @classmethod
-    async def stream_chunks(app, r):
-        if "buffered_chunks" in r.__dict__:
-            yield r.buffered_chunks
-
-        async for chunk in r.request():
-            yield chunk
-
-    @classmethod
-    async def set_method(app, r, chunk):
-        if not (a := b' ') in chunk:
-            print(chunk)
-            return
-
-        parts = chunk.split(a)
-
-        r.method = parts[0].decode("utf-8")
-        r.tail = parts[1].decode("utf-8")
-
-        if (c := "?") in r.tail:
-            r.path = r.tail.split(c)[0]
-        else:
-            r.path = r.tail
-        
-        if len(parts) <= 2: return
-
-        other_parts = a.join(parts[2:]).decode("utf-8")
-
-        if (head_split := '\r\n') in other_parts:
-            sepr = ': '
-            for i in other_parts.split(head_split):
-                if sepr in i:
-                    key, val = i.split(sepr)
-                    r.headers[key] = val
-        else:
-             return
-
-    @classmethod
-    async def set_data(app, r):
-        r.buffered_chunks = b""
-        async for chunk in app.stream_chunks(r):
-            if chunk:
-                r.buffered_chunks += chunk
-
-                if (part_one := b"\r\n\r\n") in r.buffered_chunks:
-                    all_ = r.buffered_chunks.split(part_one)
-                    first = all_[0]
-                    
-                    r.buffered_chunks = part_one.join(all_[1:])
-                    
-                    await app.set_method(r, first)
-                    break
-
-        return r
-
-    @classmethod
     async def get_json(app, r):
-        temp = b""
+        temp = bytearray()
         async for chunk in app.stream_chunks(r):
             if not chunk: chunk = b''
-            r.buffered_chunks += chunk
-            if chunk:
-                temp += chunk
+            else: temp.extend(chunk)
 
             if (sepr := b'\r\n\r\n') in temp:
                 temp = sepr.join(temp.split(sepr)[1:])
@@ -83,88 +28,7 @@ class Request:
                     raise Err("Malformed packets are not valid JSON.")
 
         raise Err("No valid JSON found in the stream.")
-
-    @classmethod
-    async def get_form_data(app, r):
-        sepr = b'\r\n\r\n'
-        signal = b'Content-Type: '
-
-        temp = b''
-        parts = b''
-        ready = True
-
-        async for chunk in app.stream_chunks(r):
-            if not chunk: chunk = b""
-            if signal in chunk and temp == b'':
-                chunk = signal.join(chunk.split(signal)[1:])
-
-            temp += chunk
-
-            if signal in temp:
-                temp = temp.split(signal)
-                parts = temp[0] + signal
-
-                temp = temp[-1]
-
-                if parts != b'' and sepr in temp:
-                    _ = temp.split(sepr)
-                    parts += _[0]
-                    #r.buffered_chunks = _[-1]
-                    break
-
-        sepr = b'------'
-
-        if not sepr in parts:
-            return None
-        else:
-            parts = parts.decode("utf-8")
-            sepr = sepr.decode("utf-8")
-
-        parts = parts.split(sepr)
-        json_data = {}
-
-        for part in parts:
-            start = 'form-data; name="'
-            mid = '"\r\n\r\n'
-            end = '\r\n'
-
-            if start in part and mid in part and end in part:
-                buff = part.split(start)[1]
-                name, value = buff.split(mid)
-                value = value.replace(end, '')
-                json_data[name] = value
-
-        return json_data
         
-    @classmethod
-    async def get_upload(app, r):
-        y = 0
-        
-        a = b"Content-Type: "
-        b = b'multipart/form-data; boundary=----WebKitFormBoundary'
-        c = b'form-data'
-        d = b'\r\n\r\n'
-        
-        ready = False
-
-        async for chunk in app.stream_chunks(r):
-            if chunk:
-                if not ready:
-                    if b in chunk:
-                        chunk = chunk.split(b)[-1]
-                    
-                    if c in chunk: chunk = chunk.split(c)[-1]
-    
-                    if a in chunk: chunk = chunk.split(a)[-1]
-                    
-                    if d in chunk: chunk = d.join(chunk.split(d)[1:])
-                    ready = True
-
-                yield chunk
-            else:
-                y += 1
-                if y > 1000: break
-
     @classmethod
     async def get_params(app, r):
         temp = {}
@@ -184,6 +48,119 @@ class Request:
                     temp[_key] = value.replace("%20", " ")
 
         return temp
+
+    @classmethod
+    async def stream_chunks(app, r, timeout=None):
+        yield r.buffered_chunks
+
+        async for chunk in r.request():
+            if chunk:
+                yield chunk
+            else:
+                yield chunk
+
+    @classmethod
+    async def set_method(app, r, chunk):
+        r.__parts__ = chunk.split(b' ')
+        
+        r.method = r.__parts__[0].decode("utf-8")
+        r.tail = r.__parts__[1].decode("utf-8")
+        
+        r.path = r.tail.split('?')[0]
+
+        await app.get_headers(r)
+        return r
+
+    @classmethod
+    async def get_headers(app, r):
+        other_parts = b' '.join(r.__parts__[2:]).decode("utf-8")
+
+        if '\r\n' in other_parts:
+            sepr = ': '
+            headers = defaultdict(str)
+            for header in other_parts.split('\r\n'):
+                if sepr in header:
+                    key, val = header.split(sepr, 1)
+                    headers[key.strip()] = val.strip()
+            
+            r.headers = dict(headers)
+        else:
+            return
+
+    @classmethod
+    async def set_data(app, r):
+        r.buffered_chunks = bytearray()
+        async for chunk in r.request():
+            if chunk:
+                r.buffered_chunks.extend(chunk)
+                if b"\r\n\r\n" in r.buffered_chunks:
+                    first, remaining = r.buffered_chunks.split(b"\r\n\r\n", 1)
+                    r.buffered_chunks = remaining
+                    
+                    if await app.set_method(r, first): break
+
+        return r
+
+    @classmethod
+    async def get_form_data(app, r, decode=True):
+        signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
+        idx, form_data = 0, bytearray()
+
+        async for chunk in app.stream_chunks(r):
+            if chunk:
+                form_data.extend(chunk)
+                if signal3 in form_data:
+                    break
+
+        form_elements = form_data.split(signal3)
+        r.buffered_chunks = form_elements.pop()
+        
+        form_elements = signal3.join(form_elements)
+        
+        json_data = defaultdict(str)
+        
+        objs = (b'form-data; name="', b'"\r\n\r\n', b'\r\n')
+        
+        start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
+
+        for element in form_elements.split(signal):
+            if start in element and end in element:
+                _ = element.split(start).pop().split(middle)
+                
+                key = _[0]
+
+                if filename_begin in key and filename_end in key and content_type in key:
+                    fname, _type = key.split(filename_begin).pop().split(filename_end)
+
+                    json_data["filename"] = fname if not decode else fname.decode("utf-8")
+                    json_data["Content-Type"] = (_type := _type.split(content_type).pop()) if not decode else _type.decode("utf-8")
+                    
+                else:
+                    value = _[-1]
+                    if end in value: value = value.split(end).pop(0)
+                    
+                    json_data[key if not decode else key.decode("utf-8")] = value if not decode else value.decode("utf-8")
+
+        json_data = dict(json_data)
+        return json_data
+
+    @classmethod
+    async def get_upload(app, r, timeout=10):
+        timeout = float(timeout)
+        signal = b'------WebKitFormBoundary'
+        tries = 0
+
+        async for chunk in app.stream_chunks(r):
+            if chunk:
+                if signal in chunk:
+                    yield chunk#.split(signal)[0]
+                    break
+                else:
+                    yield chunk
+            else:
+                yield chunk
+
+        return
 
 if __name__ == "__main__":
     pass

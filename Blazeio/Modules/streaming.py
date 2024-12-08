@@ -25,7 +25,7 @@ class Stream:
     @classmethod
     async def write(app, r, data: bytes):
         if r.__is_alive__:
-            r.response.write(data)
+            r.write(data)
         else:
             raise Err("Client has disconnected.")
 
