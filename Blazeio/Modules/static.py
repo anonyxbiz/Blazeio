@@ -80,7 +80,7 @@ class StaticFileHandler:
             content_type = "application/octet-stream"
             content_disposition = f'attachment; filename="{filename}"'
 
-        status_code = 206 if range_header else 206
+        status_code = 206 if range_header else 200
         
         reason = "Partial Content" if status_code == 206 else "OK"
         

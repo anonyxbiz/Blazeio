@@ -1,6 +1,9 @@
 # Dependencies.__init___.py
 from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run
 
+from collections import deque, defaultdict
+from types import MappingProxyType
+
 from ujson import dumps, loads, JSONDecodeError
 
 from sys import exit

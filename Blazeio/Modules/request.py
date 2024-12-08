@@ -1,9 +1,6 @@
-from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError
+from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defaultdict, MappingProxyType
 
 from .streaming import Stream, Deliver, Abort
-from collections import defaultdict
-from types import MappingProxyType
-from time import perf_counter
 
 class Request:
     @classmethod
@@ -83,7 +80,7 @@ class Request:
                     key, val = header.split(sepr, 1)
                     headers[key.strip()] = val.strip()
             
-            r.headers = dict(headers)
+            r.headers = MappingProxyType(dict(headers))
         else:
             return
 
@@ -145,15 +142,13 @@ class Request:
         return json_data
 
     @classmethod
-    async def get_upload(app, r, timeout=10):
-        timeout = float(timeout)
+    async def get_upload(app, r):
         signal = b'------WebKitFormBoundary'
-        tries = 0
 
         async for chunk in app.stream_chunks(r):
             if chunk:
                 if signal in chunk:
-                    yield chunk#.split(signal)[0]
+                    yield chunk.split(signal)[0]
                     break
                 else:
                     yield chunk

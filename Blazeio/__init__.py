@@ -1,13 +1,11 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter
+from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque
 
 from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
 from .Client import Session, Client
-from asyncio import Queue
-from collections import deque
 
 class Protocol(asyncProtocol):
     def __init__(app, on_client_connected, **kwargs):
@@ -29,15 +27,12 @@ class Protocol(asyncProtocol):
 
     async def read(app):
         while app.r.__is_alive__:
-            try:
-                if app.__stream__: yield app.__stream__.popleft()
-                else: yield None
-            except IndexError:
+            if app.__stream__:
+                yield app.__stream__.popleft()
+            else:
                 yield None
-                await sleep(0)
-            finally:
-                await sleep(0)
 
+            await sleep(0)
 
     async def transporter(app, transport):
         app.r = await Packdata.add(
@@ -217,26 +212,21 @@ class App:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
             await app.serve_route(r)
-
-        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
-        except Abort as e: await e.text(r)
-        except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e: await Log.critical(r, e)
+            
+        except (Err, ServerGotInTrouble) as e:
+            await Log.warning(r, e)
+        except Abort as e:
+            await e.text(r)
+        except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
+            await Log.critical(r, e)
 
     async def run(app, HOST, PORT, **kwargs):
-        if 1:#not "Protocol" in kwargs:
-            app.server = await loop.create_server(
-                lambda: Protocol(app.handle_client),
-                HOST,
-                PORT,
-                **kwargs
-            )
-        else:
-            app.server = await loop.create_server(
-                app.handle_client,
-                HOST,
-                PORT,
-                **kwargs
-            )
+        app.server = await loop.create_server(
+            lambda: Protocol(app.handle_client),
+            HOST,
+            PORT,
+            **kwargs
+        )
 
         async with app.server:
             await Log.info("Blazeio", "Server running on http://%s:%s" % (HOST, PORT))

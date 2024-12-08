@@ -1,4 +1,4 @@
-from ..Dependencies import p, dumps, loads, Err, Log
+from ..Dependencies import p, dumps, loads, Err, Log, sleep
 
 class Stream:
     response_headers = {
@@ -21,7 +21,7 @@ class Stream:
         await app.write(r, b"\r\n")
 
         r.prepared = True
-    
+
     @classmethod
     async def write(app, r, data: bytes):
         if r.__is_alive__:
@@ -35,13 +35,13 @@ class Stream:
             
 class Deliver:
     @classmethod
-    async def json(app, r, data, _dump=True, _encode=True, status=206, headers={}, reason="Partial Content"):
+    async def json(app, r, data, _dump=True, _encode=True, status=206, headers={}, reason="Partial Content", indent=4):
         if not "prepared" in r.__dict__:
             headers["Content-Type"] = "application/json"
             await Stream.init(r, headers, status=status, reason=reason)
-        
+
         if isinstance(data, (dict,)):
-            data = dumps(data)
+            data = dumps(data, indent=indent)
 
         if not isinstance(data, (bytes, bytearray)):
             data = data.encode()
