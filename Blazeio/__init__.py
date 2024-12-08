@@ -35,6 +35,7 @@ class Protocol(asyncProtocol):
             await sleep(0)
 
     async def transporter(app, transport):
+        await sleep(0)
         app.r = await Packdata.add(
             __perf_counter__ = perf_counter(),
             __exploited__ = False,
