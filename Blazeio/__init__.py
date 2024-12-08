@@ -216,7 +216,10 @@ class App:
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
         except Abort as e:
-            await e.text(r)
+            try:
+                await e.text(r)
+            except:
+                pass
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
 
