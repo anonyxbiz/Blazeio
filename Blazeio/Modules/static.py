@@ -56,6 +56,7 @@ class StaticFileHandler:
 
     @classmethod
     async def prepare_static(app, r, file_path, headers={}, CHUNK_SIZE=None):
+        #await sleep(0)
         if not exists(file_path): raise Abort("File Not Found", 404, reason="Not Found")
         
         content_type, _ = guess_type(file_path)
@@ -88,7 +89,7 @@ class StaticFileHandler:
             "Accept-Ranges": "bytes",
             "Content-Type": content_type,
             "Content-Disposition": content_disposition,
-            "Content-Length": content_length,
+            #"Content-Length": content_length,
         })
 
         if range_header: headers["Content-Range"] = f'bytes {start}-{end}/{file_size}'
@@ -113,6 +114,8 @@ class StaticFileHandler:
                 await Stream.write(r, chunk)
                 if start >= end: break
 
+                await sleep(0)
+
     @classmethod
     async def stream_file(app, r, file_path, headers={}, CHUNK_SIZE=1024, prepared=False):
         headers, status_code, reason, range_header, start, end = await app.prepare_static(r, file_path, headers, CHUNK_SIZE)
@@ -132,6 +135,7 @@ class StaticFileHandler:
                     start += len(chunk)
 
                 yield chunk
+                await sleep(0)
 
 class Staticwielder:
     async def __aenter__(app):

@@ -1,4 +1,4 @@
-from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defaultdict, MappingProxyType
+from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defaultdict, MappingProxyType, sleep
 
 from .streaming import Stream, Deliver, Abort
 
@@ -40,21 +40,12 @@ class Request:
             params = params.split(o)
 
             for param in params:
+                await sleep(0)
                 if (y := "=" ) in param:
                     _key, value = param.split(y)
                     temp[_key] = value.replace("%20", " ")
 
         return temp
-
-    @classmethod
-    async def stream_chunks(app, r, timeout=None):
-        yield r.buffered_chunks
-
-        async for chunk in r.request():
-            if chunk:
-                yield chunk
-            else:
-                yield chunk
 
     @classmethod
     async def set_method(app, r, chunk):
@@ -69,35 +60,45 @@ class Request:
         return r
 
     @classmethod
-    async def get_headers(app, r):
+    async def get_headers(app, r, mutate=False):
         other_parts = b' '.join(r.__parts__[2:]).decode("utf-8")
 
         if '\r\n' in other_parts:
             sepr = ': '
             headers = defaultdict(str)
             for header in other_parts.split('\r\n'):
+                await sleep(0)
                 if sepr in header:
                     key, val = header.split(sepr, 1)
                     headers[key.strip()] = val.strip()
             
-            r.headers = MappingProxyType(dict(headers))
+            r.headers = dict(headers)
+            if mutate: r.headers = MappingProxyType(r.headers)
         else:
             return
 
     @classmethod
     async def set_data(app, r):
         r.buffered_chunks = bytearray()
+
         async for chunk in r.request():
             if chunk:
                 r.buffered_chunks.extend(chunk)
+                
                 if b"\r\n\r\n" in r.buffered_chunks:
                     first, remaining = r.buffered_chunks.split(b"\r\n\r\n", 1)
                     r.buffered_chunks = remaining
-                    
                     if await app.set_method(r, first): break
 
         return r
 
+    @classmethod
+    async def stream_chunks(app, r, backup=False):
+        if not backup: yield r.buffered_chunks
+
+        async for chunk in r.request():
+            yield chunk
+                
     @classmethod
     async def get_form_data(app, r, decode=True):
         signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
@@ -111,7 +112,7 @@ class Request:
 
         form_elements = form_data.split(signal3)
         r.buffered_chunks = form_elements.pop()
-        
+
         form_elements = signal3.join(form_elements)
         
         json_data = defaultdict(str)
@@ -121,6 +122,7 @@ class Request:
         start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
 
         for element in form_elements.split(signal):
+            await sleep(0)
             if start in element and end in element:
                 _ = element.split(start).pop().split(middle)
                 
@@ -130,7 +132,7 @@ class Request:
                     fname, _type = key.split(filename_begin).pop().split(filename_end)
 
                     json_data["filename"] = fname if not decode else fname.decode("utf-8")
-                    json_data["Content-Type"] = (_type := _type.split(content_type).pop()) if not decode else _type.decode("utf-8")
+                    json_data["Content-Type"] = (_type := _type.split(content_type).pop()) if not decode else _type.split(content_type).pop().decode("utf-8")
                     
                 else:
                     value = _[-1]

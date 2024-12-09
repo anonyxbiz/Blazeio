@@ -1,11 +1,10 @@
 # Blazeio/__init__.py
 from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque
 
-from .Modules.safeguards import SafeGuards
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
-from .Client import Session, Client
+from .Client import Session
 
 class Protocol(asyncProtocol):
     def __init__(app, on_client_connected, **kwargs):
@@ -25,7 +24,7 @@ class Protocol(asyncProtocol):
     def eof_received(app, *args, **kwargs):
         app.r.__exploited__ = True
 
-    async def read(app):
+    async def request(app):
         while app.r.__is_alive__:
             if app.__stream__:
                 yield app.__stream__.popleft()
@@ -34,28 +33,38 @@ class Protocol(asyncProtocol):
 
             await sleep(0)
 
+    async def write(app, data: (bytes, bytearray)):
+        if app.r.__is_alive__:
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
+
+    async def close(app):
+        app.transport.close()
+
     async def transporter(app, transport):
         await sleep(0)
+        app.transport = transport
         app.r = await Packdata.add(
             __perf_counter__ = perf_counter(),
             __exploited__ = False,
             __is_alive__ = True,
-            request = app.read,
-            write = transport.write,
-            close = transport.close,
+            request = app.request,
+            write = app.write,
+            close = app.close,
             get_extra_info = transport.get_extra_info,
             headers = {},
             method = None,
             tail = None,
             path = None,
-            params = None
+            params = None,
         )
 
         app.r.ip_host, app.r.ip_port = app.r.get_extra_info('peername')
 
         await app.on_client_connected(app.r)
-
-        app.r.close()
+        
+        await app.close()
 
         await Log.debug(f"Completed in {perf_counter() - app.r.__perf_counter__:.4f} seconds" )
 
@@ -201,6 +210,7 @@ class App:
                 memory.actions.append(after_middleware.get("func"))
 
                 await after_middleware.get("func")(r)
+                
         else:
             # Use memory to remember actions
             if isinstance(memory.actions, list):
@@ -216,11 +226,11 @@ class App:
             
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
+
         except Abort as e:
-            try:
-                await e.text(r)
-            except:
-                pass
+            try: await e.text(r)
+            except Err as e: await Log.warning(r, e)
+
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
 

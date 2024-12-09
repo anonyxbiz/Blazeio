@@ -18,16 +18,13 @@ class Stream:
         for key, val in headers.items():
             await app.write(r, f"{key}: {val}\r\n".encode())
         
-        await app.write(r, b"\r\n")
+        await r.write(b"\r\n")
 
         r.prepared = True
 
     @classmethod
     async def write(app, r, data: bytes):
-        if r.__is_alive__:
-            r.write(data)
-        else:
-            raise Err("Client has disconnected.")
+        await r.write(data)
 
     @classmethod
     async def prepared(app, r):
@@ -46,7 +43,7 @@ class Deliver:
         if not isinstance(data, (bytes, bytearray)):
             data = data.encode()
 
-        await Stream.write(r, data)
+        await r.write(data)
 
     @classmethod
     async def text(app, r, data, status=206, headers={}, reason="Partial Content"):
@@ -57,7 +54,7 @@ class Deliver:
         if not isinstance(data, (bytes, bytearray)):
             data = data.encode()
 
-        await Stream.write(r, data)
+        await r.write(data)
 
     @classmethod
     async def redirect(app, r, path, status=302, headers={}):
