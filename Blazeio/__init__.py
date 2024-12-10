@@ -33,7 +33,7 @@ class Protocol(asyncProtocol):
 
             await sleep(0)
 
-    async def write(app, data: (bytes, bytearray)):
+    async def write(app, data):
         if app.r.__is_alive__:
             app.transport.write(data)
         else:

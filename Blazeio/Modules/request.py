@@ -80,13 +80,17 @@ class Request:
     @classmethod
     async def set_data(app, r):
         r.buffered_chunks = bytearray()
-
+        sig = b"\r\n\r\n"
+        
         async for chunk in r.request():
             if chunk:
                 r.buffered_chunks.extend(chunk)
                 
-                if b"\r\n\r\n" in r.buffered_chunks:
-                    first, remaining = r.buffered_chunks.split(b"\r\n\r\n", 1)
+                if sig in r.buffered_chunks:
+                    _ = r.buffered_chunks.split(sig)
+                    
+                    first, remaining = _[0], sig.join(_[1:])
+                    
                     r.buffered_chunks = remaining
                     if await app.set_method(r, first): break
 
@@ -94,7 +98,7 @@ class Request:
 
     @classmethod
     async def stream_chunks(app, r, backup=False):
-        if not backup: yield r.buffered_chunks
+        if not backup: yield b"" + r.buffered_chunks
 
         async for chunk in r.request():
             yield chunk
@@ -105,12 +109,13 @@ class Request:
         idx, form_data = 0, bytearray()
 
         async for chunk in app.stream_chunks(r):
-            if chunk:
+            if chunk is not None:
                 form_data.extend(chunk)
                 if signal3 in form_data:
                     break
 
         form_elements = form_data.split(signal3)
+
         r.buffered_chunks = form_elements.pop()
 
         form_elements = signal3.join(form_elements)
@@ -122,7 +127,7 @@ class Request:
         start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
 
         for element in form_elements.split(signal):
-            await sleep(0)
+            #await sleep(0)
             if start in element and end in element:
                 _ = element.split(start).pop().split(middle)
                 
@@ -148,23 +153,15 @@ class Request:
         signal = b'------WebKitFormBoundary'
         chunk = r.buffered_chunks
 
-        if not isinstance(chunk, bytes):
-            chunk = b"" + chunk
-            print(chunk[:10])
-            
         yield chunk
 
         async for chunk in r.request():
             if chunk:
-                if not isinstance(chunk, bytes):
-                    chunk = bytes(chunk)
-                    print(chunk)
-
                 if signal in chunk:
-                    yield chunk#.split(signal).pop()
+                    yield chunk.split(signal).pop()
                     break
-
-                yield chunk
+                else:
+                    yield chunk
 
 if __name__ == "__main__":
     pass
