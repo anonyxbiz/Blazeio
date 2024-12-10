@@ -23,6 +23,12 @@ from aiologger import Logger
 """analytics"""
 from time import perf_counter
 
+try:
+    import uvloop
+    uvloop.install()
+except:
+    pass
+
 logger = Logger.with_default_handlers(name='BlazeioLogger')
 
 class Err(Exception):
