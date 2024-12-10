@@ -97,8 +97,8 @@ class Request:
         return r
 
     @classmethod
-    async def stream_chunks(app, r, backup=False):
-        if not backup: yield b"" + r.buffered_chunks
+    async def stream_chunks(app, r):
+        yield b"" + r.buffered_chunks
 
         async for chunk in r.request():
             yield chunk
@@ -151,11 +151,8 @@ class Request:
     @classmethod
     async def get_upload(app, r):
         signal = b'------WebKitFormBoundary'
-        chunk = r.buffered_chunks
 
-        yield chunk
-
-        async for chunk in r.request():
+        async for chunk in app.stream_chunks(r):
             if chunk:
                 if signal in chunk:
                     yield chunk.split(signal).pop()
