@@ -9,6 +9,8 @@ class Request:
         async for chunk in app.stream_chunks(r):
             if not chunk: chunk = b''
             else: temp.extend(chunk)
+        
+        #if temp:
 
             if (sepr := b'\r\n\r\n') in temp:
                 temp = sepr.join(temp.split(sepr)[1:])
@@ -28,7 +30,7 @@ class Request:
         
     @classmethod
     async def get_params(app, r):
-        temp = {}
+        temp = defaultdict(str)
 
         if (q := "?") in r.tail:
             _ = r.tail.split(q)
@@ -45,7 +47,7 @@ class Request:
                     _key, value = param.split(y)
                     temp[_key] = value.replace("%20", " ")
 
-        return temp
+        return dict(temp)
 
     @classmethod
     async def set_method(app, r, chunk):
@@ -97,10 +99,14 @@ class Request:
         return r
 
     @classmethod
-    async def stream_chunks(app, r):
+    async def stream_chunks(app, r, MAX_CHUNK_READ_SIZE=1024):
+        """
+            Some systems have issues when you try writing bytearray to a file, so it is better to ensure youre streaming bytes object.
+        """
+
         yield b'' + r.buffered_chunks
 
-        async for chunk in r.request():
+        async for chunk in r.request(MAX_CHUNK_READ_SIZE):
             yield chunk
                 
     @classmethod
@@ -149,10 +155,10 @@ class Request:
         return json_data
 
     @classmethod
-    async def get_upload(app, r):
+    async def get_upload(app, r, MAX_CHUNK_READ_SIZE=1024):
         signal = b'------WebKitFormBoundary'
 
-        async for chunk in app.stream_chunks(r):
+        async for chunk in app.stream_chunks(r, MAX_CHUNK_READ_SIZE):
             if chunk:
                 if signal in chunk:
                     yield chunk.split(signal)[0]

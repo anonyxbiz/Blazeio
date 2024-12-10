@@ -46,6 +46,11 @@ class Deliver:
         await r.write(data)
 
     @classmethod
+    async def prepare_text(app, r, headers={}, **kwargs):
+        headers["Content-Type"] = "text/plain"
+        await Stream.init(r, headers, **kwargs)
+
+    @classmethod
     async def text(app, r, data, status=206, headers={}, reason="Partial Content"):
         if not "prepared" in r.__dict__:
             headers["Content-Type"] = "text/plain"
