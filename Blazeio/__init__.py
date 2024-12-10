@@ -1,5 +1,5 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque
+from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict
 
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
@@ -44,9 +44,10 @@ class Protocol(asyncProtocol):
 
     async def transporter(app, transport):
         await sleep(0)
+        __perf_counter__ = perf_counter()
         app.transport = transport
         app.r = await Packdata.add(
-            __perf_counter__ = perf_counter(),
+            __perf_counter__ = __perf_counter__,
             __exploited__ = False,
             __is_alive__ = True,
             request = app.request,
@@ -54,10 +55,10 @@ class Protocol(asyncProtocol):
             close = app.close,
             get_extra_info = transport.get_extra_info,
             headers = {},
-            method = None,
-            tail = None,
-            path = None,
-            params = None,
+            method = "None",
+            tail = "None",
+            path = "None",
+            params = "None",
         )
 
         app.r.ip_host, app.r.ip_port = app.r.get_extra_info('peername')
@@ -68,8 +69,6 @@ class Protocol(asyncProtocol):
 
         await Log.debug(f"Completed in {perf_counter() - app.r.__perf_counter__:.4f} seconds" )
 
-
-
 class App:
     event_loop = loop
     REQUEST_COUNT = 0
@@ -77,15 +76,19 @@ class App:
     server = None
 
     memory = {
-        "routes": {},
+        "routes": OrderedDict(),
         "max_routes_in_memory": 20
     }
+    memory["routes"]["null"] = None
 
     @classmethod
     async def init(app, **kwargs):
         app = app()
+        app.__main__handler__ = app.serve_route
+
         app.__dict__.update(kwargs)
-        app.declared_routes = {}
+        app.declared_routes = OrderedDict()
+
         return app
 
     @classmethod
@@ -113,7 +116,7 @@ class App:
         elif isinstance(methods, str):
             methods = {methods: True}
 
-        params_ = {}
+        params_ = OrderedDict()
 
         for k, v in params.items():
             params_[k] = v.default
@@ -158,6 +161,34 @@ class App:
             except Exception as e:
                 await Log.error(e)
 
+    def attach(app, class_):
+        for method in dir(class_):
+            try:
+                method = getattr(class_, method)
+                if not isinstance(method, (Callable,)):
+                    raise ValueError()
+
+                if not (name := str(method.__name__)).startswith("_") or name.startswith("__"):
+                    if not name.endswith("_middleware"):
+                        raise ValueError()
+
+                if not "r" in (params := dict((signature := sig(method)).parameters)):
+                    raise ValueError()
+
+                if not name.endswith("_middleware"):
+                    route_name = name.replace("_", "/")
+                    print("Added route => %s." % route_name)
+                else:
+                    print("Added Middleware => %s." % name)
+
+
+                app.add_route(method, name)
+
+            except ValueError:
+                pass
+            except Exception as e:
+                print(e)
+
     async def serve_route(app, r, route=None):
         await Request.set_data(r)
         await Log.info(r,
@@ -168,62 +199,69 @@ class App:
         )
 
         if r.path not in app.memory["routes"]:
-            memory = await Packdata.add(actions=None)
-            if len(app.memory["routes"]) <= app.memory.get("max_routes_in_memory") or 20:
-                app.memory["routes"][r.path] = memory
-        else:
-            memory = app.memory["routes"][r.path]
+            memory = OrderedDict()
+            actions = deque()
+            memory["actions"] = actions
 
-        if not memory.actions:
-            memory.actions = []
+            if len(app.memory["routes"]) >= app.memory.get("max_routes_in_memory", 20):
+
+                app.memory["routes"].popitem(last=False)
+
+            app.memory["routes"][r.path] = memory
 
             # Handle before_middleware
             if (before_middleware := app.declared_routes.get("before_middleware")):
-                memory.actions.append(before_middleware.get("func"))
+                actions.append(before_middleware.get("func"))
 
                 await before_middleware.get("func")(r)
 
             if r.path in app.declared_routes:
                 route = app.declared_routes[r.path]
-
-            # Handle routes
-            if route:
-                memory.actions.append(route.get("func"))
-
+                actions.append(route.get("func"))
                 await route.get("func")(r)
 
+            elif (handle_all_middleware := app.declared_routes.get("handle_all_middleware")):
+                actions.append(handle_all_middleware.get("func"))
+
+                await handle_all_middleware.get("func")(r)
             else:
-                if (handle_all_middleware := app.declared_routes.get("handle_all_middleware")):
-                    memory.actions.append(handle_all_middleware.get("func"))
+                actions = OrderedDict()
+                actions["raise"] = Abort
+                actions["kwargs"] = {
+                    "message": "Not Found",
+                    "status": 404
+                }
 
-                    await handle_all_middleware.get("func")(r)
-                else:
-                    memory.actions = {
-                        "raise": Abort,
-                        "kwargs": {"message": "Not Found", "status": 404}
-                    }
+                memory["actions"] = actions
 
-                    raise memory.actions["raise"](**memory.actions["kwargs"])
+                raise actions["raise"](**actions["kwargs"])
 
             # Handle after_middleware
             if (after_middleware := app.declared_routes.get("after_middleware")):
-                memory.actions.append(after_middleware.get("func"))
+                actions.append(after_middleware.get("func"))
 
                 await after_middleware.get("func")(r)
                 
         else:
+            memory = app.memory["routes"][r.path]
+            actions = memory["actions"]
+        
             # Use memory to remember actions
-            if isinstance(memory.actions, list):
-                for action in memory.actions: await action(r)
+            if isinstance(actions, deque):
+                for action in actions:
+                    await action(r)
+                    await sleep(0)
+                    
+            elif isinstance(actions, OrderedDict):
+                raise actions["raise"](**actions["kwargs"])
             else:
-                raise memory.actions["raise"](**memory.actions["kwargs"])
+                raise Err("Something doesn't seem right.")
 
     async def handle_client(app, r):
         try:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
-            await app.serve_route(r)
-            
+            await app.__main__handler__(r)
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
 
