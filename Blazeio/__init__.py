@@ -11,18 +11,21 @@ class Protocol(asyncProtocol):
         app.__dict__.update(kwargs)
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
+        app.__is_alive__ = False
+        app.__exploited__ = False
 
     def connection_made(app, transport):
+        app.__is_alive__ = True
         loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
-        app.r.__is_alive__ = False
+        app.__is_alive__ = False
 
     def eof_received(app, *args, **kwargs):
-        app.r.__exploited__ = True
+        app.__exploited__ = True
 
     async def request(app):
         while app.r.__is_alive__:
@@ -34,7 +37,7 @@ class Protocol(asyncProtocol):
             await sleep(0)
 
     async def write(app, data):
-        if app.r.__is_alive__:
+        if app.__is_alive__:
             app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
@@ -48,8 +51,8 @@ class Protocol(asyncProtocol):
         app.transport = transport
         app.r = await Packdata.add(
             __perf_counter__ = __perf_counter__,
-            __exploited__ = False,
-            __is_alive__ = True,
+            __exploited__ = app.__exploited__,
+            __is_alive__ = app.__is_alive__,
             request = app.request,
             write = app.write,
             close = app.close,
