@@ -98,7 +98,7 @@ class Request:
 
     @classmethod
     async def stream_chunks(app, r):
-        yield b"" + r.buffered_chunks
+        yield b'' + r.buffered_chunks
 
         async for chunk in r.request():
             yield chunk
@@ -155,7 +155,7 @@ class Request:
         async for chunk in app.stream_chunks(r):
             if chunk:
                 if signal in chunk:
-                    yield chunk.split(signal).pop()
+                    yield chunk.split(signal)[0]
                     break
                 else:
                     yield chunk
