@@ -127,7 +127,7 @@ class Request:
         start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
 
         for element in form_elements.split(signal):
-            #await sleep(0)
+            await sleep(0)
             if start in element and end in element:
                 _ = element.split(start).pop().split(middle)
                 
