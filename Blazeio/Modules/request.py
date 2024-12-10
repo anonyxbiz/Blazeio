@@ -146,15 +146,17 @@ class Request:
     @classmethod
     async def get_upload(app, r):
         signal = b'------WebKitFormBoundary'
-        yield r.buffered_chunks
+        chunk = r.buffered_chunks
+        if isinstance(chunk, (bytes,)): yield chunk
         
         async for chunk in r.request():
             if chunk:
                 if signal in chunk:
-                    yield chunk#.split(signal)[0]
+                    chunk = chunk.split(signal)[0]
+                    if isinstance(chunk, (bytes,)): yield chunk
                     break
                 else:
-                    yield chunk
+                    if isinstance(chunk, (bytes,)): yield chunk
 
         return
 
