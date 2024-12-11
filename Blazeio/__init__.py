@@ -59,12 +59,11 @@ class Protocol(asyncProtocol):
         app.chunk_size = 1024*10
 
     def connection_made(app, transport):
-        transport.pause_reading()
-        app.transport = transport
-        loop.create_task(app.transporter())
+        loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
-        app.transport.pause_reading()
+        if "transport" in app.__dict__:
+            app.transport.pause_reading()
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -111,7 +110,10 @@ class Protocol(asyncProtocol):
     async def control(app):
         await sleep(0)
 
-    async def transporter(app):
+    async def transporter(app, transport):
+        transport.pause_reading()
+        app.transport = transport
+
         await sleep(0)
         app.__is_alive__ = True
         __perf_counter__ = perf_counter()
@@ -130,9 +132,9 @@ class Protocol(asyncProtocol):
             write = app.write,
             close = app.close,
             control = app.control,
-            #pause_reading = app.transport.pause_reading,
-            #resume_reading = app.transport.resume_reading,
-            #is_reading = app.transport.is_reading,
+            pause_reading = app.transport.pause_reading,
+            resume_reading = app.transport.resume_reading,
+            is_reading = app.transport.is_reading,
         )
 
         await app.on_client_connected(app.r)
