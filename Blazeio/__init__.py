@@ -99,7 +99,7 @@ class Protocol(asyncProtocol):
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_alive__:
-            if not app.__is_buffer_over_high_watermark__:
+            if 1:#not app.__is_buffer_over_high_watermark__:
                 app.transport.write(data)
             else:
                 while app.__is_buffer_over_high_watermark__:
