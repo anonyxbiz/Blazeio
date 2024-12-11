@@ -51,19 +51,19 @@ class Protocol(asyncProtocol):
         app.__dict__.update(kwargs)
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
-        app.__is_alive__ = False
+        app.__is_alive__ = True
         app.__exploited__ = False
         app.__is_buffer_over_high_watermark__ = False
         app.__waiting_for_write_drainage__ = None
         app.__max_buff_len__ = 5
-        app.chunk_size = 1024*10
+        app.transport = None
 
     def connection_made(app, transport):
-        transport.pause_reading()
         loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
+        app.transport.pause_reading()
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
@@ -79,17 +79,17 @@ class Protocol(asyncProtocol):
 
     async def request(app, chunk_size=None):
         app.transport.resume_reading()
+
         while True:
             if app.__stream__:
                 app.transport.pause_reading()
                 while app.__stream__:
                     yield app.__stream__.popleft()
-                    
-                app.transport.resume_reading()
+
             else:
-                app.transport.resume_reading()
                 yield None
 
+            app.transport.resume_reading()
             await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
@@ -106,9 +106,8 @@ class Protocol(asyncProtocol):
 
     async def transporter(app, transport):
         app.transport = transport
+        await sleep(0)
 
-        #await sleep(0)
-        app.__is_alive__ = True
         __perf_counter__ = perf_counter()
         peername = app.transport.get_extra_info('peername')
 
