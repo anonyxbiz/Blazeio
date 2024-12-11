@@ -65,12 +65,6 @@ class Protocol(asyncProtocol):
 
     def data_received(app, chunk):
         app.transport.pause_reading()
-
-        #app.__stream__.append(chunk)
-        while len(chunk) >= app.chunk_size:
-            app.__stream__.append(chunk[:app.chunk_size])
-            chunk = chunk[app.chunk_size:]
-
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -93,12 +87,11 @@ class Protocol(asyncProtocol):
             if app.__stream__:
                 while app.__stream__:
                     yield app.__stream__.popleft()
-
-                if not app.transport.is_reading(): app.transport.resume_reading()
-                    
             else:
                 yield None
 
+            if not app.transport.is_reading(): app.transport.resume_reading()
+                 
             await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
