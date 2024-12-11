@@ -63,7 +63,7 @@ class Protocol(asyncProtocol):
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
-        app.transport.pause_reading()
+        #app.transport.pause_reading()
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
@@ -78,18 +78,20 @@ class Protocol(asyncProtocol):
         app.__is_buffer_over_high_watermark__ = False
 
     async def request(app, chunk_size=None):
-        app.transport.resume_reading()
-
         while True:
+            try: app.transport.resume_reading()
+            except Exception as e: await Log.critical(e)
+
             if app.__stream__:
-                app.transport.pause_reading()
+                try: app.transport.pause_reading()
+                except Exception as e: await Log.critical(e)
+                    
                 while app.__stream__:
                     yield app.__stream__.popleft()
 
             else:
                 yield None
 
-            app.transport.resume_reading()
             await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
@@ -106,7 +108,7 @@ class Protocol(asyncProtocol):
 
     async def transporter(app, transport):
         app.transport = transport
-        await sleep(0)
+        # await sleep(0)
 
         __perf_counter__ = perf_counter()
         peername = app.transport.get_extra_info('peername')
