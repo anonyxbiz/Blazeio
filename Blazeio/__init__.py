@@ -1,13 +1,52 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict
+from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict, stack, create_subprocess_shell, getsize
 
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
 from .Client import Session
 
+class VersionControlla:
+    @classmethod
+    async def control(app, ins, HOME, HOST, PORT, **kwargs):
+        async def runner():
+            process = await create_subprocess_shell(
+                cmd=f'python -m Blazeio --path "{HOME}" --host "{HOST}" --port "{PORT}"',
+                stdout=None,
+                stderr=None,
+            )
+            try:
+                await process.wait()
+            except CancelledError:
+                process.terminate()
+                await process.wait()
+                raise
+
+        while True:
+            size = getsize(HOME)
+            task = loop.create_task(runner())
+
+            while True:
+                if task.done():
+                    break
+                
+                if getsize(HOME) == size:
+                    await sleep(1)
+                else:
+                    await Log.warning(f"version change detected in {HOME}, reloading server...")
+                    break
+            
+            if not task.done():
+                try:
+                    task.cancel()
+                    await task
+                except CancelledError:
+                    pass
+
+            else:
+                break
+
 class Protocol(asyncProtocol):
-    MAX_CHUNK_READ_SIZE = 1024*10
     def __init__(app, on_client_connected, **kwargs):
         app.__dict__.update(kwargs)
         app.on_client_connected = on_client_connected
@@ -18,15 +57,13 @@ class Protocol(asyncProtocol):
         app.__waiting_for_write_drainage__ = None
 
     def connection_made(app, transport):
+        app.transport = transport
+        app.transport.pause_reading() # Pause reading until app.request initiates it
         app.__is_alive__ = True
-        #transport.pause_reading()
-        loop.create_task(app.transporter(transport))
+        loop.create_task(app.transporter())
 
     def data_received(app, chunk):
-        while len(chunk) >= app.MAX_CHUNK_READ_SIZE:
-            app.__stream__.append(chunk[:app.MAX_CHUNK_READ_SIZE])
-            chunk = chunk[app.MAX_CHUNK_READ_SIZE:]
-
+        app.transport.pause_reading() # Pause further reading until app.request resumes it
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -34,12 +71,23 @@ class Protocol(asyncProtocol):
 
     def eof_received(app, *args, **kwargs):
         app.__exploited__ = True
+    
+    def pause_writing(app):
+        app.__is_buffer_over_high_watermark__ = True
 
-    async def request(app, MAX_CHUNK_READ_SIZE=1024):
-        app.MAX_CHUNK_READ_SIZE = MAX_CHUNK_READ_SIZE
+    def resume_writing(app):
+        app.__is_buffer_over_high_watermark__ = False
+
+    async def request(app, chunk_size=None):
+        # app.MAX_CHUNK_READ_SIZE = chunk_size or app.MAX_CHUNK_READ_SIZE
+
+        # if not app.r.is_reading(): app.r.resume_reading()
+
         while True:
+            if not app.r.is_reading(): app.r.resume_reading()
+
             if app.__stream__:
-                app.transport.pause_reading()
+                app.r.pause_reading()
 
                 while app.__stream__:
                     yield app.__stream__.popleft()
@@ -47,14 +95,22 @@ class Protocol(asyncProtocol):
 
             else:
                 yield None
-
+            
             await sleep(0)
-            if not app.transport.is_reading():
-                app.transport.resume_reading()
+        
+        app.r.pause_reading()
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_alive__:
-            app.transport.write(data)
+            if not app.__is_buffer_over_high_watermark__:
+                app.transport.write(data)
+            else:
+                while app.__is_buffer_over_high_watermark__:
+                    await sleep(0)
+                    if not app.__is_alive__:
+                        break
+                if not app.__is_buffer_over_high_watermark__:
+                    app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
 
@@ -64,27 +120,28 @@ class Protocol(asyncProtocol):
     async def control(app):
         await sleep(0)
 
-    async def transporter(app, transport):
+    async def transporter(app):
         await sleep(0)
         __perf_counter__ = perf_counter()
-        app.transport = transport
+        peername = app.transport.get_extra_info('peername')
 
         app.r = await Packdata.add(
             __perf_counter__ = __perf_counter__,
             __exploited__ = app.__exploited__,
             __is_alive__ = app.__is_alive__,
+            ip_host = peername[0],
+            ip_port = peername[-1],
+            peername = peername,
+            __buff__ = bytearray(),
+            __cap_buff__ = False,
             request = app.request,
             write = app.write,
             close = app.close,
             control = app.control,
-            get_extra_info = transport.get_extra_info,
-            method = "None",
-            tail = "None",
-            path = "None",
-            params = "None",
+            pause_reading = app.transport.pause_reading,
+            resume_reading = app.transport.resume_reading,
+            is_reading = app.transport.is_reading,
         )
-
-        app.r.ip_host, app.r.ip_port = app.r.get_extra_info('peername')
 
         await app.on_client_connected(app.r)
         
@@ -212,7 +269,7 @@ class App:
             except Exception as e:
                 print(e)
 
-    async def serve_route(app, r, route=None):
+    async def serve_route(app, r):
         await Request.set_data(r)
         await Log.info(r,
             "=> %s@ %s" % (
@@ -220,7 +277,7 @@ class App:
                 r.path
             )
         )
-
+        
         if r.path not in app.memory["routes"]:
             memory = OrderedDict()
             actions = deque()
@@ -285,12 +342,17 @@ class App:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
             await app.__main__handler__(r)
+
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
 
         except Abort as e:
-            try: await e.text(r)
-            except Err as e: await Log.warning(r, e)
+            try:
+                await e.text(r)
+            except Err as e:
+                pass
+            except Exception as e:
+                await Log.critical(r, e)
 
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
@@ -350,13 +412,17 @@ class App:
             if not kwargs.get("backlog"):
                 kwargs["backlog"] = 5000
 
-            loop.run_until_complete(app.run(HOST, PORT, **kwargs))
+            if "version_control" in kwargs:
+                del kwargs["version_control"]
+                caller_frame = stack()[1]
+                caller_file = caller_frame.filename
+    
+                loop.run_until_complete(VersionControlla.control(caller_file, HOST, PORT, **kwargs))
+            else:
+                loop.run_until_complete(app.run(HOST, PORT, **kwargs))
+            
         except KeyboardInterrupt:
             loop.run_until_complete(app.exit())
 
 if __name__ == "__main__":
-    app = App.init_sync()
-    HOST = "0.0.0.0"
-    PORT = "8080"
-
-    app.web.runner(HOST, PORT, backlog=5000)
+    pass

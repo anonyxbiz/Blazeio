@@ -3,14 +3,34 @@ from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defau
 from .streaming import Stream, Deliver, Abort
 
 class Request:
+    MAX_BUFF_SIZE = 2*1024
+    @classmethod
+    async def stream_chunks(app, r, chunk_size=1024):
+        """
+            Some systems have issues when you try writing bytearray to a file, so it is better to ensure youre streaming bytes object.
+        """
+
+        yield b'' + r.__buff__
+        
+        if len(r.__buff__) >= app.MAX_BUFF_SIZE: r.__cap_buff__ = True
+            
+        async for chunk in r.request(chunk_size):
+            yield chunk
+            
+            if not r.__cap_buff__:
+                if len(r.__buff__) >= app.MAX_BUFF_SIZE:
+                    r.__cap_buff__ = True
+
+                if chunk:
+                    if not r.__cap_buff__:
+                        r.__buff__.extend(chunk)
+
     @classmethod
     async def get_json(app, r):
         temp = bytearray()
         async for chunk in app.stream_chunks(r):
             if not chunk: chunk = b''
             else: temp.extend(chunk)
-        
-        #if temp:
 
             if (sepr := b'\r\n\r\n') in temp:
                 temp = sepr.join(temp.split(sepr)[1:])
@@ -81,34 +101,26 @@ class Request:
 
     @classmethod
     async def set_data(app, r):
-        r.buffered_chunks = bytearray()
         sig = b"\r\n\r\n"
-        
-        async for chunk in r.request():
-            if chunk:
-                r.buffered_chunks.extend(chunk)
-                
-                if sig in r.buffered_chunks:
-                    _ = r.buffered_chunks.split(sig)
-                    
+        count = 0
+
+        async for chunk in app.stream_chunks(r, 1024):
+            if sig in r.__buff__:
+                if (_ := r.__buff__.split(sig)):
+
                     first, remaining = _[0], sig.join(_[1:])
                     
-                    r.buffered_chunks = remaining
-                    if await app.set_method(r, first): break
+                    await app.set_method(r, first)
+                    r.__buff__ = remaining
+                    break
+                else:
+                    if r.__cap_buff__:
+                        r.method = "handle_all_middleware"
+                        r.path = "handle_all_middleware"
+                        break
 
         return r
 
-    @classmethod
-    async def stream_chunks(app, r, MAX_CHUNK_READ_SIZE=1024):
-        """
-            Some systems have issues when you try writing bytearray to a file, so it is better to ensure youre streaming bytes object.
-        """
-
-        yield b'' + r.buffered_chunks
-
-        async for chunk in r.request(MAX_CHUNK_READ_SIZE):
-            yield chunk
-                
     @classmethod
     async def get_form_data(app, r, decode=True):
         signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
@@ -119,10 +131,10 @@ class Request:
                 form_data.extend(chunk)
                 if signal3 in form_data:
                     break
-
+                
         form_elements = form_data.split(signal3)
 
-        r.buffered_chunks = form_elements.pop()
+        r.__buff__ = form_elements.pop()
 
         form_elements = signal3.join(form_elements)
         

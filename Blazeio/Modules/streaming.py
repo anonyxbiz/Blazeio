@@ -98,8 +98,6 @@ class Abort(Exception):
         return app.message
 
     async def text(app, r):
-        await Log.warning(r, app.message)
-
         await Deliver.text(
             r,
             app.message,

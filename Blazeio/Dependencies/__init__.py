@@ -1,5 +1,5 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run, create_subprocess_shell
 
 from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
@@ -8,7 +8,7 @@ from ujson import dumps, loads, JSONDecodeError
 
 from sys import exit
 from datetime import datetime as dt
-from inspect import signature as sig
+from inspect import signature as sig, stack
 from typing import Callable
 
 """File serving"""
