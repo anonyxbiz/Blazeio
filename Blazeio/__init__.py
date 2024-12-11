@@ -56,11 +56,20 @@ class Protocol(asyncProtocol):
         app.__is_buffer_over_high_watermark__ = False
         app.__waiting_for_write_drainage__ = None
         app.__max_buff_len__ = 5
+        app.chunk_size = 1024*10
 
     def connection_made(app, transport):
+        transport.pause_reading()
         loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
+        app.transport.pause_reading()
+
+        #app.__stream__.append(chunk)
+        while len(chunk) >= app.chunk_size:
+            app.__stream__.append(chunk[:app.chunk_size])
+            chunk = chunk[app.chunk_size:]
+
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -75,29 +84,27 @@ class Protocol(asyncProtocol):
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-    async def request(app):
+    async def request(app, chunk_size=None):
+        if chunk_size: app.chunk_size = chunk_size
+        if not app.transport.is_reading(): app.transport.resume_reading()
+        
         while True:
             if app.__stream__:
-                #if len(app.__stream__) >= app.__max_buff_len__:
-                # app.transport.pause_reading()
-                
                 while app.__stream__:
-                    app.transport.pause_reading()
                     yield app.__stream__.popleft()
-                    if not app.transport.is_reading(): app.transport.resume_reading()
+
+                if not app.transport.is_reading(): app.transport.resume_reading()
+                    
             else:
                 yield None
-            
-            if not app.transport.is_reading(): app.transport.resume_reading()
-                
+
             await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_buffer_over_high_watermark__:
-            while app.__is_alive__:
+            while app.__is_buffer_over_high_watermark__:
+                if not app.__is_alive__: break
                 await sleep(0)
-                if not app.__is_buffer_over_high_watermark__:
-                    break
                 
         if app.__is_alive__:
             app.transport.write(data)
