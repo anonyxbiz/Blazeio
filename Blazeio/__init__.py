@@ -79,23 +79,20 @@ class Protocol(asyncProtocol):
         app.__is_buffer_over_high_watermark__ = False
 
     async def request(app, chunk_size=None):
-        # app.MAX_CHUNK_READ_SIZE = chunk_size or app.MAX_CHUNK_READ_SIZE
-
-        # if not app.r.is_reading(): app.r.resume_reading()
+        if not app.r.is_reading(): app.r.resume_reading()
 
         while True:
-            if not app.r.is_reading(): app.r.resume_reading()
-
             if app.__stream__:
                 app.r.pause_reading()
 
                 while app.__stream__:
                     yield app.__stream__.popleft()
-                    await sleep(0)
 
             else:
                 yield None
-            
+
+            if not app.r.is_reading(): app.r.resume_reading()
+
             await sleep(0)
         
         app.r.pause_reading()
