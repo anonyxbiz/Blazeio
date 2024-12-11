@@ -60,7 +60,8 @@ class Protocol(asyncProtocol):
 
     def connection_made(app, transport):
         transport.pause_reading()
-        loop.create_task(app.transporter(transport))
+        app.transport = transport
+        loop.create_task(app.transporter())
 
     def data_received(app, chunk):
         app.transport.pause_reading()
@@ -117,9 +118,8 @@ class Protocol(asyncProtocol):
     async def control(app):
         await sleep(0)
 
-    async def transporter(app, transport):
+    async def transporter(app):
         await sleep(0)
-        app.transport = transport
         app.__is_alive__ = True
         __perf_counter__ = perf_counter()
         peername = app.transport.get_extra_info('peername')
