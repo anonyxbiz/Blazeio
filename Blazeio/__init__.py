@@ -55,15 +55,12 @@ class Protocol(asyncProtocol):
         app.__exploited__ = False
         app.__is_buffer_over_high_watermark__ = False
         app.__waiting_for_write_drainage__ = None
+        app.__max_buff_len__ = 5
 
     def connection_made(app, transport):
-        app.transport = transport
-        app.transport.pause_reading() # Pause reading until app.request initiates it
-        app.__is_alive__ = True
-        loop.create_task(app.transporter())
+        loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
-        app.transport.pause_reading() # Pause further reading until app.request resumes it
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -78,36 +75,32 @@ class Protocol(asyncProtocol):
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-    async def request(app, chunk_size=None):
-        if not app.r.is_reading(): app.r.resume_reading()
-
+    async def request(app):
         while True:
             if app.__stream__:
-                app.r.pause_reading()
-
+                #if len(app.__stream__) >= app.__max_buff_len__:
+                # app.transport.pause_reading()
+                
                 while app.__stream__:
+                    app.transport.pause_reading()
                     yield app.__stream__.popleft()
-
+                    if not app.transport.is_reading(): app.transport.resume_reading()
             else:
                 yield None
-
-            if not app.r.is_reading(): app.r.resume_reading()
-
+            
+            if not app.transport.is_reading(): app.transport.resume_reading()
+                
             await sleep(0)
-        
-        app.r.pause_reading()
 
     async def write(app, data: (bytes, bytearray)):
-        if app.__is_alive__:
-            if 1:#not app.__is_buffer_over_high_watermark__:
-                app.transport.write(data)
-            else:
-                while app.__is_buffer_over_high_watermark__:
-                    await sleep(0)
-                    if not app.__is_alive__:
-                        break
+        if app.__is_buffer_over_high_watermark__:
+            while app.__is_alive__:
+                await sleep(0)
                 if not app.__is_buffer_over_high_watermark__:
-                    app.transport.write(data)
+                    break
+                
+        if app.__is_alive__:
+            app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
 
@@ -117,8 +110,10 @@ class Protocol(asyncProtocol):
     async def control(app):
         await sleep(0)
 
-    async def transporter(app):
+    async def transporter(app, transport):
         await sleep(0)
+        app.transport = transport
+        app.__is_alive__ = True
         __perf_counter__ = perf_counter()
         peername = app.transport.get_extra_info('peername')
 
@@ -135,9 +130,9 @@ class Protocol(asyncProtocol):
             write = app.write,
             close = app.close,
             control = app.control,
-            pause_reading = app.transport.pause_reading,
-            resume_reading = app.transport.resume_reading,
-            is_reading = app.transport.is_reading,
+            #pause_reading = app.transport.pause_reading,
+            #resume_reading = app.transport.resume_reading,
+            #is_reading = app.transport.is_reading,
         )
 
         await app.on_client_connected(app.r)

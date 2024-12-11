@@ -5,7 +5,7 @@ from .streaming import Stream, Deliver, Abort
 class Request:
     MAX_BUFF_SIZE = 2*1024
     @classmethod
-    async def stream_chunks(app, r, chunk_size=1024):
+    async def stream_chunks(app, r):
         """
             Some systems have issues when you try writing bytearray to a file, so it is better to ensure youre streaming bytes object.
         """
@@ -14,7 +14,7 @@ class Request:
         
         if len(r.__buff__) >= app.MAX_BUFF_SIZE: r.__cap_buff__ = True
             
-        async for chunk in r.request(chunk_size):
+        async for chunk in r.request():
             yield chunk
             
             if not r.__cap_buff__:
@@ -23,7 +23,7 @@ class Request:
 
                 if chunk:
                     if not r.__cap_buff__:
-                        r.__buff__.extend(chunk)
+                        r.__buff__ += chunk
 
     @classmethod
     async def get_json(app, r):
@@ -104,7 +104,7 @@ class Request:
         sig = b"\r\n\r\n"
         count = 0
 
-        async for chunk in app.stream_chunks(r, 1024):
+        async for chunk in app.stream_chunks(r):
             if sig in r.__buff__:
                 if (_ := r.__buff__.split(sig)):
 
@@ -167,10 +167,10 @@ class Request:
         return json_data
 
     @classmethod
-    async def get_upload(app, r, MAX_CHUNK_READ_SIZE=1024):
+    async def get_upload(app, r):
         signal = b'------WebKitFormBoundary'
 
-        async for chunk in app.stream_chunks(r, MAX_CHUNK_READ_SIZE):
+        async for chunk in app.stream_chunks(r):
             if chunk:
                 if signal in chunk:
                     yield chunk.split(signal)[0]
