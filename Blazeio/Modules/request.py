@@ -25,7 +25,7 @@ class Request:
 
                 if chunk:
                     if not r.__cap_buff__:
-                        r.__buff__ += chunk
+                        r.__buff__.extend(chunk)
 
     @classmethod
     async def get_json(app, r):
