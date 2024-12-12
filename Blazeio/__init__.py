@@ -68,7 +68,7 @@ class Protocol(asyncProtocol):
             chunk = chunk[app.__max_buff_len__:]"""
         
         if len(app.__stream__) >= 10:
-            if app.transport.is_reading(): app.transport.pause_reading()
+            app.transport.pause_reading()
 
         app.__stream__.append(chunk)
 
@@ -88,13 +88,13 @@ class Protocol(asyncProtocol):
         
         while True:
             await sleep(0)
-
-            if app.__stream__:
-                yield app.__stream__.popleft()
-            else:
-                if not app.transport.is_reading(): app.transport.resume_reading()
             
-                yield None
+            while app.__stream__:
+                yield app.__stream__.popleft()
+            
+            if not app.transport.is_reading(): app.transport.resume_reading()
+            
+            yield None
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_alive__:
