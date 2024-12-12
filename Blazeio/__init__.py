@@ -55,15 +55,21 @@ class Protocol(asyncProtocol):
         app.__exploited__ = False
         app.__is_buffer_over_high_watermark__ = False
         app.__waiting_for_write_drainage__ = None
-        app.__max_buff_len__ = 5
+        app.__max_buff_len__ = 10*1024
         app.transport = None
 
     def connection_made(app, transport):
-        loop.create_task(app.transporter(transport))
+        app.transport = transport
+        loop.create_task(app.transporter())
 
     def data_received(app, chunk):
+        if app.transport.is_reading(): app.transport.pause_reading()
+
+        """while len(chunk) >= app.__max_buff_len__:
+            app.__stream__.append(chunk[:app.__max_buff_len__])
+            chunk = chunk[app.__max_buff_len__:]"""
+            
         app.__stream__.append(chunk)
-        #app.transport.pause_reading()
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
@@ -78,21 +84,19 @@ class Protocol(asyncProtocol):
         app.__is_buffer_over_high_watermark__ = False
 
     async def request(app, chunk_size=None):
+        
         while True:
-            try: app.transport.resume_reading()
-            except Exception as e: await Log.critical(e)
-
-            if app.__stream__:
-                try: app.transport.pause_reading()
-                except Exception as e: await Log.critical(e)
-                    
-                while app.__stream__:
-                    yield app.__stream__.popleft()
-
-            else:
-                yield None
-
             await sleep(0)
+            if not app.transport.is_reading(): app.transport.resume_reading()
+            
+            if app.__stream__:
+                if app.transport.is_reading(): app.transport.pause_reading()
+
+            while app.__stream__:
+                await sleep(0)
+                yield app.__stream__.popleft()
+            
+            yield None
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_alive__:
@@ -106,9 +110,8 @@ class Protocol(asyncProtocol):
     async def control(app):
         await sleep(0)
 
-    async def transporter(app, transport):
-        app.transport = transport
-        # await sleep(0)
+    async def transporter(app):
+        await sleep(0)
 
         __perf_counter__ = perf_counter()
         peername = app.transport.get_extra_info('peername')
@@ -126,9 +129,9 @@ class Protocol(asyncProtocol):
             write = app.write,
             close = app.close,
             control = app.control,
-            pause_reading = app.transport.pause_reading,
-            resume_reading = app.transport.resume_reading,
-            is_reading = app.transport.is_reading,
+            #pause_reading = app.transport.pause_reading,
+            #resume_reading = app.transport.resume_reading,
+            #is_reading = app.transport.is_reading,
         )
 
         await app.on_client_connected(app.r)
