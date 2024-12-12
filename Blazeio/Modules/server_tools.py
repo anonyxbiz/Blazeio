@@ -76,19 +76,6 @@ class Simpleserve:
             if app.start >= app.end: break
             
             else: await app.r.control()
-
-    async def pull(app):
-        while True:
-            await app.ins.seek(app.start)
-            if not (chunk := await app.ins.read(app.CHUNK_SIZE)): break
-            
-            else: app.start += len(chunk)
-                    
-            yield chunk
-
-            if app.start >= app.end: break
-            
-            else: await app.r.control()
             
 if __name__ == "__main__":
     pass

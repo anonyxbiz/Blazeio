@@ -112,9 +112,10 @@ class BlazeioClientProtocol(Protocol):
 loop = get_event_loop()
 
 class Session:
-    def __init__(app, url: str, method: str = "GET", headers: dict = {}, port:int = 443, connect_only=False, params=None, body=None):
-        app.url, app.method, app.headers, app.port, app.connect_only, app.params, app.body = url, method, headers, port, connect_only, params, body
-
+    def __init__(app, url: str, method: str = "GET", headers: dict = {}, port:int = 80, connect_only=False, params=None, body=None, **kwargs):
+        app.__dict__.update(locals())
+        app.host = app.url
+        
     async def __aenter__(app):
         if app.params:
             prms = ""
@@ -132,10 +133,11 @@ class Session:
                 prms += data
 
             app.url += prms
+
+        await app.url_to_host()
         
-        app.host, app.path = await app.url_to_host(app.url)
-        
-        if app.port == 443: app.ssl_context = create_default_context()
+        if app.port == 443:
+            app.ssl_context = create_default_context()
 
         protocol = BlazeioClientProtocol()
         app.protocol = protocol
@@ -171,22 +173,31 @@ class Session:
 
         return app.protocol
 
-    async def url_to_host(app, url):
+    async def url_to_host(app):
         sepr = "://"
+        sepr2 = ":"
+        sepr3 = "/"
+        
+        if "https" in app.host:
+            if app.port == 80: app.port = 443
 
-        if (idx := url.find(sepr)) != -1:
-            url = url[idx:].replace(sepr, "")
+        if sepr in app.host:
+            app.host = app.host.split(sepr)[-1]
 
-        sepr = "/"
-
-        if (idx := url.find(sepr)) != -1:
-            path = url[idx:].replace(" ", "%20")
-            url = url[:idx]
-
+        if sepr2 in app.host:
+            app.host, app.port = app.host.split(sepr2)
+            if sepr3 in app.port:
+                app.port = app.port.split(sepr3)
+                try:app.port = int(app.port[0])
+                except: pass
+        
+        if sepr3 in app.host:
+            app.host = app.host.split(sepr3)[0]
+        
+        if sepr3 in app.url and len((_ := app.url.split(sepr3))) >= 3:
+            app.path = sepr3 + sepr3.join(_[3:])
         else:
-            path = sepr
-
-        return url, path
+            app.path = sepr3
 
     async def __aexit__(app, exc_type, exc_val, exc_tb):
         try:

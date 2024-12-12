@@ -1,12 +1,10 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict, stack, VersionControlla
-
-from .Modules.streaming import Stream, Deliver, Abort
-from .Modules.static import StaticFileHandler, Smart_Static_Server
+from .Dependencies import *
+from .Modules.streaming import *
+from .Modules.static import *
 from .Modules.server_tools import *
-
-from .Modules.request import Request
-from .Client import Session
+from .Modules.request import *
+from .Client import *
 
 class BlazeioProtocol(asyncProtocol):
     def __init__(app, on_client_connected, **kwargs):
@@ -39,23 +37,26 @@ class BlazeioProtocol(asyncProtocol):
 
     async def request(app):
         while True:
-            await sleep(0)
             if not app.__is_alive__:
-                raise 
+                raise Err("Client has disconnected")
+
             if app.__stream__:
                 if app.is_reading(): app.pause_reading()
                 yield app.__stream__.popleft()
+                
             else:
                 if not app.is_reading(): app.resume_reading()
                 yield None
+            
+            await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
-        """if app.__is_buffer_over_high_watermark__:
+        if app.__is_buffer_over_high_watermark__:
             while app.__is_buffer_over_high_watermark__:
                 await sleep(0)
                 if not app.__is_alive__:
-                    break"""
-                
+                    raise Err("Client has disconnected.")
+                    
         if app.__is_alive__:
             app.transport.write(data)
         else:
@@ -65,7 +66,7 @@ class BlazeioProtocol(asyncProtocol):
         await sleep(0)
 
     async def transporter(app):
-        #await sleep(0)
+        await sleep(0)
 
         app.__perf_counter__ = perf_counter()
         app.__buff__ = bytearray()
@@ -201,7 +202,7 @@ class App:
             except Exception as e:
                 print(e)
 
-    async def serve_route(app, r):
+    async def serve_route_intell(app, r):
         await Request.set_data(r)
 
         await Log.info(r,
@@ -269,6 +270,31 @@ class App:
                 raise actions["raise"](**actions["kwargs"])
             else:
                 raise Err("Something doesn't seem right.")
+
+    async def serve_route(app, r):
+        await Request.set_data(r)
+
+        await Log.info(r,
+            "=> %s@ %s" % (
+                r.method,
+                r.path
+            )
+        )
+        
+        # Handle before_middleware
+        if before_middleware := app.declared_routes.get("before_middleware"):
+            await before_middleware.get("func")(r)
+
+        if route := app.declared_routes.get(r.path):
+            await route.get("func")(r)
+
+        elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
+            await handle_all_middleware.get("func")(r)
+        else:
+            raise Abort("Not Found", 404)
+            
+        if after_middleware := app.declared_routes.get("after_middleware"):
+            await after_middleware.get("func")(r)
 
     async def handle_client(app, r):
         try:
