@@ -63,12 +63,16 @@ class Protocol(asyncProtocol):
         loop.create_task(app.transporter())
 
     def data_received(app, chunk):
-        """while len(chunk) >= app.__max_buff_len__:
-            app.__stream__.append(chunk[:app.__max_buff_len__])
-            chunk = chunk[app.__max_buff_len__:]"""
         app.transport.pause_reading()
 
+        while len(chunk) >= app.__max_buff_len__:
+            app.__stream__.append(chunk[:app.__max_buff_len__])
+            chunk = chunk[app.__max_buff_len__:]
+        
+        #app.transport.pause_reading()
+
         app.__stream__.append(chunk)
+        app.transport.resume_reading()
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
@@ -90,7 +94,7 @@ class Protocol(asyncProtocol):
             while app.__stream__:
                 yield app.__stream__.popleft()
             
-            app.transport.resume_reading()
+            #app.transport.resume_reading()
             
             yield None
 
