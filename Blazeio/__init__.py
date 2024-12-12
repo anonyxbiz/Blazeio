@@ -66,7 +66,10 @@ class Protocol(asyncProtocol):
         """while len(chunk) >= app.__max_buff_len__:
             app.__stream__.append(chunk[:app.__max_buff_len__])
             chunk = chunk[app.__max_buff_len__:]"""
-            
+        
+        if len(app.__stream__) >= 10:
+            if app.transport.is_reading(): app.transport.pause_reading()
+
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -87,10 +90,6 @@ class Protocol(asyncProtocol):
             await sleep(0)
 
             if app.__stream__:
-                if len(app.__stream__) >= 10:
-                    if app.transport.is_reading(): app.transport.pause_reading()
-
-            #while app.__stream__:
                 yield app.__stream__.popleft()
             else:
                 if not app.transport.is_reading(): app.transport.resume_reading()
