@@ -63,8 +63,6 @@ class Protocol(asyncProtocol):
         loop.create_task(app.transporter())
 
     def data_received(app, chunk):
-        if app.transport.is_reading(): app.transport.pause_reading()
-
         """while len(chunk) >= app.__max_buff_len__:
             app.__stream__.append(chunk[:app.__max_buff_len__])
             chunk = chunk[app.__max_buff_len__:]"""
@@ -87,16 +85,16 @@ class Protocol(asyncProtocol):
         
         while True:
             await sleep(0)
-            if not app.transport.is_reading(): app.transport.resume_reading()
-            
+
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
 
-            while app.__stream__:
-                await sleep(0)
+            #while app.__stream__:
                 yield app.__stream__.popleft()
+            else:
+                if not app.transport.is_reading(): app.transport.resume_reading()
             
-            yield None
+                yield None
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_alive__:
