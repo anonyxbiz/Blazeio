@@ -6,26 +6,14 @@ class Request:
     MAX_BUFF_SIZE = 2*1024
     @classmethod
     async def stream_chunks(app, r, MAX_BUFF_SIZE = None):
-        MAX_BUFF_SIZE = MAX_BUFF_SIZE or app.MAX_BUFF_SIZE
-        
         """
             Some systems have issues when you try writing bytearray to a file, so it is better to ensure youre streaming bytes object.
         """
 
         yield b'' + r.__buff__
-        
-        if len(r.__buff__) >= app.MAX_BUFF_SIZE: r.__cap_buff__ = True
-            
-        async for chunk in r.request(MAX_BUFF_SIZE):
-            yield chunk
-            
-            if not r.__cap_buff__:
-                if len(r.__buff__) >= app.MAX_BUFF_SIZE:
-                    r.__cap_buff__ = True
 
-                if chunk:
-                    if not r.__cap_buff__:
-                        r.__buff__.extend(chunk)
+        async for chunk in r.request():
+            yield chunk
 
     @classmethod
     async def get_json(app, r):
@@ -107,19 +95,24 @@ class Request:
         count = 0
 
         async for chunk in app.stream_chunks(r):
+            if chunk:
+                r.__buff__.extend(chunk)
+                
             if sig in r.__buff__:
-                if (_ := r.__buff__.split(sig)):
+                _ = r.__buff__.split(sig)
 
-                    first, remaining = _[0], sig.join(_[1:])
+                first, remaining = _[0], sig.join(_[1:])
                     
-                    await app.set_method(r, first)
-                    r.__buff__ = remaining
+                await app.set_method(r, first)
+                r.__buff__ = remaining
+                break
+
+            else:
+                
+                if 0:#r.__cap_buff__:
+                    r.method = "handle_all_middleware"
+                    r.path = "handle_all_middleware"
                     break
-                else:
-                    if r.__cap_buff__:
-                        r.method = "handle_all_middleware"
-                        r.path = "handle_all_middleware"
-                        break
 
         return r
 
