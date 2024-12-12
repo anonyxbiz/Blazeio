@@ -18,7 +18,7 @@ class Simpleserve:
         del app.icoming_headers
         
         if not exists(app.file):
-            raise io.Abort("Not Found", 404)
+            raise Abort("Not Found", 404)
             
         app.ins = None
         
