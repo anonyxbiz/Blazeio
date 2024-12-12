@@ -66,9 +66,7 @@ class Protocol(asyncProtocol):
         """while len(chunk) >= app.__max_buff_len__:
             app.__stream__.append(chunk[:app.__max_buff_len__])
             chunk = chunk[app.__max_buff_len__:]"""
-        
-        if len(app.__stream__) >= 10:
-            app.transport.pause_reading()
+        app.transport.pause_reading()
 
         app.__stream__.append(chunk)
 
@@ -92,7 +90,7 @@ class Protocol(asyncProtocol):
             while app.__stream__:
                 yield app.__stream__.popleft()
             
-            if not app.transport.is_reading(): app.transport.resume_reading()
+            app.transport.resume_reading()
             
             yield None
 
