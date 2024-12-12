@@ -87,7 +87,8 @@ class Protocol(asyncProtocol):
             await sleep(0)
 
             if app.__stream__:
-                if app.transport.is_reading(): app.transport.pause_reading()
+                if len(app.__stream__) >= 10:
+                    if app.transport.is_reading(): app.transport.pause_reading()
 
             #while app.__stream__:
                 yield app.__stream__.popleft()
