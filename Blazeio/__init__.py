@@ -55,7 +55,7 @@ class BlazeioProtocol(asyncProtocol):
             while app.__is_buffer_over_high_watermark__:
                 await sleep(0)
                 if not app.__is_alive__:
-                    raise Err("Client has disconnected.")
+                    return
                     
         if app.__is_alive__:
             app.transport.write(data)
