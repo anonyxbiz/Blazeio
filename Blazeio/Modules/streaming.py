@@ -13,13 +13,13 @@ class Stream:
     async def init(app, r, headers={}, status=206, reason="Partial Content"):
         headers.update(app.response_headers)
 
-        await app.write(r, f"HTTP/1.1 {status} {reason}\r\n".encode())
+        await r.write(f"HTTP/1.1 {status} {reason}\r\n".encode())
 
         for key, val in headers.items():
-            await app.write(r, f"{key}: {val}\r\n".encode())
-        
-        await r.write(b"\r\n")
+            await r.write(f"{key}: {val}\r\n".encode())
+            await r.control()
 
+        await r.write(b"\r\n")
         r.prepared = True
 
     @classmethod
@@ -33,9 +33,8 @@ class Stream:
 class Deliver:
     @classmethod
     async def json(app, r, data, _dump=True, _encode=True, status=206, headers={}, reason="Partial Content", indent=4):
-        if not "prepared" in r.__dict__:
-            headers["Content-Type"] = "application/json"
-            await Stream.init(r, headers, status=status, reason=reason)
+        headers["Content-Type"] = "application/json"
+        await Stream.init(r, headers, status=status, reason=reason)
 
         if isinstance(data, (dict,)):
             data = dumps(data, indent=indent)

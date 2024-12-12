@@ -3,7 +3,6 @@ from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defau
 from .streaming import Stream, Deliver, Abort
 
 class Request:
-    MAX_BUFF_SIZE = 2*1024
     @classmethod
     async def stream_chunks(app, r, MAX_BUFF_SIZE = None):
         """
@@ -94,25 +93,17 @@ class Request:
         sig = b"\r\n\r\n"
         count = 0
 
-        async for chunk in app.stream_chunks(r):
+        async for chunk in r.request():
             if chunk:
                 r.__buff__.extend(chunk)
-                
+
             if sig in r.__buff__:
                 _ = r.__buff__.split(sig)
-
                 first, remaining = _[0], sig.join(_[1:])
-                    
-                await app.set_method(r, first)
                 r.__buff__ = remaining
-                break
-
-            else:
                 
-                if 0:#r.__cap_buff__:
-                    r.method = "handle_all_middleware"
-                    r.path = "handle_all_middleware"
-                    break
+                await app.set_method(r, first)
+                break
 
         return r
 

@@ -1,5 +1,5 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict, stack, create_subprocess_shell, getsize
+from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, BlazeioProtocol, sleep, perf_counter, deque, OrderedDict, stack, create_subprocess_shell, getsize
 
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
@@ -45,100 +45,6 @@ class VersionControlla:
 
             else:
                 break
-
-class Protocol(asyncProtocol):
-    def __init__(app, on_client_connected, **kwargs):
-        app.__dict__.update(kwargs)
-        app.on_client_connected = on_client_connected
-        app.__stream__ = deque()
-        app.__is_alive__ = True
-        app.__exploited__ = False
-        app.__is_buffer_over_high_watermark__ = False
-        app.__waiting_for_write_drainage__ = None
-        app.__max_buff_len__ = 10*1024
-        app.transport = None
-
-    def connection_made(app, transport):
-        app.transport = transport
-        loop.create_task(app.transporter())
-
-    def data_received(app, chunk):
-        app.transport.pause_reading()
-
-        while len(chunk) >= app.__max_buff_len__:
-            app.__stream__.append(chunk[:app.__max_buff_len__])
-            chunk = chunk[app.__max_buff_len__:]
-        
-        #app.transport.pause_reading()
-
-        app.__stream__.append(chunk)
-        app.transport.resume_reading()
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    def eof_received(app, *args, **kwargs):
-        app.__exploited__ = True
-    
-    def pause_writing(app):
-        app.__is_buffer_over_high_watermark__ = True
-
-    def resume_writing(app):
-        app.__is_buffer_over_high_watermark__ = False
-
-    async def request(app, chunk_size=None):
-        
-        while True:
-            await sleep(0)
-            
-            while app.__stream__:
-                yield app.__stream__.popleft()
-            
-            #app.transport.resume_reading()
-            
-            yield None
-
-    async def write(app, data: (bytes, bytearray)):
-        if app.__is_alive__:
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-
-    async def close(app):
-        app.transport.close()
-    
-    async def control(app):
-        await sleep(0)
-
-    async def transporter(app):
-        await sleep(0)
-
-        __perf_counter__ = perf_counter()
-        peername = app.transport.get_extra_info('peername')
-
-        app.r = await Packdata.add(
-            __perf_counter__ = __perf_counter__,
-            __exploited__ = app.__exploited__,
-            __is_alive__ = app.__is_alive__,
-            ip_host = peername[0],
-            ip_port = peername[-1],
-            peername = peername,
-            __buff__ = bytearray(),
-            __cap_buff__ = False,
-            request = app.request,
-            write = app.write,
-            close = app.close,
-            control = app.control,
-            #pause_reading = app.transport.pause_reading,
-            #resume_reading = app.transport.resume_reading,
-            #is_reading = app.transport.is_reading,
-        )
-
-        await app.on_client_connected(app.r)
-        
-        await app.close()
-
-        await Log.debug(f"Completed in {perf_counter() - app.r.__perf_counter__:.4f} seconds" )
 
 class App:
     event_loop = loop
@@ -262,6 +168,7 @@ class App:
 
     async def serve_route(app, r):
         await Request.set_data(r)
+
         await Log.info(r,
             "=> %s@ %s" % (
                 r.method,
@@ -332,7 +239,7 @@ class App:
         try:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
-            await app.__main__handler__(r)
+            await app.serve_route(r)
 
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
@@ -350,7 +257,7 @@ class App:
 
     async def run(app, HOST, PORT, **kwargs):
         app.server = await loop.create_server(
-            lambda: Protocol(app.handle_client),
+            lambda: BlazeioProtocol(app.handle_client),
             HOST,
             PORT,
             **kwargs

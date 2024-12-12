@@ -62,6 +62,82 @@ class Packdata:
 
 loop = get_event_loop()
 
+class BlazeioProtocol(asyncProtocol):
+    def __init__(app, on_client_connected, **kwargs):
+        app.__dict__.update(kwargs)
+        app.on_client_connected = on_client_connected
+        app.__stream__ = deque()
+        app.__is_alive__ = True
+        app.__exploited__ = False
+        app.__is_buffer_over_high_watermark__ = False
+        app.transport = None
+
+    def connection_made(app, transport):
+        app.transport = transport
+        loop.create_task(app.transporter())
+
+    def data_received(app, chunk):
+        app.__stream__.append(chunk)
+
+    def connection_lost(app, exc):
+        app.__is_alive__ = False
+
+    def eof_received(app):
+        app.__exploited__ = True
+    
+    def pause_writing(app):
+        app.__is_buffer_over_high_watermark__ = True
+
+    def resume_writing(app):
+        app.__is_buffer_over_high_watermark__ = False
+
+    async def request(app):
+        while True:
+            await sleep(0)
+            
+            if app.__stream__:
+                if app.is_reading(): app.pause_reading()
+                yield app.__stream__.popleft()
+            else:
+                if not app.is_reading(): app.resume_reading()
+                
+                yield None
+
+    async def write(app, data: (bytes, bytearray)):
+        """if app.__is_buffer_over_high_watermark__:
+            while app.__is_buffer_over_high_watermark__:
+                await sleep(0)
+                if not app.__is_alive__:
+                    break"""
+                
+        if app.__is_alive__:
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
+            
+    async def control(app):
+        await sleep(0)
+
+    async def transporter(app):
+        await sleep(0)
+
+        app.__perf_counter__ = perf_counter()
+        app.__buff__ = bytearray()
+        app.__cap_buff__ = False
+        app.pause_reading = app.transport.pause_reading
+        app.resume_reading = app.transport.resume_reading
+        app.is_reading = app.transport.is_reading
+        app.close = app.transport.close
+        
+        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
+
+        await app.on_client_connected(app)
+        
+        app.close()
+
+        await Log.debug(f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
+           
+
 class Log:
     known_exceptions = [
         "[Errno 104] Connection reset by peer",
@@ -82,21 +158,16 @@ class Log:
     @classmethod
     async def __log__(app, r=None, message=None, logger_=logger.info):
 
-        if not isinstance(r, Packdata):
-            if not isinstance(message, str):
-                message = str(r).strip()
-
-        else:
-            message = str(message).strip()
-            
-        if message in app.known_exceptions:
-            return
-
         log_level = logger_.__name__.split('.')[-1]
         
         color = app.colors.get(log_level, app.colors['reset'])
 
-        if isinstance(r, Packdata):
+        if isinstance(r, BlazeioProtocol):
+            message = str(message).strip()
+
+            if message in app.known_exceptions:
+                return
+
             message = f"{color}{message}{app.colors['reset']}"
 
             await logger_(
@@ -109,6 +180,15 @@ class Log:
                 )
             )
         else:
+            _ = str(r).strip()
+            if message:
+                _ += message
+                
+            message = _
+
+            if message in app.known_exceptions:
+                return
+
             msg = message
             message = f"{color}{message}{app.colors['reset']}"
 
@@ -165,7 +245,10 @@ class Log:
         await gather(*tasks)
 
         exit()
-            
+ 
+ 
+
+
 
 p = Log.info
 loop.run_until_complete(Log.debug(""))

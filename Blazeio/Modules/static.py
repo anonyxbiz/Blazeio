@@ -56,7 +56,6 @@ class StaticFileHandler:
 
     @classmethod
     async def prepare_static(app, r, file_path, headers={}, CHUNK_SIZE=None):
-        #await sleep(0)
         if not exists(file_path): raise Abort("File Not Found", 404, reason="Not Found")
         
         content_type, _ = guess_type(file_path)
@@ -81,7 +80,7 @@ class StaticFileHandler:
             content_type = "application/octet-stream"
             content_disposition = f'attachment; filename="{filename}"'
 
-        status_code = 206 if range_header else 200
+        status_code = 206# if range_header else 200
         
         reason = "Partial Content" if status_code == 206 else "OK"
         
@@ -93,6 +92,7 @@ class StaticFileHandler:
         })
 
         if range_header: headers["Content-Range"] = f'bytes {start}-{end}/{file_size}'
+        else: start = 0
         
         return headers, status_code, reason, range_header, start, end
 
@@ -106,15 +106,14 @@ class StaticFileHandler:
             while True:
                 file.seek(start)
 
-                if not (chunk := await file.read(length = CHUNK_SIZE)):
+                if not (chunk := await file.read(CHUNK_SIZE)):
                     break
                 else:
                     start += len(chunk)
 
-                await Stream.write(r, chunk)
-                if start >= end: break
-
-                await sleep(0)
+                await r.write(chunk)
+                #await r.control()
+                #if start >= end: break
 
     @classmethod
     async def stream_file(app, r, file_path, headers={}, CHUNK_SIZE=1024, prepared=False):
