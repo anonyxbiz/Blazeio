@@ -55,7 +55,7 @@ class BlazeioProtocol(asyncProtocol):
             while app.__is_buffer_over_high_watermark__:
                 await sleep(0)
                 if not app.__is_alive__:
-                    return
+                    raise Err("Client has disconnected.")
                     
         if app.__is_alive__:
             app.transport.write(data)
@@ -301,10 +301,10 @@ class App:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
             await app.serve_route(r)
-            
-        except (Err, ServerGotInTrouble) as e:
-            await Log.warning(r, e)
 
+        except (Err, ServerGotInTrouble) as e:
+            pass
+        
         except Abort as e:
             try:
                 await e.text(r)
