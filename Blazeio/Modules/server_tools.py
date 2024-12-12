@@ -12,9 +12,11 @@ class Simpleserve:
         'Referrer-Policy': 'origin-when-cross-origin'
     }
     
-    def __init__(app, r, file: str, CHUNK_SIZE: int = 1024, headers={}, **kwargs):
+    def __init__(app, r, file: str, CHUNK_SIZE: int = 1024, icoming_headers={}, **kwargs):
         app.__dict__.update(locals())
-
+        app.headers.update(app.icoming_headers)
+        del app.icoming_headers
+        
         if not exists(app.file):
             raise io.Abort("Not Found", 404)
             
