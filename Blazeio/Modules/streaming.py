@@ -51,9 +51,8 @@ class Deliver:
 
     @classmethod
     async def text(app, r, data, status=206, headers={}, reason="Partial Content"):
-        if not "prepared" in r.__dict__:
-            headers["Content-Type"] = "text/plain"
-            await Stream.init(r, headers, status=status, reason=reason)
+        headers["Content-Type"] = "text/plain"
+        await Stream.init(r, headers, status=status, reason=reason)
 
         if not isinstance(data, (bytes, bytearray)):
             data = data.encode()
@@ -87,11 +86,11 @@ class Deliver:
 
 class Abort(Exception):
     def __init__(app, message="Something went wrong", status=403, headers={}, **kwargs):
-        super().__init__(message)
         app.message = str(message)
         app.kwargs = kwargs
         app.status = status
         app.headers = headers
+        super().__init__(message)
 
     def __str__(app) -> str:
         return app.message

@@ -1,50 +1,85 @@
 # Blazeio/__init__.py
-from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, BlazeioProtocol, sleep, perf_counter, deque, OrderedDict, stack, create_subprocess_shell, getsize
+from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict, stack, VersionControlla
 
 from .Modules.streaming import Stream, Deliver, Abort
 from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
 from .Modules.request import Request
 from .Client import Session
 
-class VersionControlla:
-    @classmethod
-    async def control(app, ins, HOME, HOST, PORT, **kwargs):
-        async def runner():
-            process = await create_subprocess_shell(
-                cmd=f'python -m Blazeio --path "{HOME}" --host "{HOST}" --port "{PORT}"',
-                stdout=None,
-                stderr=None,
-            )
-            try:
-                await process.wait()
-            except CancelledError:
-                process.terminate()
-                await process.wait()
-                raise
+class BlazeioProtocol(asyncProtocol):
+    def __init__(app, on_client_connected, **kwargs):
+        app.__dict__.update(kwargs)
+        app.on_client_connected = on_client_connected
+        app.__stream__ = deque()
+        app.__is_alive__ = True
+        app.__exploited__ = False
+        app.__is_buffer_over_high_watermark__ = False
+        app.transport = None
 
+    def connection_made(app, transport):
+        app.transport = transport
+        loop.create_task(app.transporter())
+
+    def data_received(app, chunk):
+        app.__stream__.append(chunk)
+
+    def connection_lost(app, exc):
+        app.__is_alive__ = False
+
+    def eof_received(app):
+        app.__exploited__ = True
+    
+    def pause_writing(app):
+        app.__is_buffer_over_high_watermark__ = True
+
+    def resume_writing(app):
+        app.__is_buffer_over_high_watermark__ = False
+
+    async def request(app):
         while True:
-            size = getsize(HOME)
-            task = loop.create_task(runner())
+            await sleep(0)
+            
+            if app.__stream__:
+                if app.is_reading(): app.pause_reading()
+                yield app.__stream__.popleft()
+            else:
+                if not app.is_reading(): app.resume_reading()
+                
+                yield None
 
-            while True:
-                if task.done():
+    async def write(app, data: (bytes, bytearray)):
+        if app.__is_buffer_over_high_watermark__:
+            while app.__is_buffer_over_high_watermark__:
+                await sleep(0)
+                if not app.__is_alive__:
                     break
                 
-                if getsize(HOME) == size:
-                    await sleep(1)
-                else:
-                    await Log.warning(f"version change detected in {HOME}, reloading server...")
-                    break
+        if app.__is_alive__:
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
             
-            if not task.done():
-                try:
-                    task.cancel()
-                    await task
-                except CancelledError:
-                    pass
+    async def control(app):
+        await sleep(0)
 
-            else:
-                break
+    async def transporter(app):
+        await sleep(0)
+
+        app.__perf_counter__ = perf_counter()
+        app.__buff__ = bytearray()
+        app.__cap_buff__ = False
+        app.pause_reading = app.transport.pause_reading
+        app.resume_reading = app.transport.resume_reading
+        app.is_reading = app.transport.is_reading
+        app.close = app.transport.close
+        
+        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
+
+        await app.on_client_connected(app)
+        
+        app.close()
+
+        await Log.debug(f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
 class App:
     event_loop = loop
@@ -61,8 +96,6 @@ class App:
     @classmethod
     async def init(app, **kwargs):
         app = app()
-        app.__main__handler__ = app.serve_route
-
         app.__dict__.update(kwargs)
         app.declared_routes = OrderedDict()
 
@@ -240,7 +273,7 @@ class App:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
             await app.serve_route(r)
-
+            
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
 

@@ -62,82 +62,6 @@ class Packdata:
 
 loop = get_event_loop()
 
-class BlazeioProtocol(asyncProtocol):
-    def __init__(app, on_client_connected, **kwargs):
-        app.__dict__.update(kwargs)
-        app.on_client_connected = on_client_connected
-        app.__stream__ = deque()
-        app.__is_alive__ = True
-        app.__exploited__ = False
-        app.__is_buffer_over_high_watermark__ = False
-        app.transport = None
-
-    def connection_made(app, transport):
-        app.transport = transport
-        loop.create_task(app.transporter())
-
-    def data_received(app, chunk):
-        app.__stream__.append(chunk)
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    def eof_received(app):
-        app.__exploited__ = True
-    
-    def pause_writing(app):
-        app.__is_buffer_over_high_watermark__ = True
-
-    def resume_writing(app):
-        app.__is_buffer_over_high_watermark__ = False
-
-    async def request(app):
-        while True:
-            await sleep(0)
-            
-            if app.__stream__:
-                if app.is_reading(): app.pause_reading()
-                yield app.__stream__.popleft()
-            else:
-                if not app.is_reading(): app.resume_reading()
-                
-                yield None
-
-    async def write(app, data: (bytes, bytearray)):
-        """if app.__is_buffer_over_high_watermark__:
-            while app.__is_buffer_over_high_watermark__:
-                await sleep(0)
-                if not app.__is_alive__:
-                    break"""
-                
-        if app.__is_alive__:
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-            
-    async def control(app):
-        await sleep(0)
-
-    async def transporter(app):
-        await sleep(0)
-
-        app.__perf_counter__ = perf_counter()
-        app.__buff__ = bytearray()
-        app.__cap_buff__ = False
-        app.pause_reading = app.transport.pause_reading
-        app.resume_reading = app.transport.resume_reading
-        app.is_reading = app.transport.is_reading
-        app.close = app.transport.close
-        
-        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
-
-        await app.on_client_connected(app)
-        
-        app.close()
-
-        await Log.debug(f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
-           
-
 class Log:
     known_exceptions = [
         "[Errno 104] Connection reset by peer",
@@ -151,7 +75,6 @@ class Log:
         'warning': '\033[33m',
         'critical': '\033[38;5;1m',
         'debug': '\033[34m',
-        #'reset': '\033[0m',
         'reset': '\033[32m'
     }
 
@@ -162,7 +85,7 @@ class Log:
         
         color = app.colors.get(log_level, app.colors['reset'])
 
-        if isinstance(r, BlazeioProtocol):
+        if "BlazeioProtocol" in str(r):
             message = str(message).strip()
 
             if message in app.known_exceptions:
@@ -245,9 +168,46 @@ class Log:
         await gather(*tasks)
 
         exit()
- 
- 
 
+class VersionControlla:
+    @classmethod
+    async def control(app, ins, HOME, HOST, PORT, **kwargs):
+        async def runner():
+            process = await create_subprocess_shell(
+                cmd=f'python -m Blazeio --path "{HOME}" --host "{HOST}" --port "{PORT}"',
+                stdout=None,
+                stderr=None,
+            )
+            try:
+                await process.wait()
+            except CancelledError:
+                process.terminate()
+                await process.wait()
+                raise
+
+        while True:
+            size = getsize(HOME)
+            task = loop.create_task(runner())
+
+            while True:
+                if task.done():
+                    break
+                
+                if getsize(HOME) == size:
+                    await sleep(1)
+                else:
+                    await Log.warning(f"version change detected in {HOME}, reloading server...")
+                    break
+            
+            if not task.done():
+                try:
+                    task.cancel()
+                    await task
+                except CancelledError:
+                    pass
+
+            else:
+                break
 
 
 p = Log.info
