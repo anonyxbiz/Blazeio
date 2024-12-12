@@ -3,6 +3,29 @@ from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defau
 from .streaming import Stream, Deliver, Abort
 
 class Request:
+    bad_strings = [
+        "%20",     # Represents a space
+        "%22",     # Double quote (")
+        "%3C",     # Less-than symbol (<)
+        "%3E",     # Greater-than symbol (>)
+        "%3D",     # Equal sign (=)
+        "%26",     # Ampersand (&)
+        "%3F",     # Question mark (?)
+        "%2F",     # Forward slash (/)
+        "%2B",     # Plus sign (+)
+        "%2C",     # Comma (,)
+        "%23",     # Hash (#)
+        "%25",     # Percent sign (%)
+        "%2E",     # Period (.)
+        "%5B",     # Opening square bracket ([)
+        "%5D",     # Closing square bracket (])
+        "%7B",     # Opening curly brace ({)
+        "%7D",     # Closing curly brace (})
+        "%3A",     # Colon (:)
+        "%3B",     # Semicolon (;)
+        "%40"      # At symbol (@)
+    ]
+
     @classmethod
     async def stream_chunks(app, r, MAX_BUFF_SIZE = None):
         """
@@ -36,7 +59,19 @@ class Request:
                     raise Err("Malformed packets are not valid JSON.")
 
         raise Err("No valid JSON found in the stream.")
-        
+
+    @classmethod
+    async def param_format(app, param: str):
+        for u in app.bad_strings:
+            if u in param:
+                while u in param:
+                    param = param.replace(u, "")
+                    await sleep(0)
+                    
+            await sleep(0)
+            
+        return param
+ 
     @classmethod
     async def get_params(app, r):
         temp = defaultdict(str)
@@ -48,15 +83,26 @@ class Request:
             if not (o := "&") in params:
                 params += "&"
 
-            params = params.split(o)
-
-            for param in params:
+            for param in params.split(o):
                 await sleep(0)
                 if (y := "=" ) in param:
                     _key, value = param.split(y)
-                    temp[_key] = value.replace("%20", " ")
+                    temp[_key] = await app.param_format(value)
 
         return dict(temp)
+
+    @classmethod
+    async def get_param(app, r, key: str):
+        key += "="
+        
+        if not key in r.tail:
+            return
+        
+        param = r.tail.split(key)[-1]
+        
+        if o := "&" in param: param = param.split(o)[0]
+        
+        return await app.param_format(param)
 
     @classmethod
     async def set_method(app, r, chunk):

@@ -2,7 +2,9 @@
 from .Dependencies import io_run, CancelledError, dumps, loads, exit, dt, sig, Callable, Err, ServerGotInTrouble, p, Packdata, Log, current_task, all_tasks, loop, iopen, guess_type, asyncProtocol, sleep, perf_counter, deque, OrderedDict, stack, VersionControlla
 
 from .Modules.streaming import Stream, Deliver, Abort
-from .Modules.static import StaticFileHandler, Smart_Static_Server, Staticwielder
+from .Modules.static import StaticFileHandler, Smart_Static_Server
+from .Modules.server_tools import *
+
 from .Modules.request import Request
 from .Client import Session
 
@@ -38,21 +40,21 @@ class BlazeioProtocol(asyncProtocol):
     async def request(app):
         while True:
             await sleep(0)
-            
+            if not app.__is_alive__:
+                raise 
             if app.__stream__:
                 if app.is_reading(): app.pause_reading()
                 yield app.__stream__.popleft()
             else:
                 if not app.is_reading(): app.resume_reading()
-                
                 yield None
 
     async def write(app, data: (bytes, bytearray)):
-        if app.__is_buffer_over_high_watermark__:
+        """if app.__is_buffer_over_high_watermark__:
             while app.__is_buffer_over_high_watermark__:
                 await sleep(0)
                 if not app.__is_alive__:
-                    break
+                    break"""
                 
         if app.__is_alive__:
             app.transport.write(data)
@@ -63,7 +65,7 @@ class BlazeioProtocol(asyncProtocol):
         await sleep(0)
 
     async def transporter(app):
-        await sleep(0)
+        #await sleep(0)
 
         app.__perf_counter__ = perf_counter()
         app.__buff__ = bytearray()

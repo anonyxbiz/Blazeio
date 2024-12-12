@@ -279,6 +279,6 @@ class Smart_Static_Server:
                 await Stream.write(r, chunk)
             except Exception as e:
                 p(e)
-        
+
 if __name__ == "__main__":
     pass
