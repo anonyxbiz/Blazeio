@@ -75,7 +75,7 @@ class BlazeioProtocol(asyncProtocol):
         
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
-        await app.on_client_connected(app)
+        should_wait = await app.on_client_connected(app)
         
         app.close()
 
