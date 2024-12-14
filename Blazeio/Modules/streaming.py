@@ -1,25 +1,10 @@
 from ..Dependencies import p, dumps, loads, Err, Log, sleep
 
 class Stream:
-    response_headers = {
-        'Server': 'Blazeio',
-        'Strict-Transport-Security': 'max-age=63072000; includeSubdomains', 
-        'X-Frame-Options': 'SAMEORIGIN',
-        'X-XSS-Protection': '1; mode=block',
-        'Referrer-Policy': 'origin-when-cross-origin'
-    }
-
     @classmethod
-    async def init(app, r, headers={}, status=206, reason="Partial Content"):
-        headers.update(app.response_headers)
-
-        await r.write(f"HTTP/1.1 {status} {reason}\r\n".encode())
-
-        for key, val in headers.items():
-            await r.write(f"{key}: {val}\r\n".encode())
-            await r.control()
-
-        await r.write(b"\r\n")
+    async def init(app, r, *args, **kwargs):
+        await r.prepare(*args, **kwargs)
+        
         r.prepared = True
 
     @classmethod

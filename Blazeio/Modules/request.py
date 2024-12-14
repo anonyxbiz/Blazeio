@@ -156,23 +156,23 @@ class Request:
     @classmethod
     async def get_form_data(app, r, decode=True):
         signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
-        objs = (b'form-data; name=', b'\r\n\r\n', b'\r\n', b"--\r\n")
-
         idx, form_data = 0, bytearray()
+
         async for chunk in app.stream_chunks(r):
             if chunk is not None:
                 form_data.extend(chunk)
-            if signal3 in form_data:
-                if objs[-1] in form_data:
+                if signal3 in form_data:
                     break
-
+                
         form_elements = form_data.split(signal3)
 
-        r.__buff__ = form_elements[-1]
+        r.__buff__ = form_elements.pop()
 
         form_elements = signal3.join(form_elements)
         
         json_data = defaultdict(str)
+        
+        objs = (b'form-data; name="', b'"\r\n\r\n', b'\r\n')
         
         start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
 
@@ -183,9 +183,6 @@ class Request:
                 
                 key = _[0]
 
-                if key[:1] == b'"' and key[-1:] == b'"':
-                    key = key[1:-1]
-
                 if filename_begin in key and filename_end in key and content_type in key:
                     fname, _type = key.split(filename_begin).pop().split(filename_end)
 
@@ -194,12 +191,8 @@ class Request:
                     
                 else:
                     value = _[-1]
-
-                    if end in value: value = b"".join(value.split(end))
+                    if end in value: value = value.split(end).pop(0)
                     
-                    if value[:1] == b'"' and value[-1:] == b'"':
-                        value = value[1:-1]
-
                     json_data[key if not decode else key.decode("utf-8")] = value if not decode else value.decode("utf-8")
 
         json_data = dict(json_data)

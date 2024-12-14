@@ -6,7 +6,7 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Client import *
 
-class BlazeioPayload:
+class BlazeioPayload(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
@@ -16,26 +16,46 @@ class BlazeioPayload:
         app.__buff__ = bytearray()
         app.__cap_buff__ = False
 
+    def connection_made(app, transport):
+        loop.create_task(app.transporter(transport))
+
+    def data_received(app, chunk):
+        app.__stream__.append(chunk)
+
+    def connection_lost(app, exc):
+        app.__is_alive__ = False
+
+    def eof_received(app):
+        app.__exploited__ = True
+        return True
+    
+    def pause_writing(app):
+        app.__is_buffer_over_high_watermark__ = True
+
+    def resume_writing(app):
+        app.__is_buffer_over_high_watermark__ = False
+
     async def request(app):
         while True:
+            await sleep(0)
             if not app.__is_alive__:
                 raise Err("Client has disconnected")
 
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
-                yield app.__stream__.popleft()
+                while app.__stream__:
+                    yield app.__stream__.popleft()
+                    await sleep(0)
+
+                if not app.transport.is_reading(): app.transport.resume_reading()
                 
             else:
                 if app.__exploited__: break
                 if not app.transport.is_reading(): app.transport.resume_reading()
                 yield None
-            
-            await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_buffer_over_high_watermark__:
-            await Log.warning(app, "Write buffer is flooded")
-            
             while app.__is_buffer_over_high_watermark__:
                 await sleep(0)
                 if not app.__is_alive__:
@@ -50,14 +70,11 @@ class BlazeioPayload:
         await sleep(duration)
     
     async def close(app):
-        await app.control()
         app.transport.close()
 
     async def transporter(app, transport):
-        app.__perf_counter__ = perf_counter()
-
         await sleep(0)
-
+        app.__perf_counter__ = perf_counter()
         app.transport = transport
         app.__is_alive__ = True
 
@@ -66,7 +83,7 @@ class BlazeioPayload:
         await app.on_client_connected(app)
         
         await app.close()
-
+        
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content"):
@@ -119,11 +136,12 @@ class App:
         "max_routes_in_memory": 20
     }
     memory["routes"]["null"] = None
+    quiet = False
 
     @classmethod
     async def init(app, **kwargs):
         app = app()
-        app.__dict__.update(kwargs)
+        app.__dict__.update(**kwargs)
         app.declared_routes = OrderedDict()
 
         return app
@@ -228,7 +246,6 @@ class App:
 
     async def serve_route(app, r):
         await Request.set_data(r)
-
         await Log.info(r,
             "=> %s@ %s" % (
                 r.method,
@@ -255,6 +272,7 @@ class App:
         try:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
+            
             await app.serve_route(r)
 
         except (Err, ServerGotInTrouble) as e:
@@ -273,7 +291,7 @@ class App:
 
     async def run(app, HOST, PORT, **kwargs):
         app.server = await loop.create_server(
-            lambda: BlazeioProtocol(app.handle_client),
+            lambda: BlazeioPayload(app.handle_client),
             HOST,
             PORT,
             **kwargs
