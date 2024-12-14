@@ -23,7 +23,7 @@ class Simpleserve:
         app.ins = None
         
     async def __aexit__(app, ext_type, ext, tb):
-        if app.ins is not None: await to_thread(app.ins.close,)
+        if app.ins is not None: await app.ins.close()
 
     async def __aenter__(app):
         await app.r.write(b"HTTP/1.1 206 Partial Content\r\n")
