@@ -156,6 +156,8 @@ class Request:
     @classmethod
     async def get_form_data(app, r, decode=True):
         signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
+        objs = (b'form-data; name="', b'"\r\n\r\n', b'\r\n')
+
         idx, form_data = 0, bytearray()
 
         async for chunk in app.stream_chunks(r):
@@ -163,7 +165,7 @@ class Request:
                 form_data.extend(chunk)
                 if signal3 in form_data:
                     break
-                
+
         form_elements = form_data.split(signal3)
 
         r.__buff__ = form_elements.pop()
@@ -171,8 +173,6 @@ class Request:
         form_elements = signal3.join(form_elements)
         
         json_data = defaultdict(str)
-        
-        objs = (b'form-data; name="', b'"\r\n\r\n', b'\r\n')
         
         start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
 

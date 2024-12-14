@@ -28,6 +28,7 @@ class BlazeioProtocol(asyncProtocol):
 
     def eof_received(app):
         app.__exploited__ = True
+        return True
     
     def pause_writing(app):
         app.__is_buffer_over_high_watermark__ = True
@@ -45,6 +46,7 @@ class BlazeioProtocol(asyncProtocol):
                 yield app.__stream__.popleft()
                 
             else:
+                if app.__exploited__: break
                 if not app.is_reading(): app.resume_reading()
                 yield None
             
@@ -62,8 +64,8 @@ class BlazeioProtocol(asyncProtocol):
         else:
             raise Err("Client has disconnected.")
             
-    async def control(app):
-        await sleep(0)
+    async def control(app, duration=0):
+        await sleep(duration)
 
     async def transporter(app):
         await sleep(0)
@@ -201,75 +203,6 @@ class App:
                 pass
             except Exception as e:
                 print(e)
-
-    async def serve_route_intell(app, r):
-        await Request.set_data(r)
-
-        await Log.info(r,
-            "=> %s@ %s" % (
-                r.method,
-                r.path
-            )
-        )
-        
-        if r.path not in app.memory["routes"]:
-            memory = OrderedDict()
-            actions = deque()
-            memory["actions"] = actions
-
-            if len(app.memory["routes"]) >= app.memory.get("max_routes_in_memory", 20):
-
-                app.memory["routes"].popitem(last=False)
-
-            app.memory["routes"][r.path] = memory
-
-            # Handle before_middleware
-            if (before_middleware := app.declared_routes.get("before_middleware")):
-                actions.append(before_middleware.get("func"))
-
-                await before_middleware.get("func")(r)
-
-            if r.path in app.declared_routes:
-                route = app.declared_routes[r.path]
-                actions.append(route.get("func"))
-                await route.get("func")(r)
-
-            elif (handle_all_middleware := app.declared_routes.get("handle_all_middleware")):
-                actions.append(handle_all_middleware.get("func"))
-
-                await handle_all_middleware.get("func")(r)
-            else:
-                actions = OrderedDict()
-                actions["raise"] = Abort
-                actions["kwargs"] = {
-                    "message": "Not Found",
-                    "status": 404
-                }
-
-                memory["actions"] = actions
-
-                raise actions["raise"](**actions["kwargs"])
-
-            # Handle after_middleware
-            if (after_middleware := app.declared_routes.get("after_middleware")):
-                actions.append(after_middleware.get("func"))
-
-                await after_middleware.get("func")(r)
-                
-        else:
-            memory = app.memory["routes"][r.path]
-            actions = memory["actions"]
-        
-            # Use memory to remember actions
-            if isinstance(actions, deque):
-                for action in actions:
-                    await action(r)
-                    await sleep(0)
-                    
-            elif isinstance(actions, OrderedDict):
-                raise actions["raise"](**actions["kwargs"])
-            else:
-                raise Err("Something doesn't seem right.")
 
     async def serve_route(app, r):
         await Request.set_data(r)

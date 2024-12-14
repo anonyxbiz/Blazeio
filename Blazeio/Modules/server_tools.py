@@ -1,4 +1,4 @@
-from ..Dependencies import iopen, guess_type, basename, getsize, exists, Log
+from ..Dependencies import iopen, guess_type, basename, getsize, exists, Log, to_thread, deque, loop
 from .request import Request
 from .streaming import Abort      
 from aiofiles import open as aiofilesiopen
@@ -23,7 +23,7 @@ class Simpleserve:
         app.ins = None
         
     async def __aexit__(app, ext_type, ext, tb):
-        if app.ins is not None: await app.ins.close()
+        if app.ins is not None: await to_thread(app.ins.close,)
 
     async def __aenter__(app):
         await app.r.write(b"HTTP/1.1 206 Partial Content\r\n")
@@ -33,7 +33,6 @@ class Simpleserve:
         app.headers.update({
             "Accept-Ranges": "bytes",
             "Content-Type": guess_type(app.file)[0],
-            "Content-Length": file_size,
             "Content-Disposition": f'inline; filename="{basename(app.file)}"',
         })
 
@@ -59,23 +58,46 @@ class Simpleserve:
             await app.r.write(f"{key}: {val}\r\n".encode())
 
         await app.r.write(b"\r\n")
-
-        app.ins = await aiofilesiopen(app.file, "rb")
-
         return app
         
     async def push(app):
+        data = deque()
+        
+        def func():
+            with open(app.file, "rb") as ins:
+                ins.seek(app.start)
+                while True:
+                    chunk = ins.read(app.CHUNK_SIZE)
+                    if not chunk:
+                        data.append("end")
+                        break
+                    
+                    data.append(chunk)
+
+        loop.create_task(to_thread(func))
+        
         while True:
-            await app.ins.seek(app.start)
-            if not (chunk := await app.ins.read(app.CHUNK_SIZE)): break
-            
+            if data:
+                chunk = data.popleft()
+                if chunk == "end": break
+                await app.r.write(chunk)
+
+            await app.r.control()
+
+    async def pull(app):
+        app.ins = await to_thread(open, app.file, "rb")
+
+        await to_thread(app.ins.seek, app.start)
+        while True:
+            if not (chunk := await to_thread(app.ins.read, app.CHUNK_SIZE)): break
+
             else: app.start += len(chunk)
                     
-            await app.r.write(chunk)
+            yield chunk
             
             if app.start >= app.end: break
             
             else: await app.r.control()
-            
+
 if __name__ == "__main__":
     pass
