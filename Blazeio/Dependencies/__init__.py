@@ -12,7 +12,7 @@ from inspect import signature as sig, stack
 from typing import Callable
 
 """File serving"""
-from aiofile import async_open as iopen
+from aiofiles import open as iopen
 from mimetypes import guess_type
 from os.path import basename, getsize, exists, join
 from gzip import compress as gzip_compress

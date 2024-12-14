@@ -2,18 +2,22 @@ from setuptools import setup, find_packages
 from datetime import datetime as dt
 from os import environ
 
-data_path = "./"
+data_path = ""
 
-with open(f"{data_path}requirements.txt") as f:
-    requirements = f.read().splitlines()
-
-with open(f"{data_path}README.md", encoding="utf-8") as f:
-    long_description = f.read()
+if 1:
+    with open(f"{data_path}requirements.txt") as f:
+        requirements = f.read().splitlines()
+    
+    with open(f"{data_path}README.md", encoding="utf-8") as f:
+        long_description = f.read()
+else:
+    requirements = []
+    long_description = ""
 
 if environ.get("local"):
     version = "0.0.%s" % str(dt.now().timestamp())
 else:
-    version = "0.0.0.6"
+    version = "0.0.0.9"
     
 setup(
     name="Blazeio",
@@ -30,7 +34,7 @@ setup(
     install_requires=requirements,
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: MIT",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
     py_modules=['Blazeio'],

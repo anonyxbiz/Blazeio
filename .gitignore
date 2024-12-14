@@ -2,4 +2,7 @@ Blazeio.egg-info
 Blazeio/__pycache__
 Blazeio/Dependencies/__pycache__
 Blazeio/Modules/__pycache__
-
+dist
+build
+MANIFEST.in
+.gitignore
