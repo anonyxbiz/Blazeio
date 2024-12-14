@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from datetime import datetime as dt
 from os import environ
 
-data_path = "Blazeio/data_files/"
+data_path = "./"
 
 with open(f"{data_path}requirements.txt") as f:
     requirements = f.read().splitlines()
