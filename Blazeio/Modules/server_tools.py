@@ -61,35 +61,27 @@ class Simpleserve:
         return app
         
     async def push(app):
-        data = deque()
-        
-        def func():
-            with open(app.file, "rb") as ins:
-                ins.seek(app.start)
-                while True:
-                    chunk = ins.read(app.CHUNK_SIZE)
-                    if not chunk:
-                        data.append("end")
-                        break
-                    
-                    data.append(chunk)
+        app.ins = await aiofilesiopen(app.file, "rb")
 
-        loop.create_task(to_thread(func))
-        
+        await app.ins.seek(app.start)
         while True:
-            if data:
-                chunk = data.popleft()
-                if chunk == "end": break
-                await app.r.write(chunk)
+            if not (chunk := await app.ins.read(app.CHUNK_SIZE)): break
 
-            await app.r.control()
+            else: app.start += len(chunk)
+                    
+            await app.r.write(chunk)
+            
+            if app.start >= app.end: break
+            
+            else: await app.r.control()
+
 
     async def pull(app):
-        app.ins = await to_thread(open, app.file, "rb")
+        app.ins = await aiofilesiopen(app.file, "rb")
 
-        await to_thread(app.ins.seek, app.start)
+        await app.ins.seek(app.start)
         while True:
-            if not (chunk := await to_thread(app.ins.read, app.CHUNK_SIZE)): break
+            if not (chunk := await app.ins.read(app.CHUNK_SIZE)): break
 
             else: app.start += len(chunk)
                     
