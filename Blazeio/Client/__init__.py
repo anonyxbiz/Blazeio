@@ -16,15 +16,12 @@ class Err(Exception):
         return app.message
 
 class BlazeioClientProtocol(Protocol):
-    def __init__(app):
+    def __init__(app, *args, **kwargs):
         app.buffer = deque()
         app.response_headers = defaultdict(str)
-        app.remaining = bytearray()
         app.__is_at_eof__ = False
         app.__is_connection_lost__ = False
-        app.__pulled_length__ = 0
-        app.__perf_counter__ = perf_counter()
-        app.__all__ = bytearray()
+        app.transport = None
 
     def connection_made(app, transport):
         app.transport = transport
@@ -35,7 +32,8 @@ class BlazeioClientProtocol(Protocol):
     def eof_received(app):
         app.__is_at_eof__ = True
 
-    def connection_lost(app, exc):
+    def connection_lost(app, exc=None):
+        # app.transport.close()
         app.__is_connection_lost__ = True
 
     async def push(app, chunk):
@@ -44,11 +42,45 @@ class BlazeioClientProtocol(Protocol):
 
         if not app.__is_connection_lost__:
             app.transport.write(chunk)
-        
-    async def pull(app, all=False, timeout=2):
+        else:
+            raise Err("Client has disconnected")
+
+    async def pull(app, timeout=1):
+        while app.transport is None: await sleep(0)
+        endl = b"\r\n0\r\n\r\n"
+        start_time = None
+
+        while True:
+            if app.buffer:
+                if app.transport.is_reading(): app.transport.pause_reading()
+                
+                while app.buffer:
+                    buff = app.buffer.popleft()
+                    yield buff
+                    # await sleep(0)
+
+                if endl in buff: break
+                
+                if not app.transport.is_reading(): app.transport.resume_reading()
+                
+                start_time = perf_counter()
+            else:
+                if start_time is not None:
+                    if perf_counter() - float(start_time) >= timeout:
+                        break
+
+                if app.__is_connection_lost__: break
+
+                yield None
+            
+            await sleep(0)
+
+        app.transport.close()
+
+    async def pull_(app, all=False, timeout=2):
         if all:
             yield b"" + app.__all__
-            
+
         else:
             if app.remaining:
                 chunk = b"" + app.remaining
@@ -58,10 +90,7 @@ class BlazeioClientProtocol(Protocol):
         endl = b"\r\n0\r\n\r\n"
 
         while True:
-            await sleep(0)
-                
             while app.buffer:
-                await sleep(0)
                 chunk = app.buffer.popleft()
                 yield chunk
 
@@ -72,10 +101,9 @@ class BlazeioClientProtocol(Protocol):
                 break
             if app.__is_at_eof__:
                 break
-            
-            if perf_counter() - app.__perf_counter__ >= float(timeout):
-                break
+
             yield None
+            await sleep(0)
 
     async def fetch_headers(app):
         tmp = bytearray()
@@ -112,96 +140,100 @@ class BlazeioClientProtocol(Protocol):
 loop = get_event_loop()
 
 class Session:
-    def __init__(app, url: str, method: str = "GET", headers: dict = {}, port:int = 80, connect_only=False, params=None, body=None, **kwargs):
-        app.__dict__.update(locals())
-        app.host = app.url
-        
-    async def __aenter__(app):
-        if app.params:
-            prms = ""
-            if not (i := "?") in url:
-                prms += i
-            else:
-                prms += "&"
+    def __init__(app, **kwargs):
+        app.protocols = deque()
+        app.ssl_context = create_default_context()
 
-            for key, val in app.params.items():
-                await sleep(0)
-                data = "%s=%s" % (str(key), str(val))
-                if "=" in prms:
-                    prms += "&"
-
-                prms += data
-
-            app.url += prms
-
-        await app.url_to_host()
-        
-        if app.port == 443:
-            app.ssl_context = create_default_context()
-
-        protocol = BlazeioClientProtocol()
-        app.protocol = protocol
-
-        transport, protocol_instance = await loop.create_connection(
-            lambda: protocol,
-            app.host, app.port, ssl=app.ssl_context if app.port == 443 else None
-        )
-        
-        await app.protocol.push(f"{app.method} {app.path} HTTP/1.1\r\n".encode())
-
-        if not "Host" in app.headers:
-            app.headers["Host"] = app.host
-        
-        if app.body:
-            app.headers["Content-Length"] = len(app.body)
-            
-        for key, val in app.headers.items():
-            await app.protocol.push(f"{key}: {val}\r\n".encode())
-            await sleep(0)
-            
-        await app.protocol.push("\r\n".encode())
-        
-        if app.connect_only: return app.protocol
-        
-        if app.method in ["GET", "HEAD", "OPTIONS"]:
-            await app.protocol.fetch_headers()
+    async def fetch(app,
+        url: str,
+        method: str = "GET",
+        headers = None,
+        connect_only=False,
+        params=None,
+        body=None
+    ):
+        host, port, path = await app.url_to_host(url)
+        if not headers:
+            _headers_ = {}
         else:
-            if app.body:
-                await app.protocol.push(app.body)
+            _headers_ = headers
 
-                await app.protocol.fetch_headers()
+        transport, protocol = await loop.create_connection(
+            lambda: BlazeioClientProtocol(),
+            host=host, port=port, ssl=app.ssl_context if port == 443 else None
+        )
 
-        return app.protocol
+        await protocol.push(f"{method} {path} HTTP/1.1\r\n")
 
-    async def url_to_host(app):
+        if not "Host" in _headers_:
+            _headers_["Host"] = host
+        
+        if body and not "Content-Length" in _headers_:
+            _headers_["Content-Length"] = len(body)
+            
+        for key, val in _headers_.items():
+            await protocol.push(f"{key}: {val}\r\n".encode())
+
+        await protocol.push("\r\n".encode())
+        
+        if connect_only: return protocol
+
+        if method in ["GET", "HEAD", "OPTIONS"]:
+            await protocol.fetch_headers()
+        else:
+            if body:
+                await protocol.push(body)
+                await protocol.fetch_headers()
+
+        return protocol
+
+    async def url_to_host(app, url: str):
         sepr = "://"
         sepr2 = ":"
         sepr3 = "/"
+        host = url
+        port = None
         
-        if "https" in app.host:
-            if app.port == 80: app.port = 443
-
-        if sepr in app.host:
-            app.host = app.host.split(sepr)[-1]
-
-        if sepr2 in app.host:
-            app.host, app.port = app.host.split(sepr2)
-            if sepr3 in app.port:
-                app.port = app.port.split(sepr3)
-                try:app.port = int(app.port[0])
-                except: pass
-        
-        if sepr3 in app.host:
-            app.host = app.host.split(sepr3)[0]
-        
-        if sepr3 in app.url and len((_ := app.url.split(sepr3))) >= 3:
-            app.path = sepr3 + sepr3.join(_[3:])
+        if "https" in host:
+            port = 443
         else:
-            app.path = sepr3
+            port = 80
 
-    async def __aexit__(app, exc_type, exc_val, exc_tb):
+        if sepr in host:
+            host = host.split(sepr)[-1]
+
+        if sepr2 in host:
+            _ = host.split(sepr2)
+            host, port_ = _[0], _[1]
+
+            if sepr3 in port_:
+                port_ = port_.split(sepr3)
+            
+            if 1:
+                try:
+                    port = int(port_[0])
+                except Exception as e:
+                    pass
+                
+                
+        
+        if sepr3 in host:
+            host = host.split(sepr3)[0]
+        
+        if sepr3 in url and len((_ := url.split(sepr3))) >= 3:
+            path = sepr3 + sepr3.join(_[3:])
+        else:
+            path = sepr3
+        
+        return host, port, path
+
+    async def close(app):
+        return
         try:
-            app.protocol.transport.close()
+            while app.protocols:
+                prot = app.protocols.popleft()
+                prot.transport.close()
+                
         except SSLError as e:
             return
         except Exception as e:

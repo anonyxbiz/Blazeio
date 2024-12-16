@@ -65,7 +65,7 @@ class BlazeioPayload(asyncProtocol):
             app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
-            
+        
     async def control(app, duration=0):
         await sleep(duration)
     
@@ -99,32 +99,6 @@ class BlazeioPayload(asyncProtocol):
 
         await app.write(b"\r\n")
         
-
-class BlazeioProtocol(asyncProtocol):
-    def __init__(app, on_client_connected):
-        app.r = BlazeioPayload(
-            on_client_connected = on_client_connected
-        )
-
-    def connection_made(app, transport):
-        loop.create_task(app.r.transporter(transport))
-
-    def data_received(app, chunk):
-        app.r.__stream__.append(chunk)
-
-    def connection_lost(app, exc):
-        app.r.__is_alive__ = False
-
-    def eof_received(app):
-        app.r.__exploited__ = True
-        return True
-    
-    def pause_writing(app):
-        app.r.__is_buffer_over_high_watermark__ = True
-
-    def resume_writing(app):
-        app.r.__is_buffer_over_high_watermark__ = False
-
 class App:
     event_loop = loop
     REQUEST_COUNT = 0
@@ -245,7 +219,9 @@ class App:
                 print(e)
 
     async def serve_route(app, r):
-        await Request.set_data(r)
+        # Make it wait explicitly
+        wait = await Request.set_data(r)
+
         await Log.info(r,
             "=> %s@ %s" % (
                 r.method,
@@ -255,26 +231,24 @@ class App:
         
         # Handle before_middleware
         if before_middleware := app.declared_routes.get("before_middleware"):
-            await before_middleware.get("func")(r)
+            wait = await before_middleware.get("func")(r)
 
         if route := app.declared_routes.get(r.path):
             await route.get("func")(r)
 
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
-            await handle_all_middleware.get("func")(r)
+            wait = await handle_all_middleware.get("func")(r)
         else:
             raise Abort("Not Found", 404)
             
         if after_middleware := app.declared_routes.get("after_middleware"):
-            await after_middleware.get("func")(r)
+            wait = await after_middleware.get("func")(r)
 
     async def handle_client(app, r):
         try:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
-            
             await app.serve_route(r)
-
         except (Err, ServerGotInTrouble) as e:
             pass
         

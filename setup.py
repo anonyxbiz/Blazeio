@@ -1,12 +1,12 @@
 from setuptools import setup, find_packages
 from datetime import datetime as dt
-from os import environ
+from os import environ, getcwd
 
 data_path = ""
 
 if 1:
     with open(f"{data_path}requirements.txt") as f:
-        requirements = f.read().splitlines()
+        requirements = []#f.read().splitlines()
     
     with open(f"{data_path}README.md", encoding="utf-8") as f:
         long_description = f.read()
@@ -17,7 +17,7 @@ else:
 if environ.get("local"):
     version = "0.0.%s" % str(dt.now().timestamp())
 else:
-    version = "0.0.0.9"
+    version = "0.0.0.11"
     
 setup(
     name="Blazeio",

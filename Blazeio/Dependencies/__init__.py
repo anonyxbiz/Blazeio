@@ -4,15 +4,26 @@ from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loo
 from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
 
-from ujson import dumps, loads, JSONDecodeError
+while True:
+    try:
+        from ujson import dumps, loads, JSONDecodeError
+        from aiofiles import open as iopen
+        from aiologger import Logger
+        break
+    except ModuleNotFoundError as e:
+        print(e)
+        print("Installing Dependencies...")
+        from os import system
+        system("pip install ujson aiofiles aiologger")
+    except Exception as e:
+        print(e)
+        break
 
 from sys import exit
 from datetime import datetime as dt
 from inspect import signature as sig, stack
 from typing import Callable
 
-"""File serving"""
-from aiofiles import open as iopen
 from mimetypes import guess_type
 from os.path import basename, getsize, exists, join
 from gzip import compress as gzip_compress

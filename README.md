@@ -59,37 +59,7 @@ The **Request** module provides utilities to work with incoming HTTP requests:
 
 ### Static File Handling
 
-- **StaticFileHandler**: Serves files directly from the server.
----
-
-### **IN_MEMORY_STATIC_CACHE**
-
-`IN_MEMORY_STATIC_CACHE` is a caching utility designed for storing and efficiently serving static files directly from memory in the Blazeio framework. This module allows you to pre-load static files into memory to improve performance by avoiding the need to read from the disk on each request.
-
-#### Key Features:
-- **In-memory Storage**: Static files are cached in memory, offering faster access and reduced disk I/O during requests.
-- **Customizable Cache**: You can define which static files to cache, and even override cache entries on demand.
-- **Efficient Handling**: Optimized for performance, with support for chunked file serving and configurable cache size for better resource management.
-
-#### Example Usage:
-
-```python
-app.static = await io.IN_MEMORY_STATIC_CACHE.init(
-    run_time_cache={
-        "/page/index.html": {"route": "/"}
-    },
-    chunk_size=1024,  # Specify the chunk size for file delivery
-    home_dir=path.abspath(path.dirname(__file__))  # Define the base directory for static files
-)
-```
-
-In this example, the static file at `/page/index.html` is cached and mapped to the root (`/`) route for faster delivery.
-
----
-
-This module is ideal for applications that require fast delivery of static content, such as websites serving assets like HTML, CSS, and JavaScript files, especially when theyre small files that are frequently accessed.
-
----
+- **Simpleserve**: Serves files directly from the server. This module is ideal for applications that require fast delivery of static content, such as websites serving assets like HTML, CSS, and JavaScript files, especially when theyre small files that are frequently accessed.
 
 ## Middleware Usage
 
@@ -137,24 +107,25 @@ Blazeio includes several useful tools to make handling requests easier:
 
 - **Request.stream_chunks**: Stream request data in chunks, ideal for large file uploads or slow connections.
     ```python
-    async for chunk in request.stream_chunks():
+    async for chunk in Blazeio.Request.stream_chunks(r):
         # Process each chunk
     ```
 
 - **Request.get_json**: Retrieve JSON data from the request body:
     ```python
-    json_data = await request.get_json()
+    json_data = await Blazeio.Request.get_json(r)
     ```
 
-- **Request.get_form_data**: Retrieve form data, including file uploads:
+- **Request.get_form_data**: Retrieve form data, including file upload form data:
     ```python
-    form_data = await request.get_form_data()
+    form_data = await Blazeio.Request.get_form_data(r)
     ```
 
 - **Request.get_upload**: Stream file uploads in chunks:
     ```python
-    async for file_chunk in request.get_upload():
-        # Process file chunk
+    async for file_chunk in Blazeio.Request.get_upload(r):
+        if file_chunk is not None:
+            # Process file chunk
     ```
 
 ---
@@ -162,7 +133,7 @@ Blazeio includes several useful tools to make handling requests easier:
 # Blazeio Quick Start Guide
 
 ## Requirements
-Python 3.7+ and aiofiles.
+Python 3.7+, aiologger, aiofiles.
 
 ```bash
 pip install Blazeio
