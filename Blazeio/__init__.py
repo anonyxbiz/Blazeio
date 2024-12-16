@@ -14,7 +14,6 @@ class BlazeioPayload(asyncProtocol):
         app.__exploited__ = False
         app.__is_buffer_over_high_watermark__ = False
         app.__buff__ = bytearray()
-        app.__cap_buff__ = False
 
     def connection_made(app, transport):
         loop.create_task(app.transporter(transport))
@@ -43,12 +42,13 @@ class BlazeioPayload(asyncProtocol):
 
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
+
                 while app.__stream__:
                     yield app.__stream__.popleft()
-                    await sleep(0)
+                    # await sleep(0)
 
                 if not app.transport.is_reading(): app.transport.resume_reading()
-                
+
             else:
                 if app.__exploited__: break
                 if not app.transport.is_reading(): app.transport.resume_reading()
@@ -98,7 +98,32 @@ class BlazeioPayload(asyncProtocol):
                 )
 
         await app.write(b"\r\n")
+    
+    async def pull_multipart(app, timeout=1):
+        signal = b'------WebKitFormBoundary'
+        yield b'' + app.__buff__
         
+        time_without_chunks = perf_counter()
+        give_up_on_wait = False
+
+        timeout = float(timeout)
+        
+        async for chunk in app.request():
+            if chunk:
+                if signal in chunk:
+                    yield chunk.split(signal)[0]
+                    break
+                else:
+                    yield chunk
+                
+                time_without_chunks = perf_counter()
+                
+                if give_up_on_wait: give_up_on_wait = False
+            else:
+                if perf_counter() - time_without_chunks > timeout:
+                    if give_up_on_wait: break
+                    else: give_up_on_wait = True
+
 class App:
     event_loop = loop
     REQUEST_COUNT = 0
