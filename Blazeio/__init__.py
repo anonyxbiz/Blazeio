@@ -16,6 +16,8 @@ class BlazeioPayload(asyncProtocol):
         app.__buff__ = bytearray()
 
     def connection_made(app, transport):
+        if transport.is_reading(): transport.pause_reading()
+
         loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
@@ -111,7 +113,7 @@ class BlazeioPayload(asyncProtocol):
                 else:
                     yield chunk
             else:
-                pass
+                yield chunk
 
 class App:
     event_loop = loop
