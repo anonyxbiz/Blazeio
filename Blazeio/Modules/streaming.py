@@ -18,8 +18,10 @@ class Stream:
 class Deliver:
     @classmethod
     async def json(app, r, data, _dump=True, _encode=True, status=206, headers={}, reason="Partial Content", indent=4):
-        headers["Content-Type"] = "application/json"
-        await Stream.init(r, headers, status=status, reason=reason)
+        headers_ = dict(headers)
+        
+        headers_["Content-Type"] = "application/json"
+        await r.prepare(headers_, status=status, reason=reason)
 
         if isinstance(data, (dict,)):
             data = dumps(data, indent=indent)
@@ -30,14 +32,11 @@ class Deliver:
         await r.write(data)
 
     @classmethod
-    async def prepare_text(app, r, headers={}, **kwargs):
-        headers["Content-Type"] = "text/plain"
-        await Stream.init(r, headers, **kwargs)
-
-    @classmethod
     async def text(app, r, data, status=206, headers={}, reason="Partial Content"):
+        headers = dict(headers)
+
         headers["Content-Type"] = "text/plain"
-        await Stream.init(r, headers, status=status, reason=reason)
+        await r.prepare(headers, status=status, reason=reason)
 
         if not isinstance(data, (bytes, bytearray)):
             data = data.encode()
@@ -45,29 +44,29 @@ class Deliver:
         await r.write(data)
 
     @classmethod
-    async def redirect(app, r, path, status=302, headers={}):
+    async def redirect(app, r, path, status=302, headers={}, reason="Redirect"):
         headers["Location"] = path
-        await Stream.init(r, headers, status=status)
+        await r.prepare(headers, status=status)
 
     @classmethod
-    async def HTTP_301(app, r, path, status=301, headers={}):
+    async def HTTP_301(app, r, path, status=301, headers={}, reason="Redirect"):
         headers["Location"] = path
-        await Stream.init(r, headers, status=status)
+        await r.prepare(headers, status=status, reason=reason)
 
     @classmethod
-    async def HTTP_302(app, r, path, status=302, headers={}):
+    async def HTTP_302(app, r, path, status=302, headers={}, reason="Redirect"):
         headers["Location"] = path
-        await Stream.init(r, headers, status=status)
+        await r.prepare(headers, status=status, reason=reason)
 
     @classmethod
-    async def HTTP_307(app, r, path, status=307, headers={}):
+    async def HTTP_307(app, r, path, status=307, headers={}, reason="Redirect"):
         headers["Location"] = path
-        await Stream.init(r, headers, status=status)
+        await r.prepare(headers, status=status, reason=reason)
 
     @classmethod
-    async def HTTP_308(app, r, path, status=308, headers={}):
+    async def HTTP_308(app, r, path, status=308, headers={}, reason="Redirect"):
         headers["Location"] = path
-        await Stream.init(r, headers, status=status)
+        await r.prepare(headers, status=status, reason=reason)
 
 class Abort(Exception):
     def __init__(app, message="Something went wrong", status=403, headers={}, **kwargs):
