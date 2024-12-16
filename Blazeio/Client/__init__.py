@@ -57,7 +57,7 @@ class BlazeioClientProtocol(Protocol):
                 while app.buffer:
                     buff = app.buffer.popleft()
                     yield buff
-                    # await sleep(0)
+                    await sleep(0)
 
                 if endl in buff: break
                 
