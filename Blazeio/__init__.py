@@ -103,11 +103,6 @@ class BlazeioPayload(asyncProtocol):
         signal = b'------WebKitFormBoundary'
         yield b'' + app.__buff__
         
-        time_without_chunks = perf_counter()
-        give_up_on_wait = False
-
-        timeout = float(timeout)
-        
         async for chunk in app.request():
             if chunk:
                 if signal in chunk:
@@ -115,14 +110,8 @@ class BlazeioPayload(asyncProtocol):
                     break
                 else:
                     yield chunk
-                
-                time_without_chunks = perf_counter()
-                
-                if give_up_on_wait: give_up_on_wait = False
             else:
-                if perf_counter() - time_without_chunks > timeout:
-                    if give_up_on_wait: break
-                    else: give_up_on_wait = True
+                pass
 
 class App:
     event_loop = loop
