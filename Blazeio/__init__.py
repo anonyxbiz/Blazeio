@@ -45,7 +45,7 @@ class BlazeioPayload(asyncProtocol):
 
                 while app.__stream__:
                     yield app.__stream__.popleft()
-                    # await sleep(0)
+                    await sleep(0)
 
                 if not app.transport.is_reading(): app.transport.resume_reading()
 
