@@ -39,18 +39,10 @@ class BlazeioPayload(asyncProtocol):
     async def request(app):
         while True:
             await sleep(0)
-            if not app.__is_alive__:
-                raise Err("Client has disconnected")
-
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
 
-                while app.__stream__:
-                    yield app.__stream__.popleft()
-                    await sleep(0)
-
-                if not app.transport.is_reading(): app.transport.resume_reading()
-
+                yield app.__stream__.popleft()
             else:
                 if app.__exploited__: break
                 if not app.transport.is_reading(): app.transport.resume_reading()
@@ -58,10 +50,11 @@ class BlazeioPayload(asyncProtocol):
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_buffer_over_high_watermark__:
+            
             while app.__is_buffer_over_high_watermark__:
                 await sleep(0)
                 if not app.__is_alive__:
-                    raise Err("Client has disconnected.")
+                    return
 
         if app.__is_alive__:
             app.transport.write(data)
