@@ -39,7 +39,7 @@ class Simpleserve:
             
         if range_header:
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (start, end, app.file_size)
-        
+
         app.start, app.end, = start, end
         
         await app.r.prepare(app.headers)

@@ -14,6 +14,8 @@ class BlazeioPayload(asyncProtocol):
         app.__exploited__ = False
         app.__is_buffer_over_high_watermark__ = False
         app.__buff__ = bytearray()
+        app.method = None
+        app.path = "handle_all_middleware"
 
     def connection_made(app, transport):
         if transport.is_reading(): transport.pause_reading()
@@ -96,12 +98,17 @@ class BlazeioPayload(asyncProtocol):
     
     async def pull_multipart(app, timeout=1):
         signal = b'------WebKitFormBoundary'
+        
+        # This is important, some systems will crash if they try writing bytearray to disk, so convert bytearray to bytes with b'' + bytearray
         yield b'' + app.__buff__
         
         async for chunk in app.request():
             if chunk:
                 if signal in chunk:
-                    yield chunk.split(signal)[0]
+                    if (idx := chunk.rfind(signal)) != -1:
+                        chunk = chunk[:idx]
+                        
+                    yield chunk
                     break
                 else:
                     yield chunk
@@ -228,8 +235,7 @@ class App:
                 print(e)
 
     async def serve_route(app, r):
-        # Make it wait explicitly
-        wait = await Request.set_data(r)
+        await Request.set_data(r)
 
         await Log.info(r,
             "=> %s@ %s" % (
@@ -237,11 +243,11 @@ class App:
                 r.path
             )
         )
-        
+
         # Handle before_middleware
         if before_middleware := app.declared_routes.get("before_middleware"):
             wait = await before_middleware.get("func")(r)
-
+        
         if route := app.declared_routes.get(r.path):
             await route.get("func")(r)
 

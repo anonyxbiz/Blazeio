@@ -106,49 +106,60 @@ class Request:
 
     @classmethod
     async def set_method(app, r, chunk):
-        r.__parts__ = chunk.split(b' ')
-        
-        r.method = r.__parts__[0].decode("utf-8")
-        r.tail = r.__parts__[1].decode("utf-8")
-        
-        r.path = r.tail.split('?')[0]
+        if (idx := chunk.find(b' ')) != -1:
+            r.method = chunk[:idx].decode("utf-8")
 
-        await app.get_headers(r)
+            chunk = chunk[idx+1:]
+            if (idx := chunk.find(b' ')) != -1:
+                r.tail = chunk[:idx].decode("utf-8")
+                
+                if (idx2 := r.tail.find('?')) != -1:
+                    r.path = r.tail[:idx2]
+                else:
+                    r.path = r.tail
+
+                await app.get_headers(r, chunk)
+                
+                # chunk = chunk[idx+1:]
+
         return r
 
     @classmethod
-    async def get_headers(app, r, mutate=False):
-        other_parts = b' '.join(r.__parts__[2:]).decode("utf-8")
+    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = '\r\n', mutate=False):
+        chunk = chunk.decode("utf-8")
 
-        if '\r\n' in other_parts:
-            sepr = ': '
+        if h_s in chunk:
             headers = defaultdict(str)
-            for header in other_parts.split('\r\n'):
-                await sleep(0)
-                if sepr in header:
-                    key, val = header.split(sepr, 1)
-                    headers[key.strip()] = val.strip()
             
+            for header in chunk.split(h_s):
+                await sleep(0)
+                
+                if (idx := header.find(header_key_val)) != -1:
+                    headers[header[:idx].strip()] = header[idx:].strip()
+
             r.headers = dict(headers)
-            if mutate: r.headers = MappingProxyType(r.headers)
+            
+            if mutate:
+                r.headers = MappingProxyType(r.headers)
         else:
             return
 
     @classmethod
-    async def set_data(app, r):
-        sig = b"\r\n\r\n"
-        count = 0
-
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 1024):
+        
         async for chunk in r.request():
-            if chunk:
-                r.__buff__.extend(chunk)
+            if chunk: r.__buff__.extend(chunk)
 
-            if sig in r.__buff__:
-                _ = r.__buff__.split(sig)
-                first, remaining = _[0], sig.join(_[1:])
-                r.__buff__ = remaining
+            if (idx := r.__buff__.find(sig)) != -1:
+                first = r.__buff__[:idx]
+                
+                r.__buff__ = r.__buff__[idx + len(sig):]
                 
                 await app.set_method(r, first)
+                
+                break
+            
+            elif len(r.__buff__) >= max_buff_size:
                 break
 
         return r
@@ -161,15 +172,13 @@ class Request:
         async for chunk in app.stream_chunks(r):
             if chunk is not None:
                 form_data.extend(chunk)
-                if signal3 in form_data:
-                    break
                 
-        form_elements = form_data.split(signal3)
+                if (idx := form_data.rfind(signal3)) != -1:
+                    break
 
-        r.__buff__ = form_elements.pop()
+        form_elements = form_data[:idx]
+        r.__buff__ = form_data[idx + len(signal3):]
 
-        form_elements = signal3.join(form_elements)
-        
         json_data = defaultdict(str)
         
         objs = (b'form-data; name="', b'"\r\n\r\n', b'\r\n')
