@@ -1,5 +1,5 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run, create_subprocess_shell
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run, create_subprocess_shell, set_event_loop
 
 from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
@@ -40,7 +40,10 @@ try:
 except:
     pass
 
-logger = Logger.with_default_handlers(name='BlazeioLogger')
+try:
+    logger = Logger.with_default_handlers(name='BlazeioLogger')
+except Exception as e:
+    print(e)
 
 class Err(Exception):
     def __init__(app, message=None):
@@ -91,52 +94,54 @@ class Log:
 
     @classmethod
     async def __log__(app, r=None, message=None, logger_=logger.info):
-
-        log_level = logger_.__name__.split('.')[-1]
-        
-        color = app.colors.get(log_level, app.colors['reset'])
-
-        if "BlazeioPayload" in str(r):
-            message = str(message).strip()
-
-            if message in app.known_exceptions:
-                return
-
-            message = f"{color}{message}{app.colors['reset']}"
-
-            await logger_(
-                "%s•%s | [%s:%s] %s" % (
-                    r.identifier,
-                    str(dt.now()),
-                    r.ip_host,
-                    str(r.ip_port),
-                    message
-                )
-            )
-        else:
-            _ = str(r).strip()
-            if message:
-                _ += message
-                
-            message = _
-
-            if message in app.known_exceptions:
-                return
-
-            msg = message
-            message = f"{color}{message}{app.colors['reset']}"
-
-            if msg == "":
-                await logger_(message)
-                return
+        try:
+            log_level = logger_.__name__.split('.')[-1]
             
-            await logger_(
-                "%s•%s | %s" % (
-                    "",
-                    str(dt.now()),
-                    message
+            color = app.colors.get(log_level, app.colors['reset'])
+
+            if "BlazeioPayload" in str(r):
+                message = str(message).strip()
+
+                if message in app.known_exceptions:
+                    return
+
+                message = f"{color}{message}{app.colors['reset']}"
+
+                await logger_(
+                    "%s•%s | [%s:%s] %s" % (
+                        r.identifier,
+                        str(dt.now()),
+                        r.ip_host,
+                        str(r.ip_port),
+                        message
+                    )
                 )
-            )
+            else:
+                _ = str(r).strip()
+                if message:
+                    _ += message
+                    
+                message = _
+
+                if message in app.known_exceptions:
+                    return
+
+                msg = message
+                message = f"{color}{message}{app.colors['reset']}"
+
+                if msg == "":
+                    await logger_(message)
+                    return
+                
+                await logger_(
+                    "%s•%s | %s" % (
+                        "",
+                        str(dt.now()),
+                        message
+                    )
+                )
+        except Exception as e:
+            pass
 
     @classmethod
     async def info(app, *args): await app.__log__(*args, logger_=logger.info)
@@ -221,5 +226,9 @@ class VersionControlla:
                 break
 
 
-p = Log.info
-loop.run_until_complete(Log.debug(""))
+try:
+    p = Log.info
+    loop.run_until_complete(Log.debug(""))
+except Exception as e:
+    print("Exception")
+    print(e)

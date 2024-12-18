@@ -146,47 +146,39 @@ class Request:
 
     @classmethod
     async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 1024):
-        
         async for chunk in r.request():
             if chunk: r.__buff__.extend(chunk)
 
-            if (idx := r.__buff__.find(sig)) != -1:
-                first = r.__buff__[:idx]
-                
-                r.__buff__ = r.__buff__[idx + len(sig):]
-                
-                await app.set_method(r, first)
-                
+            if sig in r.__buff__:
+                idx = r.__buff__.find(sig)
+                await app.set_method(r, r.__buff__[:idx])
+                r.__buff__ = r.__buff__[idx + len(sig):]                
                 break
-            
             elif len(r.__buff__) >= max_buff_size:
                 break
 
         return r
 
     @classmethod
-    async def get_form_data(app, r, decode=True):
+    async def get_form_data(app, r):
+        start, middle, end, filename_begin, filename_end, content_type = b'form-data; name="', b'"\r\n\r\n', b'\r\n', b'file"; filename="', b'"\r\n', b'Content-Type: '
+
         signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
         idx, form_data = 0, bytearray()
 
         async for chunk in app.stream_chunks(r):
             if chunk is not None:
                 form_data.extend(chunk)
-                
-                if (idx := form_data.rfind(signal3)) != -1:
+
+                if signal3 in form_data:
+                    idx = form_data.rfind(signal3)
+                    r.__buff__ = form_data[idx + len(signal3):]
                     break
 
         form_elements = form_data[:idx]
-        r.__buff__ = form_data[idx + len(signal3):]
-
         json_data = defaultdict(str)
-        
-        objs = (b'form-data; name="', b'"\r\n\r\n', b'\r\n')
-        
-        start, middle, end, filename_begin, filename_end, content_type = objs[0], objs[1], objs[2], b'file"; filename="', b'"\r\n', b'Content-Type: '
 
         for element in form_elements.split(signal):
-            await sleep(0)
             if start in element and end in element:
                 _ = element.split(start).pop().split(middle)
                 
@@ -194,15 +186,12 @@ class Request:
 
                 if filename_begin in key and filename_end in key and content_type in key:
                     fname, _type = key.split(filename_begin).pop().split(filename_end)
-
-                    json_data["filename"] = fname if not decode else fname.decode("utf-8")
-                    json_data["Content-Type"] = (_type := _type.split(content_type).pop()) if not decode else _type.split(content_type).pop().decode("utf-8")
-                    
+                    json_data["filename"] = fname.decode("utf-8")
+                    json_data["Content-Type"] = (_type := _type.split(content_type).pop().decode("utf-8"))
                 else:
                     value = _[-1]
                     if end in value: value = value.split(end).pop(0)
-                    
-                    json_data[key if not decode else key.decode("utf-8")] = value if not decode else value.decode("utf-8")
+                    json_data[key.decode("utf-8")] = value.decode("utf-8")
 
         json_data = dict(json_data)
         return json_data

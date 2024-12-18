@@ -74,8 +74,12 @@ class BlazeioPayload(asyncProtocol):
         app.__perf_counter__ = perf_counter()
         app.transport = transport
         app.__is_alive__ = True
+        peername = app.transport.get_extra_info('peername')
 
-        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
+        if peername:
+            app.ip_host, app.ip_port = peername[0], peername[-1]
+        else:
+            app.ip_host, app.ip_port = None, None
 
         await app.on_client_connected(app)
         
