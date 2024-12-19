@@ -117,7 +117,7 @@ class BlazeioPayload(asyncProtocol):
         async for chunk in app.request():
             if chunk:
                 if (idx := chunk.find(signal2)) != -1:
-                    yield chunk#[:idx]
+                    yield chunk[:idx]
                     break
                 yield chunk
             else:

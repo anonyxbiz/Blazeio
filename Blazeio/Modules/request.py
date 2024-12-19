@@ -113,12 +113,14 @@ class Request:
         return await app.param_format(param)
 
     @classmethod
-    async def set_method(app, r, chunk, sepr1 = b' '):
+    async def set_method(app, r, chunk, sepr1 = ' '):
+        chunk = chunk.decode("utf-8")
+
         if (idx := chunk.find(sepr1)) != -1:
-            r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]
+            r.method, chunk = chunk[:idx], chunk[idx + 1:]
 
             if (idx1 := chunk.find(sepr1)) != -1:
-                r.tail, chunk = chunk[:idx1].decode("utf-8"), chunk[idx1 + 1:]
+                r.tail, chunk = chunk[:idx1], chunk[idx1 + 1:]
                 if (idx2 := r.tail.find('?')) != -1:
                     r.path = r.tail[:idx2]
                 else:
@@ -129,16 +131,16 @@ class Request:
         return r
 
     @classmethod
-    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', mutate=False):
+    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = '\r\n', mutate=False):
         r.headers = defaultdict(str)
         idx = 0
 
         while True:
             await sleep(0)
             if (idx := chunk.find(h_s)) != -1:
-                header, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 2:]
+                header, chunk = chunk[:idx], chunk[idx + 2:]
             else:
-                header = chunk.decode("utf-8")
+                header = chunk
 
             if (sep_idx := header.find(header_key_val)) != -1:
                 key = header[:sep_idx]
@@ -154,16 +156,16 @@ class Request:
             r.headers = MappingProxyType(r.headers)
             
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 65536):
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 10240):
         r.__buff__ = bytearray()
-
+        
         async for chunk in r.request():
             if chunk: r.__buff__.extend(chunk)
 
             if (idx := r.__buff__.find(sig)) != -1:
-                await app.set_method(r, r.__buff__[:idx])
+                data, r.__buff__ = r.__buff__[:idx], r.__buff__[idx + 4:]
                 
-                r.__buff__ = r.__buff__[idx + len(sig):]                
+                await app.set_method(r, data)
                 break
 
             elif len(r.__buff__) >= max_buff_size: break
