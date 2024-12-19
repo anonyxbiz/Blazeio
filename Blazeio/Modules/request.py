@@ -38,22 +38,24 @@ class Request:
             yield chunk
 
     @classmethod
-    async def get_json(app, r):
+    async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
         temp = bytearray()
         async for chunk in app.stream_chunks(r):
-            if not chunk: chunk = b''
-            else: temp.extend(chunk)
+            if chunk:
+                temp.extend(chunk)
 
-            if (sepr := b'\r\n\r\n') in temp:
-                temp = sepr.join(temp.split(sepr)[1:])
+            if (idx := temp.find(sepr)) != -1:
+                temp = temp[idx + len(sepr):]
 
-            if b"{" in temp and b"}" in temp:
+            if sepr2 in temp and sepr3 in temp:
                 try:
-                    start = temp.find(b"{")
-                    end = temp.rfind(b"}") + 1
+                    start = temp.find(sepr2)
+                    
+                    end = temp.rfind(sepr3) + 1
+                    
                     json_bytes = temp[start:end]
 
-                    json_data = loads(json_bytes.decode())
+                    json_data = loads(json_bytes.decode("utf-8"))
                     return json_data
                 except JSONDecodeError:
                     raise Err("Malformed packets are not valid JSON.")
@@ -73,21 +75,27 @@ class Request:
         return param
  
     @classmethod
-    async def get_params(app, r):
+    async def get_params(app, r, q = "?", o = "&", y = "="):
         temp = defaultdict(str)
+        
+        if (idx0 := r.tail.find(q)) == -1: return dict(temp)
 
-        if (q := "?") in r.tail:
-            _ = r.tail.split(q)
+        params = r.tail[idx0 + 1:]
+        idx = 0
+        
+        while True:
+            await sleep(0)
+            if (idx := params.find(o)) != -1:
+                param, params = params[:idx], params[idx + 1:]
+            else:
+                param = params
+            
+            if (idx2 := param.find(y)) != -1:
+                key, value = param[:idx2], param[idx2 + 1:]
+                temp[key] = value
 
-            params = "".join(_[1:])
-            if not (o := "&") in params:
-                params += "&"
-
-            for param in params.split(o):
-                await sleep(0)
-                if (y := "=" ) in param:
-                    _key, value = param.split(y)
-                    temp[_key] = await app.param_format(value)
+            if idx == -1 or idx2 == -1:
+                break
 
         return dict(temp)
 
@@ -105,80 +113,86 @@ class Request:
         return await app.param_format(param)
 
     @classmethod
-    async def set_method(app, r, chunk):
-        if (idx := chunk.find(b' ')) != -1:
-            r.method = chunk[:idx].decode("utf-8")
+    async def set_method(app, r, chunk, sepr1 = b' '):
+        if (idx := chunk.find(sepr1)) != -1:
+            r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]
 
-            chunk = chunk[idx+1:]
-            if (idx := chunk.find(b' ')) != -1:
-                r.tail = chunk[:idx].decode("utf-8")
-                
+            if (idx1 := chunk.find(sepr1)) != -1:
+                r.tail, chunk = chunk[:idx1].decode("utf-8"), chunk[idx1 + 1:]
                 if (idx2 := r.tail.find('?')) != -1:
                     r.path = r.tail[:idx2]
                 else:
                     r.path = r.tail
 
                 await app.get_headers(r, chunk)
-                
-                # chunk = chunk[idx+1:]
 
         return r
 
     @classmethod
-    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = '\r\n', mutate=False):
-        chunk = chunk.decode("utf-8")
+    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', mutate=False):
+        r.headers = defaultdict(str)
+        idx = 0
 
-        if h_s in chunk:
-            headers = defaultdict(str)
-            
-            for header in chunk.split(h_s):
-                await sleep(0)
+        while True:
+            await sleep(0)
+            if (idx := chunk.find(h_s)) != -1:
+                header, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 2:]
+            else:
+                header = chunk.decode("utf-8")
+
+            if (sep_idx := header.find(header_key_val)) != -1:
+                key = header[:sep_idx]
+                val = header[sep_idx + 2:]
                 
-                if (idx := header.find(header_key_val)) != -1:
-                    headers[header[:idx].strip()] = header[idx:].strip()
-
-            r.headers = dict(headers)
+                r.headers[key] = val
             
-            if mutate:
-                r.headers = MappingProxyType(r.headers)
-        else:
-            return
+            if idx == -1: break
 
+        r.headers = dict(r.headers)
+            
+        if mutate:
+            r.headers = MappingProxyType(r.headers)
+            
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 1024):
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 65536):
+        r.__buff__ = bytearray()
+
         async for chunk in r.request():
             if chunk: r.__buff__.extend(chunk)
 
-            if sig in r.__buff__:
-                idx = r.__buff__.find(sig)
+            if (idx := r.__buff__.find(sig)) != -1:
                 await app.set_method(r, r.__buff__[:idx])
+                
                 r.__buff__ = r.__buff__[idx + len(sig):]                
                 break
-            elif len(r.__buff__) >= max_buff_size:
-                break
+
+            elif len(r.__buff__) >= max_buff_size: break
 
         return r
 
     @classmethod
-    async def get_form_data(app, r):
-        start, middle, end, filename_begin, filename_end, content_type = b'form-data; name="', b'"\r\n\r\n', b'\r\n', b'file"; filename="', b'"\r\n', b'Content-Type: '
-
-        signal, signal3 = b'------WebKitFormBoundary', b'\r\n\r\n'
+    async def get_form_data(app, r, start = b'form-data; name="', middle = b'"\r\n\r\n', end = b'\r\n', filename_begin = b'file"; filename="', filename_end = b'"\r\n', content_type = b'Content-Type: ', signal = b'------WebKitFormBoundary', signal3 = b'\r\n\r\n', multipart_end = b'--\r\n'
+        ):
         idx, form_data = 0, bytearray()
-
+        
         async for chunk in app.stream_chunks(r):
             if chunk is not None:
                 form_data.extend(chunk)
+            
+            if (idx := form_data.rfind(signal3)) != -1:
+                r.__buff__, form_data = form_data[idx + len(signal3):], form_data[:idx]
+                break
 
-                if signal3 in form_data:
-                    idx = form_data.rfind(signal3)
-                    r.__buff__ = form_data[idx + len(signal3):]
-                    break
-
-        form_elements = form_data[:idx]
         json_data = defaultdict(str)
-
-        for element in form_elements.split(signal):
+        
+        while True:
+            await sleep(0)
+            if (dx := form_data.find(signal)) != -1:
+                element, form_data = form_data[:dx], form_data[dx + len(signal):]
+            else:
+                element = form_data
+                
+        #for element in form_data.split(signal):
             if start in element and end in element:
                 _ = element.split(start).pop().split(middle)
                 
@@ -188,11 +202,17 @@ class Request:
                     fname, _type = key.split(filename_begin).pop().split(filename_end)
                     json_data["filename"] = fname.decode("utf-8")
                     json_data["Content-Type"] = (_type := _type.split(content_type).pop().decode("utf-8"))
+                    
+                    if (idx := json_data["Content-Type"].rfind(":")) != -1: json_data["Content-Type"] = json_data["Content-Type"][idx + 1:]
+                    
                 else:
                     value = _[-1]
                     if end in value: value = value.split(end).pop(0)
                     json_data[key.decode("utf-8")] = value.decode("utf-8")
-
+            
+            if dx == -1:
+                break
+            
         json_data = dict(json_data)
         return json_data
 

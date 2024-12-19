@@ -13,9 +13,11 @@ class BlazeioPayload(asyncProtocol):
         app.__is_alive__ = False
         app.__exploited__ = False
         app.__is_buffer_over_high_watermark__ = False
-        app.__buff__ = bytearray()
+        app.__buff__ = None
         app.method = None
+        app.tail = "handle_all_middleware"
         app.path = "handle_all_middleware"
+        app.headers = None
 
     def connection_made(app, transport):
         if transport.is_reading(): transport.pause_reading()
@@ -100,22 +102,24 @@ class BlazeioPayload(asyncProtocol):
 
             await app.write(b"\r\n")
     
-    async def pull_multipart(app, timeout=1):
-        signal = b'------WebKitFormBoundary'
-        
+    async def pull_multipart(app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
+
         # This is important, some systems will crash if they try writing bytearray to disk, so convert bytearray to bytes with b'' + bytearray
-        yield b'' + app.__buff__
-        
+
+        chunk = b'' + app.__buff__
+
+        if (idx := chunk.find(signal1)) != -1:
+            yield chunk[:idx]
+            return
+
+        yield chunk
+
         async for chunk in app.request():
             if chunk:
-                if signal in chunk:
-                    if (idx := chunk.rfind(signal)) != -1:
-                        chunk = chunk[:idx]
-                        
-                    yield chunk
+                if (idx := chunk.find(signal2)) != -1:
+                    yield chunk#[:idx]
                     break
-                else:
-                    yield chunk
+                yield chunk
             else:
                 yield chunk
 

@@ -24,6 +24,7 @@ class BlazeioClientProtocol(Protocol):
         app.transport = None
 
     def connection_made(app, transport):
+        transport.pause_reading()
         app.transport = transport
 
     def data_received(app, data):
@@ -54,10 +55,8 @@ class BlazeioClientProtocol(Protocol):
             if app.buffer:
                 if app.transport.is_reading(): app.transport.pause_reading()
                 
-                while app.buffer:
-                    buff = app.buffer.popleft()
-                    yield buff
-                    await sleep(0)
+                buff = app.buffer.popleft()
+                yield buff
 
                 if endl in buff: break
                 
@@ -70,8 +69,10 @@ class BlazeioClientProtocol(Protocol):
                         break
 
                 if app.__is_connection_lost__: break
-
-                yield None
+                
+                if not app.transport.is_reading(): app.transport.resume_reading()
+                else:
+                    yield None
             
             await sleep(0)
 
@@ -167,9 +168,6 @@ class Session:
 
         if not "Host" in _headers_:
             _headers_["Host"] = host
-        
-        if body and not "Content-Length" in _headers_:
-            _headers_["Content-Length"] = len(body)
             
         for key, val in _headers_.items():
             await protocol.push(f"{key}: {val}\r\n".encode())
