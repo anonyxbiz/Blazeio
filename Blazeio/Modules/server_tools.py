@@ -2,6 +2,8 @@ from ..Dependencies import iopen, guess_type, basename, getsize, exists, Log, to
 from .request import Request
 from .streaming import Abort      
 from aiofiles import open as aiofilesiopen
+from os import stat
+from time import gmtime, strftime
 
 class Simpleserve:
     def __init__(app, r, file: str, CHUNK_SIZE: int = 1024, headers={}, **kwargs):
@@ -11,71 +13,85 @@ class Simpleserve:
             raise Abort("Not Found", 404)
             
         app.ins = None
-        
-    async def __aexit__(app, ext_type, ext, tb):
-        if app.ins is not None: await app.ins.close()
 
+    async def __aexit__(app, ext_type, ext, tb):
+        pass
+            
     async def __aenter__(app):
+        app.file_stats = stat(app.file)
+        app.last_modified = app.file_stats.st_mtime
+        app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
+
+        app.if_modified_since = app.r.headers.get("If-Modified-Since")
+
+        if app.if_modified_since and strptime(app.if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
+            raise Abort("Not Modified", 304)
+
         app.file_size = getsize(app.file)
+
+        app.content_type = guess_type(app.file)[0]
+        app.content_disposition = 'inline; filename="%s"' % basename(app.file)
 
         app.headers.update({
             "Accept-Ranges": "bytes",
-            "Content-Type": guess_type(app.file)[0],
-            "Content-Disposition": f'inline; filename="{basename(app.file)}"'
+            "Content-Type": app.content_type,
+            "Content-Disposition": app.content_disposition,
+            "Last-Modified": app.last_modified_str,
+            "Cache-Control": "public, max-age=3600"
         })
-        
-        if range_header := app.r.headers.get('Range', None):
-            byte_range = range_header.strip().split('=')[1]
-            _ = byte_range.split('-')
-            start = int(_[0])
 
-            if _[-1] == "":
+        if (range_header := app.r.headers.get('Range', None)) and (idx := range_header.rfind('=')) != -1:
+            byte_range = range_header[idx + 1:]
+            
+            _ = byte_range.rfind("-")
+
+            start = int(byte_range[:_])
+
+            if byte_range[_ + 1:] == "":
                 end = app.file_size - 1
             else:
-                end = int(_[-1])
-            
+                end = int(byte_range[_ + 1:])
+
+            app.headers["Content-Range"] = "bytes %s-%s/%s" % (start, end, app.file_size)
         else:
             start, end = 0, app.file_size
-            
-        if range_header:
-            app.headers["Content-Range"] = "bytes %s-%s/%s" % (start, end, app.file_size)
 
         app.start, app.end, = start, end
         
         await app.r.prepare(app.headers)
 
         return app
-        
+
     async def push(app):
-        app.ins = await aiofilesiopen(app.file, "rb")
-
-        await app.ins.seek(app.start)
-        while True:
-            if not (chunk := await app.ins.read(app.CHUNK_SIZE)): break
-
-            else: app.start += len(chunk)
-                    
-            await app.r.write(chunk)
+        async with aiofilesiopen(app.file, "rb") as f:
+            await f.seek(app.start)
             
-            if app.start >= app.end: break
-            
-            else: await app.r.control()
+            while True:
+                if not (chunk := await f.read(app.CHUNK_SIZE)): break
+    
+                else: app.start += len(chunk)
+                        
+                await app.r.write(chunk)
+                
+                if app.start >= app.end:
+                    break
+                
+                await app.r.control()
 
 
     async def pull(app):
-        app.ins = await aiofilesiopen(app.file, "rb")
-
-        await app.ins.seek(app.start)
-        while True:
-            if not (chunk := await app.ins.read(app.CHUNK_SIZE)): break
-
-            else: app.start += len(chunk)
-                    
-            yield chunk
-            
-            if app.start >= app.end: break
-            
-            else: await app.r.control()
+        async with aiofilesiopen(app.file, "rb") as f:
+            await f.seek(app.start)
+            while True:
+                if not (chunk := await f.read(app.CHUNK_SIZE)): break
+    
+                else: app.start += len(chunk)
+                        
+                yield chunk
+                
+                if app.start >= app.end: break
+                
+                else: await app.r.control()
 
 if __name__ == "__main__":
     pass
