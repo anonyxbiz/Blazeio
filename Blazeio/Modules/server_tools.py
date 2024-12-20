@@ -12,7 +12,7 @@ class Simpleserve:
     }
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
-        if not exists(file): raise Abort("Not Found", 404)
+        if not exists(file): raise Abort(status = 404, reason = "Not Found")
 
         app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
 

@@ -13,17 +13,16 @@ class BlazeioPayload(asyncProtocol):
         app.__buff__ = None
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
-        app.__is_alive__ = False
+        app.__is_alive__ = True
         app.__is_prepared__ = False
     
         app.method = None
         app.tail = "handle_all_middleware"
         app.path = "handle_all_middleware"
         app.headers = None
+        app.ip_host, app.ip_port = None, None
 
     def connection_made(app, transport):
-        if transport.is_reading(): transport.pause_reading()
-
         loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
@@ -44,7 +43,6 @@ class BlazeioPayload(asyncProtocol):
 
     async def request(app):
         while True:
-            await sleep(0)
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
 
@@ -52,7 +50,10 @@ class BlazeioPayload(asyncProtocol):
             else:
                 if app.__exploited__: break
                 if not app.transport.is_reading(): app.transport.resume_reading()
-                yield None
+                else:
+                    yield None
+            
+            await sleep(0)
 
     async def write(app, data: (bytes, bytearray)):
         if app.__is_buffer_over_high_watermark__:
@@ -67,23 +68,22 @@ class BlazeioPayload(asyncProtocol):
         else:
             raise Err("Client has disconnected.")
         
-    async def control(app, duration=0, *args, **kwargs):
-        await sleep(duration, *args, **kwargs)
+    async def control(app, duration=0):
+        await sleep(duration)
     
     async def close(app):
         app.transport.close()
 
     async def transporter(app, transport):
         await sleep(0)
+        if transport.is_reading(): transport.pause_reading()
+
         app.__perf_counter__ = perf_counter()
         app.transport = transport
-        app.__is_alive__ = True
         peername = app.transport.get_extra_info('peername')
 
         if peername:
             app.ip_host, app.ip_port = peername[0], peername[-1]
-        else:
-            app.ip_host, app.ip_port = None, None
 
         await app.on_client_connected(app)
         
@@ -261,29 +261,28 @@ class App:
 
         # Handle before_middleware
         if before_middleware := app.declared_routes.get("before_middleware"):
-            wait = await before_middleware.get("func")(r)
+            await before_middleware.get("func")(r)
         
         if route := app.declared_routes.get(r.path):
             await route.get("func")(r)
 
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
-            wait = await handle_all_middleware.get("func")(r)
+            await handle_all_middleware.get("func")(r)
         else:
-            raise Abort("Not Found", 404)
-            
+            raise Abort(status=404, reason="Not Found")
+
         if after_middleware := app.declared_routes.get("after_middleware"):
-            wait = await after_middleware.get("func")(r)
+            await after_middleware.get("func")(r)
 
     async def handle_client(app, r):
         try:
+            app.REQUEST_COUNT += 1
+            r.identifier = app.REQUEST_COUNT
+            await app.serve_route(r)
+        except Abort as e:
             try:
-                app.REQUEST_COUNT += 1
-                r.identifier = app.REQUEST_COUNT
-            
-                await app.serve_route(r)
-                
-            except Abort as e:
                 await e.respond(r)
+            except Exception as e: await Log.warning(r, e)
 
         except (Err, ServerGotInTrouble) as e: await Log.warning(e)
         
