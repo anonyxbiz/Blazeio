@@ -1,97 +1,104 @@
-from ..Dependencies import iopen, guess_type, basename, getsize, exists, Log, to_thread, deque, loop
-from .request import Request
-from .streaming import Abort      
-from aiofiles import open as aiofilesiopen
-from os import stat
-from time import gmtime, strftime
+from ..Dependencies import *
+from .request import *
+from .streaming import *      
 
 class Simpleserve:
-    def __init__(app, r, file: str, CHUNK_SIZE: int = 1024, headers={}, **kwargs):
-        app.__dict__.update(locals())
+    CHUNK_SIZE: int = 1024
+    headers: dict = {
+        "Accept-Ranges": "bytes"
+    }
+    cache_control: dict = {
+        "max-age": "3600"
+    }
 
-        if not exists(app.file):
-            raise Abort("Not Found", 404)
-            
-        app.ins = None
+    async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
+        if not exists(file): raise Abort("Not Found", 404)
 
-    async def __aexit__(app, ext_type, ext, tb):
-        pass
+        app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
+
+        if kwargs: app.__dict__.update(**kwargs)
+
+        await app.prepare_metadata()
+
+    async def validate_cache(app):
+        if (if_modified_since := app.r.headers.get("If-Modified-Since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
+            raise Abort("Not Modified", status=304, reason="Not Modified")
             
-    async def __aenter__(app):
+        elif (if_none_match := app.r.headers.get("If-None-Match")):
+            if if_none_match == app.etag:
+                raise Abort("Not Modified", status=304, reason="Not Modified")
+
+    async def prepare_metadata(app):
+        app.file_size = getsize(app.file)
+        app.filename = basename(app.file)
         app.file_stats = stat(app.file)
         app.last_modified = app.file_stats.st_mtime
+        
+        app.etag = "BlazeIO--%s--%s" % (app.filename, app.file_size)
+
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
-
-        app.if_modified_since = app.r.headers.get("If-Modified-Since")
-
-        if app.if_modified_since and strptime(app.if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort("Not Modified", 304)
-
-        app.file_size = getsize(app.file)
+        
+        await app.validate_cache()
 
         app.content_type = guess_type(app.file)[0]
-        app.content_disposition = 'inline; filename="%s"' % basename(app.file)
+
+        if app.content_type:
+            app.content_disposition = 'inline; filename="%s"' % app.filename
+        else:
+            app.content_type = "application/octet-stream"
+            app.content_disposition = 'attachment; filename="%s"' % app.filename
 
         app.headers.update({
-            "Accept-Ranges": "bytes",
             "Content-Type": app.content_type,
             "Content-Disposition": app.content_disposition,
             "Last-Modified": app.last_modified_str,
-            "Cache-Control": "public, max-age=3600"
+            "Etag": app.etag
         })
+        
+        if app.cache_control:
+            app.headers["Cache-Control"] = "public, max-age=%s" % app.cache_control.get("max-age", "3600")
 
-        if (range_header := app.r.headers.get('Range', None)) and (idx := range_header.rfind('=')) != -1:
+        if (range_header := app.r.headers.get('Range')) is not None and (idx := range_header.rfind('=')) != -1:
             byte_range = range_header[idx + 1:]
             
             _ = byte_range.rfind("-")
 
-            start = int(byte_range[:_])
+            app.start = int(byte_range[:_])
 
             if byte_range[_ + 1:] == "":
-                end = app.file_size - 1
+                app.end = app.file_size - 1
             else:
-                end = int(byte_range[_ + 1:])
+                app.end = int(byte_range[_ + 1:])
 
-            app.headers["Content-Range"] = "bytes %s-%s/%s" % (start, end, app.file_size)
+            app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
         else:
-            start, end = 0, app.file_size
-
-        app.start, app.end, = start, end
-        
-        await app.r.prepare(app.headers)
+            app.start, app.end = 0, app.file_size
 
         return app
 
-    async def push(app):
-        async with aiofilesiopen(app.file, "rb") as f:
+    @classmethod
+    async def push(cls, *args, **kwargs):
+        app = cls()
+        await app.initialize(*args, **kwargs)
+
+        await app.r.prepare(app.headers)
+        async for chunk in app.pull():
+            await app.r.write(chunk)
+
+    async def pull(app):
+        async with iopen(app.file, "rb") as f:
             await f.seek(app.start)
             
             while True:
                 if not (chunk := await f.read(app.CHUNK_SIZE)): break
-    
-                else: app.start += len(chunk)
-                        
-                await app.r.write(chunk)
                 
-                if app.start >= app.end:
-                    break
-                
-                await app.r.control()
-
-
-    async def pull(app):
-        async with aiofilesiopen(app.file, "rb") as f:
-            await f.seek(app.start)
-            while True:
-                if not (chunk := await f.read(app.CHUNK_SIZE)): break
-    
-                else: app.start += len(chunk)
-                        
                 yield chunk
-                
+
                 if app.start >= app.end: break
+
+                app.start += len(chunk)
                 
-                else: await app.r.control()
+                await sleep(0)
 
 if __name__ == "__main__":
     pass

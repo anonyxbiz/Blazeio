@@ -18,6 +18,7 @@ class BlazeioPayload(asyncProtocol):
         app.tail = "handle_all_middleware"
         app.path = "handle_all_middleware"
         app.headers = None
+        app.is_prepared = False
 
     def connection_made(app, transport):
         if transport.is_reading(): transport.pause_reading()
@@ -89,8 +90,18 @@ class BlazeioPayload(asyncProtocol):
         
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
-    async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content"):
-        await app.write(b"HTTP/1.1 %s %s\r\n" % (str(status).encode(), reason.encode()))
+    async def prepare(app,
+        headers: dict = {},
+        status: int = 206,
+        reason: str = "Partial Content",
+        protocol: str = "HTTP/1.1"
+    ):
+        if not app.is_prepared:
+            data = "%s %s %s\r\n" % (protocol, str(status), reason)
+            
+            await app.write(bytearray(data, "utf-8"))
+
+            app.is_prepared = True
 
         await app.write(b"Server: Blazeio\r\nStrict-Transport-Security: max-age=63072000; includeSubdomains\r\nX-Frame-Options: SAMEORIGIN\r\nX-XSS-Protection: 1; mode=block\r\nReferrer-Policy: origin-when-cross-origin\r\n")
         

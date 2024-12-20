@@ -26,13 +26,11 @@ from typing import Callable
 
 from mimetypes import guess_type
 from os.path import basename, getsize, exists, join
+from os import stat
+
 from gzip import compress as gzip_compress
 
-"""logging"""
-from aiologger import Logger
-
-"""analytics"""
-from time import perf_counter
+from time import perf_counter, gmtime, strftime, strptime
 
 try:
     import uvloop
