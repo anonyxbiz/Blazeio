@@ -59,19 +59,6 @@ class ServerGotInTrouble(Exception):
     def __str__(app) -> str:
         return app.message
 
-class Packdata:
-    @classmethod
-    async def add(app, **kwargs):
-        app = app()
-        app.__dict__.update(**kwargs)
-        return app
-
-    @classmethod
-    def add_sync(app, **kwargs):
-        app = app()
-        app.__dict__.update(**kwargs)
-        return app
-
 loop = get_event_loop()
 
 class Log:

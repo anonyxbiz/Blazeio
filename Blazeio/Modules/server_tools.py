@@ -56,7 +56,8 @@ class Simpleserve:
         })
         
         if app.cache_control:
-            app.headers["Cache-Control"] = "public, max-age=%s" % app.cache_control.get("max-age", "3600")
+            app.headers["Cache-Control"] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
+            
 
         if (range_header := app.r.headers.get('Range')) is not None and (idx := range_header.rfind('=')) != -1:
             byte_range = range_header[idx + 1:]

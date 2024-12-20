@@ -1,24 +1,36 @@
 # Blazeio/__init__.py
 from .Dependencies import *
 from .Modules.streaming import *
-from .Modules.static import *
+# from .Modules.static import *
 from .Modules.server_tools import *
 from .Modules.request import *
 from .Client import *
 
 class BlazeioPayload(asyncProtocol):
+    __stream__ = deque()
+    __buff__ = None
+    __is_buffer_over_high_watermark__ = False
+    __exploited__ = False
+    __is_alive__ = False
+    __is_prepared__ = False
+    __mutable__ = True
+    __freeze__ = False
+    __read_only_data__ = ("__read_only_data__", "__mutable__", "__freeze__", "ip_host", "ip_port", "transport", "__perf_counter__", "pull_multipart", "prepare", "__setattr__", "write", "close", "request", "pull")
+
+    method = None
+    tail = "handle_all_middleware"
+    path = "handle_all_middleware"
+    headers = None
+
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.__stream__ = deque()
-        app.__is_alive__ = False
-        app.__exploited__ = False
-        app.__is_buffer_over_high_watermark__ = False
-        app.__buff__ = None
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.is_prepared = False
+
+    def __setattr__(app, name, value):
+        if app.__freeze__:
+            if name in app.__read_only_data__:
+                raise ServerGotInTrouble("Modification of reserved variable ('%s') is not allowed." % name)
+
+        super().__setattr__(name, value)
 
     def connection_made(app, transport):
         if transport.is_reading(): transport.pause_reading()
@@ -66,8 +78,8 @@ class BlazeioPayload(asyncProtocol):
         else:
             raise Err("Client has disconnected.")
         
-    async def control(app, duration=0):
-        await sleep(duration)
+    async def control(app, duration=0, *args, **kwargs):
+        await sleep(duration, *args, **kwargs)
     
     async def close(app):
         app.transport.close()
@@ -77,31 +89,25 @@ class BlazeioPayload(asyncProtocol):
         app.__perf_counter__ = perf_counter()
         app.transport = transport
         app.__is_alive__ = True
-        peername = app.transport.get_extra_info('peername')
 
-        if peername:
+        if peername := app.transport.get_extra_info('peername'):
             app.ip_host, app.ip_port = peername[0], peername[-1]
         else:
             app.ip_host, app.ip_port = None, None
 
+        app.__freeze__ = True
         await app.on_client_connected(app)
         
         await app.close()
-        
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
-    async def prepare(app,
-        headers: dict = {},
-        status: int = 206,
-        reason: str = "Partial Content",
-        protocol: str = "HTTP/1.1"
-    ):
-        if not app.is_prepared:
+    async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
+        if not app.__is_prepared__:
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
             
             await app.write(bytearray(data, "utf-8"))
 
-            app.is_prepared = True
+            app.__is_prepared__ = True
 
         await app.write(b"Server: Blazeio\r\nStrict-Transport-Security: max-age=63072000; includeSubdomains\r\nX-Frame-Options: SAMEORIGIN\r\nX-XSS-Protection: 1; mode=block\r\nReferrer-Policy: origin-when-cross-origin\r\n")
         
@@ -112,7 +118,7 @@ class BlazeioPayload(asyncProtocol):
                 )
 
             await app.write(b"\r\n")
-    
+
     async def pull_multipart(app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
 
         # This is important, some systems will crash if they try writing bytearray to disk, so convert bytearray to bytes with b'' + bytearray
@@ -280,20 +286,19 @@ class App:
 
     async def handle_client(app, r):
         try:
-            app.REQUEST_COUNT += 1
-            r.identifier = app.REQUEST_COUNT
-            await app.serve_route(r)
-        except (Err, ServerGotInTrouble) as e:
-            pass
-        
-        except Abort as e:
             try:
-                await e.text(r)
-            except Err as e:
-                pass
-            except Exception as e:
-                await Log.critical(r, e)
-
+                app.REQUEST_COUNT += 1
+                r.identifier = app.REQUEST_COUNT
+            
+                await app.serve_route(r)
+                
+            except Abort as e:
+                await e.respond(r)
+                
+            except (Err, ServerGotInTrouble) as e: await Log.warning(e)
+        
+        except (Err, ServerGotInTrouble) as e: await Log.warning(e)
+        
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
 
