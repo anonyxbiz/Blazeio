@@ -78,8 +78,9 @@ class BlazeioPayload(asyncProtocol):
         app.__perf_counter__ = perf_counter()
         app.transport = transport
         app.__is_alive__ = True
+        peername = app.transport.get_extra_info('peername')
 
-        if peername := app.transport.get_extra_info('peername'):
+        if peername:
             app.ip_host, app.ip_port = peername[0], peername[-1]
         else:
             app.ip_host, app.ip_port = None, None
@@ -87,6 +88,7 @@ class BlazeioPayload(asyncProtocol):
         await app.on_client_connected(app)
         
         await app.close()
+        
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
