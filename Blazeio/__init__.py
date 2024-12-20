@@ -7,30 +7,19 @@ from .Modules.request import *
 from .Client import *
 
 class BlazeioPayload(asyncProtocol):
-    __stream__ = deque()
-    __buff__ = None
-    __is_buffer_over_high_watermark__ = False
-    __exploited__ = False
-    __is_alive__ = False
-    __is_prepared__ = False
-    __mutable__ = True
-    __freeze__ = False
-    __read_only_data__ = ("__read_only_data__", "__mutable__", "__freeze__", "ip_host", "ip_port", "transport", "__perf_counter__", "pull_multipart", "prepare", "__setattr__", "write", "close", "request", "pull")
-
-    method = None
-    tail = "handle_all_middleware"
-    path = "handle_all_middleware"
-    headers = None
-
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-
-    def __setattr__(app, name, value):
-        if app.__freeze__:
-            if name in app.__read_only_data__:
-                raise ServerGotInTrouble("Modification of reserved variable ('%s') is not allowed." % name)
-
-        super().__setattr__(name, value)
+        app.__stream__ = deque()
+        app.__buff__ = None
+        app.__is_buffer_over_high_watermark__ = False
+        app.__exploited__ = False
+        app.__is_alive__ = False
+        app.__is_prepared__ = False
+    
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
 
     def connection_made(app, transport):
         if transport.is_reading(): transport.pause_reading()
@@ -95,7 +84,6 @@ class BlazeioPayload(asyncProtocol):
         else:
             app.ip_host, app.ip_port = None, None
 
-        app.__freeze__ = True
         await app.on_client_connected(app)
         
         await app.close()
@@ -294,9 +282,7 @@ class App:
                 
             except Abort as e:
                 await e.respond(r)
-                
-            except (Err, ServerGotInTrouble) as e: await Log.warning(e)
-        
+
         except (Err, ServerGotInTrouble) as e: await Log.warning(e)
         
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
