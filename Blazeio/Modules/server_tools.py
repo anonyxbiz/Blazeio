@@ -22,11 +22,11 @@ class Simpleserve:
 
     async def validate_cache(app):
         if (if_modified_since := app.r.headers.get("If-Modified-Since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort(status=304, reason="Not Modified")
+            raise Abort("Not Modified", status=304, reason="Not Modified")
             
         elif (if_none_match := app.r.headers.get("If-None-Match")):
             if if_none_match == app.etag:
-                raise Abort(status=304, reason="Not Modified")
+                raise Abort("Not Modified", status=304, reason="Not Modified")
 
     async def prepare_metadata(app):
         app.file_size = getsize(app.file)
