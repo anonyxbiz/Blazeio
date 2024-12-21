@@ -113,7 +113,7 @@ class BlazeioPayload(asyncProtocol):
         app.ip_host, app.ip_port = None, None
 
     def connection_made(app, transport):
-        loop.create_task(app.transporter(transport))
+        loop.create_task(BlazeioPayloadUtils.transporter(app, transport))
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
@@ -138,13 +138,11 @@ class BlazeioPayload(asyncProtocol):
     async def request(app):
         async for chunk in BlazeioPayloadUtils.request(app): yield chunk
 
-    async def control(app, *args, **kwargs):
-        await BlazeioPayloadUtils.control(app, *args, **kwargs)
+    async def control(app, duration=0):
+        await BlazeioPayloadUtils.control(app, duration)
     
     async def close(app):
         app.transport.close()
-
-    async def transporter(app, transport): await BlazeioPayloadUtils.transporter(app, transport)
 
     async def prepare(app, *args, **kwargs): await BlazeioPayloadUtils.prepare(app, *args, **kwargs)
 
