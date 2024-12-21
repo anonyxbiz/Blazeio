@@ -12,21 +12,24 @@ class Simpleserve:
     }
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
-        if not exists(file): raise Abort(status = 404, reason = "Not Found")
+        if not exists(file):
+            await Deliver.text(r, "Not Found", 404, "Not Found")
+            return True
 
         app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
 
         if kwargs: app.__dict__.update(**kwargs)
 
-        await app.prepare_metadata()
+        return await app.prepare_metadata()
 
     async def validate_cache(app):
-        if (if_modified_since := app.r.headers.get("If-Modified-Since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort("Not Modified", status=304, reason="Not Modified")
-            
-        elif (if_none_match := app.r.headers.get("If-None-Match")):
-            if if_none_match == app.etag:
-                raise Abort("Not Modified", status=304, reason="Not Modified")
+        if app.r.headers.get("If-None-Match") == app.etag:
+            await Deliver.text(app.r, "Not Modified", 304, "Not Modified")
+            return True
+                
+        elif (if_modified_since := app.r.headers.get("If-Modified-Since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
+            await Deliver.text(app.r, "Not Modified", 304, "Not Modified")
+            return True
 
     async def prepare_metadata(app):
         app.file_size = getsize(app.file)
@@ -38,7 +41,8 @@ class Simpleserve:
 
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
         
-        await app.validate_cache()
+        if await app.validate_cache():
+            return True
 
         app.content_type = guess_type(app.file)[0]
 
@@ -75,12 +79,10 @@ class Simpleserve:
         else:
             app.start, app.end = 0, app.file_size
 
-        return app
-
     @classmethod
     async def push(cls, *args, **kwargs):
         app = cls()
-        await app.initialize(*args, **kwargs)
+        if await app.initialize(*args, **kwargs): return
 
         await app.r.prepare(app.headers)
         async for chunk in app.pull():

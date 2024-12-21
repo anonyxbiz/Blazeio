@@ -32,16 +32,14 @@ class Deliver:
         await r.write(data)
 
     @classmethod
-    async def text(app, r, data, status=206, headers={}, reason="Partial Content"):
+    async def text(app, r, data, status=206, reason="Partial Content", headers={}):
         headers = dict(headers)
 
         headers["Content-Type"] = "text/plain"
+        
         await r.prepare(headers, status=status, reason=reason)
 
-        if not isinstance(data, (bytes, bytearray)):
-            data = data.encode()
-
-        await r.write(data)
+        await r.write(bytearray(data, "utf-8"))
 
     @classmethod
     async def redirect(app, r, path, status=302, headers={}, reason="Redirect"):
