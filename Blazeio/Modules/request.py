@@ -114,7 +114,6 @@ class Request:
 
     @classmethod
     async def set_method(app, r, chunk, sepr1 = b' '):
-        chunk = chunk
         if (idx := chunk.find(sepr1)) != -1:
             r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]
 
@@ -170,6 +169,14 @@ class Request:
             elif len(r.__buff__) >= max_buff_size: break
 
         return r
+
+    @classmethod
+    async def body_or_params(app, r):
+        if r.method in ["GET", "OPTIONS", "HEAD"]:
+            return await app.get_params(r)
+        else:
+            return await app.get_json(r)
+
 
     @classmethod
     async def get_form_data(app, r, start = b'form-data; name="', middle = b'"\r\n\r\n', end = b'\r\n', filename_begin = b'file"; filename="', filename_end = b'"\r\n', content_type = b'Content-Type: ', signal = b'------WebKitFormBoundary', signal3 = b'\r\n\r\n', multipart_end = b'--\r\n'

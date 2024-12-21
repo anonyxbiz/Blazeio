@@ -6,6 +6,96 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Client import *
 
+class BlazeioPayloadUtils:
+    @classmethod
+    async def request(cls, app):
+        while True:
+            if app.__stream__:
+                if app.transport.is_reading(): app.transport.pause_reading()
+
+                yield app.__stream__.popleft()
+            else:
+                if app.__exploited__: break
+                if not app.transport.is_reading(): app.transport.resume_reading()
+                else:
+                    yield None
+            
+            await sleep(0)
+
+    @classmethod
+    async def buffer_overflow_manager(cls, app):
+        while app.__is_buffer_over_high_watermark__:
+            await sleep(0)
+            if not app.__is_alive__: raise Err("Client has disconnected.")
+
+        if app.__is_alive__:
+            return True
+        else:
+            raise Err("Client has disconnected.")
+            
+    @classmethod
+    async def prepare(cls, app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
+        if not app.__is_prepared__:
+            data = "%s %s %s\r\n" % (protocol, str(status), reason)
+            
+            await app.write(bytearray(data, "utf-8"))
+
+            app.__is_prepared__ = True
+
+        await app.write(b"Server: Blazeio\r\nStrict-Transport-Security: max-age=63072000; includeSubdomains\r\nX-Frame-Options: SAMEORIGIN\r\nX-XSS-Protection: 1; mode=block\r\nReferrer-Policy: origin-when-cross-origin\r\n")
+        
+        if headers:
+            for key, val in headers.items():
+                await app.write(
+                    b"%s: %s\r\n" % (key.encode(), val.encode())
+                )
+
+            await app.write(b"\r\n")
+
+    @classmethod
+    async def pull_multipart(cls, app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
+
+        # This is important, some systems will crash if they try writing bytearray to disk, so convert bytearray to bytes with b'' + bytearray
+
+        chunk = b'' + app.__buff__
+
+        if (idx := chunk.find(signal1)) != -1:
+            yield chunk[:idx]
+            return
+
+        yield chunk
+
+        async for chunk in app.request():
+            if chunk:
+                if (idx := chunk.find(signal2)) != -1:
+                    yield chunk[:idx]
+                    break
+                yield chunk
+            else:
+                yield chunk
+
+    @classmethod
+    async def transporter(cls, app, transport):
+        await sleep(0)
+        if transport.is_reading(): transport.pause_reading()
+
+        app.__perf_counter__ = perf_counter()
+        app.transport = transport
+        peername = app.transport.get_extra_info('peername')
+
+        if peername:
+            app.ip_host, app.ip_port = peername[0], peername[-1]
+
+        await app.on_client_connected(app)
+        
+        await app.close()
+        
+        await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
+
+    @classmethod
+    async def control(cls, app, duration=0):
+        await sleep(duration)
+
 class BlazeioPayload(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
@@ -41,94 +131,28 @@ class BlazeioPayload(asyncProtocol):
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-    async def request(app):
-        while True:
-            if app.__stream__:
-                if app.transport.is_reading(): app.transport.pause_reading()
-
-                yield app.__stream__.popleft()
-            else:
-                if app.__exploited__: break
-                if not app.transport.is_reading(): app.transport.resume_reading()
-                else:
-                    yield None
-            
-            await sleep(0)
-
     async def write(app, data: (bytes, bytearray)):
-        if app.__is_buffer_over_high_watermark__:
-            
-            while app.__is_buffer_over_high_watermark__:
-                await sleep(0)
-                if not app.__is_alive__:
-                    return
+        await BlazeioPayloadUtils.buffer_overflow_manager(app)
+        app.transport.write(data)
 
-        if app.__is_alive__:
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-        
-    async def control(app, duration=0):
-        await sleep(duration)
+    async def request(app):
+        async for chunk in BlazeioPayloadUtils.request(app): yield chunk
+
+    async def control(app, *args, **kwargs):
+        await BlazeioPayloadUtils.control(app, *args, **kwargs)
     
     async def close(app):
         app.transport.close()
 
-    async def transporter(app, transport):
-        await sleep(0)
-        if transport.is_reading(): transport.pause_reading()
+    async def transporter(app, transport): await BlazeioPayloadUtils.transporter(app, transport)
 
-        app.__perf_counter__ = perf_counter()
-        app.transport = transport
-        peername = app.transport.get_extra_info('peername')
+    async def prepare(app, *args, **kwargs): await BlazeioPayloadUtils.prepare(app, *args, **kwargs)
 
-        if peername:
-            app.ip_host, app.ip_port = peername[0], peername[-1]
+    async def pull_multipart(app):
+        async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
 
-        await app.on_client_connected(app)
-        
-        await app.close()
-        
-        await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
-
-    async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
-        if not app.__is_prepared__:
-            data = "%s %s %s\r\n" % (protocol, str(status), reason)
-            
-            await app.write(bytearray(data, "utf-8"))
-
-            app.__is_prepared__ = True
-
-        await app.write(b"Server: Blazeio\r\nStrict-Transport-Security: max-age=63072000; includeSubdomains\r\nX-Frame-Options: SAMEORIGIN\r\nX-XSS-Protection: 1; mode=block\r\nReferrer-Policy: origin-when-cross-origin\r\n")
-        
-        if headers:
-            for key, val in headers.items():
-                await app.write(
-                    b"%s: %s\r\n" % (key.encode(), val.encode())
-                )
-
-            await app.write(b"\r\n")
-
-    async def pull_multipart(app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
-
-        # This is important, some systems will crash if they try writing bytearray to disk, so convert bytearray to bytes with b'' + bytearray
-
-        chunk = b'' + app.__buff__
-
-        if (idx := chunk.find(signal1)) != -1:
-            yield chunk[:idx]
-            return
-
-        yield chunk
-
-        async for chunk in app.request():
-            if chunk:
-                if (idx := chunk.find(signal2)) != -1:
-                    yield chunk[:idx]
-                    break
-                yield chunk
-            else:
-                yield chunk
+    async def pull(app):
+        async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
 
 class App:
     event_loop = loop
