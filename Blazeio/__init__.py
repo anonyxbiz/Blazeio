@@ -1,7 +1,6 @@
 # Blazeio/__init__.py
 from .Dependencies import *
 from .Modules.streaming import *
-# from .Modules.static import *
 from .Modules.server_tools import *
 from .Modules.request import *
 from .Client import *
@@ -291,7 +290,7 @@ class App:
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
             await handle_all_middleware.get("func")(r)
         else:
-            raise Abort(status=404, reason="Not Found")
+            await Deliver.text(r, "Not Found", 404, "Not Found")
 
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
