@@ -65,7 +65,6 @@ class BlazeioPayloadUtils:
 
     @classmethod
     async def transporter(cls, app, transport):
-        await sleep(0)
         if transport.is_reading(): transport.pause_reading()
 
         app.__perf_counter__ = perf_counter()
@@ -80,6 +79,8 @@ class BlazeioPayloadUtils:
         await app.close()
         
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
+        
+        await sleep(0)
 
     @classmethod
     async def control(cls, app, duration=0):
