@@ -148,7 +148,7 @@ class Request:
             
     @classmethod
     async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 10240):
-        app.__buff__ = bytearray()
+        r.__buff__ = bytearray()
 
         async for chunk in r.request():
             if chunk: r.__buff__.extend(chunk)
