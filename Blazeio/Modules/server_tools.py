@@ -13,8 +13,7 @@ class Simpleserve:
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
         if not exists(file):
-            await Deliver.text(r, "Not Found", 404, "Not Found")
-            return True
+            raise Abort("Not Found", 404, "Not Found")
 
         app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
 
@@ -24,12 +23,10 @@ class Simpleserve:
 
     async def validate_cache(app):
         if app.r.headers.get("If-None-Match") == app.etag:
-            await Deliver.text(app.r, "Not Modified", 304, "Not Modified")
-            return True
-                
+            raise Abort("Not Modified", 304, "Not Modified")
+
         elif (if_modified_since := app.r.headers.get("If-Modified-Since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            await Deliver.text(app.r, "Not Modified", 304, "Not Modified")
-            return True
+            raise Abort("Not Modified", 304, "Not Modified")
 
     async def prepare_metadata(app):
         app.file_size = getsize(app.file)

@@ -45,7 +45,6 @@ except Exception as e:
 
 class Err(Exception):
     def __init__(app, message=None):
-        super().__init__(message)
         app.message = str(message)
 
     def __str__(app) -> str:
@@ -53,7 +52,6 @@ class Err(Exception):
 
 class ServerGotInTrouble(Exception):
     def __init__(app, message=None):
-        super().__init__(message)
         app.message = str(message)
 
     def __str__(app) -> str:

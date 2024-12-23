@@ -54,17 +54,7 @@ class BlazeioPayloadUtils:
     @classmethod
     async def pull_multipart(cls, app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
 
-        # This is important, some systems will crash if they try writing bytearray to disk, so convert bytearray to bytes with b'' + bytearray
-
-        chunk = b'' + app.__buff__
-
-        if (idx := chunk.find(signal1)) != -1:
-            yield chunk[:idx]
-            return
-
-        yield chunk
-
-        async for chunk in app.request():
+        async for chunk in Request.stream_chunks(app):
             if chunk:
                 if (idx := chunk.find(signal2)) != -1:
                     yield chunk[:idx]
@@ -99,7 +89,8 @@ class BlazeioPayload(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
-        app.__buff__ = None
+        app.__received_length__ = 0
+        app.__buff__ = bytearray()
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
@@ -149,7 +140,7 @@ class BlazeioPayload(asyncProtocol):
         async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
 
     async def pull(app):
-        async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
+        async for chunk in Request.stream_chunks(app): yield chunk
 
 class App:
     event_loop = loop
@@ -290,7 +281,7 @@ class App:
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
             await handle_all_middleware.get("func")(r)
         else:
-            await Deliver.text(r, "Not Found", 404, "Not Found")
+            raise Abort("Not Found", 404, "Not Found")
 
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
@@ -300,12 +291,11 @@ class App:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
             await app.serve_route(r)
+            
         except Abort as e:
-            try:
-                await e.respond(r)
-            except Exception as e: await Log.warning(r, e)
+            await e.text(r, *e.args, **e.kwargs)
 
-        except (Err, ServerGotInTrouble) as e: await Log.warning(e)
+        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
         
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)

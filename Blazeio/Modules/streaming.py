@@ -67,24 +67,35 @@ class Deliver:
         await r.prepare(headers, status=status, reason=reason)
 
 class Abort(Exception):
-    def __init__(app, message = None, status: int = 403, headers: dict = {}, **kwargs):
-        app.message = message
-        app.kwargs = kwargs
-        app.status = status
-        app.headers = headers
-        super().__init__(message)
+    def __init__(
+        app,
+        *args,
+        **kwargs
+    ):
+        app.args, app.kwargs = args, kwargs
 
     def __str__(app) -> str:
-        return str(message)
-
-    async def respond(app, r):
-        if app.message is not None:
-            app.headers["Content-Type"] = "text/plain"
+        return str(app.message)
+    
+    async def text(app, r, message: str = "Something went wrong", status: int = 403, reason: str = "Forbidden", headers: dict = {}
+    ):
+        try:
+            headers_ = {
+                "Content-Type": "text/plain"
+            }
+            
+            if headers: headers_.update(headers)
+            
+            await r.prepare(
+                headers_,
+                status,
+                reason
+            )
+            
+            await r.write(bytearray(message, "utf-8"))
+            
+        except Exception as e:
+            await Log.critical(r, e)
         
-        await r.prepare(app.headers, app.status, app.kwargs.get("reason", "Something went wrong"))
-
-        if app.message is not None:
-            await r.write(app.message.encode())
-
 if __name__ == "__main__":
     pass

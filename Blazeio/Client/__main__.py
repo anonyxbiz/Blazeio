@@ -1,6 +1,8 @@
-from Client import Session
+from Blazeio.Client import Session
+from Blazeio.Dependencies import Log
+
 from time import perf_counter
-from asyncio import run, sleep, gather, create_task
+from asyncio import run, sleep, gather, create_task, new_event_loop, get_event_loop
 
 class Test:
     async def test(app, url="http://example.com"):
@@ -31,8 +33,24 @@ class Test:
         
         p(f"Duration: {perf_counter() - start:.4f} seconds")
         
-     
+   
+async def test():
+    client = Session()
+    i = await client.prepare("https://www.google.com/search")
+
+    await Log.debug(i.response_headers)
+
+    chunks = bytearray()
+    async for chunk in i.pull():
+        if chunk: chunks.extend(chunk)
+        
+    await Log.debug(chunks)
+    
+    
 if __name__ == "__main__":
     #run(Test().test())
-    run(Test().main())
+    #run(Test().main())
+    loop = get_event_loop()
+    
+    loop.run_until_complete(test())
     

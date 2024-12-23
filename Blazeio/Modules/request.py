@@ -27,19 +27,25 @@ class Request:
     ]
 
     @classmethod
-    async def stream_chunks(app, r, MAX_BUFF_SIZE = None):
-        """
-            Some systems have issues when you try writing bytearray to a file, so it is better to ensure youre streaming bytes object.
-        """
+    async def stream_chunks(app, r):
+        if r.__buff__:
+            chunk = b'' + r.__buff__
+            yield chunk
 
-        yield b'' + r.__buff__
+        cl = int(r.headers.get("Content-Length", 0))
 
         async for chunk in r.request():
             yield chunk
 
+            if chunk is not None:
+                r.__received_length__ += len(chunk)
+            else:
+                if r.__received_length__ >= cl: break
+
     @classmethod
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
         temp = bytearray()
+        
         async for chunk in app.stream_chunks(r):
             if chunk:
                 temp.extend(chunk)
@@ -100,19 +106,6 @@ class Request:
         return dict(temp)
 
     @classmethod
-    async def get_param(app, r, key: str):
-        key += "="
-        
-        if not key in r.tail:
-            return
-        
-        param = r.tail.split(key)[-1]
-        
-        if o := "&" in param: param = param.split(o)[0]
-        
-        return await app.param_format(param)
-
-    @classmethod
     async def set_method(app, r, chunk, sepr1 = b' '):
         if (idx := chunk.find(sepr1)) != -1:
             r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]
@@ -155,18 +148,20 @@ class Request:
             
     @classmethod
     async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 10240):
-        r.__buff__ = bytearray()
-        
         async for chunk in r.request():
             if chunk: r.__buff__.extend(chunk)
 
             if (idx := r.__buff__.find(sig)) != -1:
                 data, r.__buff__ = r.__buff__[:idx], r.__buff__[idx + 4:]
                 
+                r.__received_length__ += len(r.__buff__)
+
                 await app.set_method(r, data)
                 break
 
-            elif len(r.__buff__) >= max_buff_size: break
+            elif len(r.__buff__) >= max_buff_size:
+                # Break out of the loop if exceeds limit without the sig being found
+                break
 
         return r
 
@@ -200,7 +195,6 @@ class Request:
             else:
                 element = form_data
                 
-        #for element in form_data.split(signal):
             if start in element and end in element:
                 _ = element.split(start).pop().split(middle)
                 
