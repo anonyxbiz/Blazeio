@@ -5,9 +5,16 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Client import *
 
+
+
 class BlazeioPayloadUtils:
-    @classmethod
-    async def request(cls, app):
+    def __init__(app):
+        pass
+
+    async def pull(app):
+        async for chunk in Request.stream_chunks(app): yield chunk
+
+    async def request(app):
         while True:
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
@@ -21,8 +28,7 @@ class BlazeioPayloadUtils:
             
             await sleep(0)
 
-    @classmethod
-    async def buffer_overflow_manager(cls, app):
+    async def buffer_overflow_manager(app):
         while app.__is_buffer_over_high_watermark__:
             await sleep(0)
             if not app.__is_alive__: raise Err("Client has disconnected.")
@@ -31,9 +37,8 @@ class BlazeioPayloadUtils:
             return True
         else:
             raise Err("Client has disconnected.")
-            
-    @classmethod
-    async def prepare(cls, app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
+
+    async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
             
@@ -51,8 +56,7 @@ class BlazeioPayloadUtils:
 
             await app.write(b"\r\n")
 
-    @classmethod
-    async def pull_multipart(cls, app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
+    async def pull_multipart(app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
 
         async for chunk in Request.stream_chunks(app):
             if chunk:
@@ -63,13 +67,12 @@ class BlazeioPayloadUtils:
             else:
                 yield chunk
 
-    @classmethod
-    async def transporter(cls, app, transport):
+    async def transporter(app, transport):
         await sleep(0)
         transport.pause_reading()
 
         app.transport = transport
-
+        
         app.__perf_counter__ = perf_counter()
     
         app.method = None
@@ -84,20 +87,17 @@ class BlazeioPayloadUtils:
         
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
-    @classmethod
-    async def control(cls, app, duration=0):
+    async def control(app, duration=0):
         await sleep(duration)
 
-    @classmethod
-    async def write(cls, app, data: (bytes, bytearray)):
-        await cls.buffer_overflow_manager(app)
-        app.transport.write(data)
+    async def write(app, data: (bytes, bytearray)):
+        if await app.buffer_overflow_manager():
+            app.transport.write(data)
 
-    @classmethod
-    async def close(cls, app):
+    async def close(app):
         app.transport.close()
 
-class BlazeioPayload(asyncProtocol):
+class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
@@ -106,8 +106,10 @@ class BlazeioPayload(asyncProtocol):
         app.__is_alive__ = True
         app.__is_prepared__ = False
 
+        BlazeioPayloadUtils.__init__(app)
+
     def connection_made(app, transport):
-        loop.create_task(BlazeioPayloadUtils.transporter(app, transport))
+        loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
@@ -123,39 +125,6 @@ class BlazeioPayload(asyncProtocol):
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
-
-    """def __getattr__(app, name):
-        attr = getattr(BlazeioPayloadUtils, name, None)
-
-        if not callable(attr): raise Err(f"'{app.__class__.__name__}' object has no attribute '{name}'")
-
-        if name in ("request", "pull", "pull_multipart",):
-            async def wrapper(*args, **kwargs):
-                async for var in attr(app, *args, **kwargs): yield var
-                
-            return wrapper
-        else:
-            async def wrapper(*args, **kwargs):
-                return await attr(app, *args, **kwargs)
-                
-            return wrapper"""
-
-    async def pull(app):
-        async for chunk in Request.stream_chunks(app): yield chunk
-
-    async def request(app):
-        async for chunk in BlazeioPayloadUtils.request(app): yield chunk
-
-    async def pull_multipart(app):
-        async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
-    
-    async def write(app, *args, **kwargs): return await BlazeioPayloadUtils.write(app, *args, **kwargs)
-
-    async def control(app, *args, **kwargs): return await BlazeioPayloadUtils.control(app, *args, **kwargs)
-
-    async def close(app, *args, **kwargs): return await BlazeioPayloadUtils.close(app, *args, **kwargs)
-
-    async def prepare(app, *args, **kwargs): return await BlazeioPayloadUtils.prepare(app, *args, **kwargs)
 
 class App:
     event_loop = loop
