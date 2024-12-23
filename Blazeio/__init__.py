@@ -124,8 +124,7 @@ class BlazeioPayload(asyncProtocol):
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-
-    def __getattr__(app, name):
+    """def __getattr__(app, name):
         attr = getattr(BlazeioPayloadUtils, name, None)
 
         if not callable(attr): raise Err(f"'{app.__class__.__name__}' object has no attribute '{name}'")
@@ -139,10 +138,24 @@ class BlazeioPayload(asyncProtocol):
             async def wrapper(*args, **kwargs):
                 return await attr(app, *args, **kwargs)
                 
-            return wrapper
+            return wrapper"""
 
     async def pull(app):
         async for chunk in Request.stream_chunks(app): yield chunk
+
+    async def request(app):
+        async for chunk in BlazeioPayloadUtils.request(app): yield chunk
+
+    async def pull_multipart(app):
+        async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
+    
+    async def write(app, *args, **kwargs): return await BlazeioPayloadUtils.write(app, *args, **kwargs)
+
+    async def control(app, *args, **kwargs): return await BlazeioPayloadUtils.control(app, *args, **kwargs)
+
+    async def close(app, *args, **kwargs): return await BlazeioPayloadUtils.close(app, *args, **kwargs)
+
+    async def prepare(app, *args, **kwargs): return await BlazeioPayloadUtils.prepare(app, *args, **kwargs)
 
 class App:
     event_loop = loop
