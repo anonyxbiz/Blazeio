@@ -1,6 +1,5 @@
-from ..Dependencies import p, Err, dt, Log, dumps, loads, JSONDecodeError, defaultdict, MappingProxyType, sleep
-
-from .streaming import Stream, Deliver, Abort
+from ..Dependencies import *
+from .streaming import *
 
 class Request:
     bad_strings = [
@@ -32,15 +31,13 @@ class Request:
             chunk = b'' + r.__buff__
             yield chunk
 
-        cl = int(r.headers.get("Content-Length", 0))
+        # cl = int(r.headers.get("Content-Length", 0))
 
         async for chunk in r.request():
             yield chunk
 
-            if chunk is not None:
-                r.__received_length__ += len(chunk)
-            else:
-                if r.__received_length__ >= cl: break
+            # if chunk is not None: r.__received_length__ += len(chunk)
+            # if r.__received_length__ >= cl: break
 
     @classmethod
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
@@ -162,7 +159,7 @@ class Request:
             elif len(r.__buff__) >= max_buff_size:
                 break
         
-        r.__received_length__ = len(r.__buff__)
+        # r.__received_length__ = len(r.__buff__)
 
         return r
 

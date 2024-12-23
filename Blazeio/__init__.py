@@ -65,26 +65,37 @@ class BlazeioPayloadUtils:
 
     @classmethod
     async def transporter(cls, app, transport):
-        if transport.is_reading(): transport.pause_reading()
+        await sleep(0)
+        transport.pause_reading()
+
+        app.transport = transport
 
         app.__perf_counter__ = perf_counter()
-        app.transport = transport
-        peername = app.transport.get_extra_info('peername')
-
-        if peername:
-            app.ip_host, app.ip_port = peername[0], peername[-1]
+    
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
         await app.on_client_connected(app)
         
         await app.close()
         
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
-        
-        await sleep(0)
 
     @classmethod
     async def control(cls, app, duration=0):
         await sleep(duration)
+
+    @classmethod
+    async def write(cls, app, data: (bytes, bytearray)):
+        await cls.buffer_overflow_manager(app)
+        app.transport.write(data)
+
+    @classmethod
+    async def close(cls, app):
+        app.transport.close()
 
 class BlazeioPayload(asyncProtocol):
     def __init__(app, on_client_connected):
@@ -94,12 +105,6 @@ class BlazeioPayload(asyncProtocol):
         app.__exploited__ = False
         app.__is_alive__ = True
         app.__is_prepared__ = False
-    
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.ip_host, app.ip_port = None, None
 
     def connection_made(app, transport):
         loop.create_task(BlazeioPayloadUtils.transporter(app, transport))
@@ -112,31 +117,29 @@ class BlazeioPayload(asyncProtocol):
 
     def eof_received(app):
         app.__exploited__ = True
-        return True
-    
+
     def pause_writing(app):
         app.__is_buffer_over_high_watermark__ = True
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-    async def write(app, data: (bytes, bytearray)):
-        await BlazeioPayloadUtils.buffer_overflow_manager(app)
-        app.transport.write(data)
 
-    async def request(app):
-        async for chunk in BlazeioPayloadUtils.request(app): yield chunk
+    def __getattr__(app, name):
+        attr = getattr(BlazeioPayloadUtils, name, None)
 
-    async def control(app, duration=0):
-        await BlazeioPayloadUtils.control(app, duration)
-    
-    async def close(app):
-        app.transport.close()
+        if not callable(attr): raise Err(f"'{app.__class__.__name__}' object has no attribute '{name}'")
 
-    async def prepare(app, *args, **kwargs): await BlazeioPayloadUtils.prepare(app, *args, **kwargs)
-
-    async def pull_multipart(app):
-        async for chunk in BlazeioPayloadUtils.pull_multipart(app): yield chunk
+        if name in ("request", "pull", "pull_multipart",):
+            async def wrapper(*args, **kwargs):
+                async for var in attr(app, *args, **kwargs): yield var
+                
+            return wrapper
+        else:
+            async def wrapper(*args, **kwargs):
+                return await attr(app, *args, **kwargs)
+                
+            return wrapper
 
     async def pull(app):
         async for chunk in Request.stream_chunks(app): yield chunk

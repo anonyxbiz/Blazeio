@@ -1,38 +1,25 @@
 from ..Dependencies import p, dumps, loads, Err, Log, sleep
 
-class Stream:
-    @classmethod
-    async def init(app, r, *args, **kwargs):
-        await r.prepare(*args, **kwargs)
-        
-        r.prepared = True
 
-    @classmethod
-    async def write(app, r, data: bytes):
-        await r.write(data)
 
-    @classmethod
-    async def prepared(app, r):
-        if "prepared" in r.__dict__: return True
-            
+
+
+
+
 class Deliver:
     @classmethod
-    async def json(app, r, data, _dump=True, _encode=True, status=206, headers={}, reason="Partial Content", indent=4):
-        headers_ = dict(headers)
+    async def json(app, r, data: dict, status: int = 200, reason: str = "OK", headers: dict = {}, indent: int = 4):
+        headers = dict(headers)
+
+        headers["Content-Type"] = "application/json"
         
-        headers_["Content-Type"] = "application/json"
-        await r.prepare(headers_, status=status, reason=reason)
+        await r.prepare(headers, status=status, reason=reason)
 
-        if isinstance(data, (dict,)):
-            data = dumps(data, indent=indent)
+        await r.write(bytearray(dumps(data, indent=indent), "utf-8"))
 
-        if not isinstance(data, (bytes, bytearray)):
-            data = data.encode()
-
-        await r.write(data)
 
     @classmethod
-    async def text(app, r, data, status=206, reason="Partial Content", headers={}):
+    async def text(app, r, data, status=200, reason="OK", headers={}):
         headers = dict(headers)
 
         headers["Content-Type"] = "text/plain"
