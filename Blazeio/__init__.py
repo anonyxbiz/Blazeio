@@ -89,8 +89,6 @@ class BlazeioPayload(asyncProtocol):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
-        app.__received_length__ = 0
-        app.__buff__ = bytearray()
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
