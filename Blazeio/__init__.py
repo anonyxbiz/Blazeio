@@ -46,7 +46,7 @@ class BlazeioPayloadUtils:
 
             app.__is_prepared__ = True
 
-        await app.write(b"Server: Blazeio\r\nStrict-Transport-Security: max-age=63072000; includeSubdomains\r\nX-Frame-Options: SAMEORIGIN\r\nX-XSS-Protection: 1; mode=block\r\nReferrer-Policy: origin-when-cross-origin\r\n")
+        await app.write(b"Server: Blazeio\r\n")
         
         if headers:
             for key, val in headers.items():

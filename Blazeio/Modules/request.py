@@ -31,13 +31,8 @@ class Request:
             chunk = b'' + r.__buff__
             yield chunk
 
-        # cl = int(r.headers.get("Content-Length", 0))
-
         async for chunk in r.request():
             yield chunk
-
-            # if chunk is not None: r.__received_length__ += len(chunk)
-            # if r.__received_length__ >= cl: break
 
     @classmethod
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
