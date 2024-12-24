@@ -54,7 +54,7 @@ class Simpleserve:
             "Content-Disposition": app.content_disposition,
             "Last-Modified": app.last_modified_str,
             "Etag": app.etag,
-            "Content-Length": str(app.file_size),
+            #"Content-Length": str(app.file_size),
         })
         
         if app.cache_control:
