@@ -150,7 +150,10 @@ class Request:
                 elif len(__buff__) >= max_buff_size:
                     break
 
-        r.__stream__.appendleft(b'' + __buff__[idx + 4:])
+        if chunk:
+            r.__stream__.appendleft(b'' + __buff__[idx + 4:])
+        else:
+            r.__stream__.appendleft(b'' + __buff__)
 
         return r
 
