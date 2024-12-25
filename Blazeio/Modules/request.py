@@ -137,7 +137,7 @@ class Request:
             r.headers = MappingProxyType(r.headers)
             
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 5024):
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 5024, idx = -4):
         __buff__ = bytearray()
 
         async for chunk in r.request():
@@ -150,10 +150,7 @@ class Request:
                 elif len(__buff__) >= max_buff_size:
                     break
 
-        if chunk:
-            r.__stream__.appendleft(b'' + __buff__[idx + 4:])
-        else:
-            r.__stream__.appendleft(b'' + __buff__)
+        r.__stream__.appendleft(b'' + __buff__[idx + 4:])
 
         return r
 
