@@ -15,6 +15,7 @@ class BlazeioPayloadUtils:
         async for chunk in app.request(): yield chunk
 
     async def request(app):
+        if not app.transport.is_reading(): app.transport.resume_reading()
         while True:
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
@@ -67,12 +68,8 @@ class BlazeioPayloadUtils:
             else:
                 yield chunk
 
-    async def transporter(app, transport):
+    async def transporter(app):
         await sleep(0)
-        # transport.pause_reading()
-
-        app.transport = transport
-        
         app.__perf_counter__ = perf_counter()
     
         app.method = None
@@ -110,7 +107,8 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
 
     def connection_made(app, transport):
         transport.pause_reading()
-        loop.create_task(app.transporter(transport))
+        app.transport = transport
+        loop.create_task(app.transporter())
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
