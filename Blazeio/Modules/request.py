@@ -25,12 +25,10 @@ class Request:
         "%40"      # At symbol (@)
     ]
 
+
+
     @classmethod
     async def stream_chunks(app, r):
-        if r.__buff__:
-            chunk = b'' + r.__buff__
-            yield chunk
-
         async for chunk in r.request():
             yield chunk
 
@@ -139,23 +137,22 @@ class Request:
             r.headers = MappingProxyType(r.headers)
             
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 10240):
-        r.__buff__ = bytearray()
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 1024):
+        __buff__ = bytearray()
 
         async for chunk in r.request():
-            if chunk: r.__buff__.extend(chunk)
+            if chunk: __buff__.extend(chunk)
 
-            if (idx := r.__buff__.find(sig)) != -1:
-                data, r.__buff__ = r.__buff__[:idx], r.__buff__[idx + 4:]
+            if (idx := __buff__.find(sig)) != -1:
+                data, __buff__ = __buff__[:idx], __buff__[idx + 4:]
 
                 await app.set_method(r, data)
                 break
 
-            elif len(r.__buff__) >= max_buff_size:
+            elif len(__buff__) >= max_buff_size:
                 break
-        
-        # r.__received_length__ = len(r.__buff__)
 
+        r.__stream__.appendleft(b'' + __buff__)
         return r
 
     @classmethod
@@ -167,61 +164,63 @@ class Request:
 
 
     @classmethod
-    async def get_form_data(app, r, start = b'form-data; name="', middle = b'"\r\n\r\n', end = b'\r\n', filename_begin = b'file"; filename="', filename_end = b'"\r\n', content_type = b'Content-Type: ', signal = b'------WebKitFormBoundary', signal3 = b'\r\n\r\n', multipart_end = b'--\r\n'
-        ):
-        idx, form_data = 0, bytearray()
+    async def form_data(app, r):
+        data = bytearray()
         
-        async for chunk in app.stream_chunks(r):
-            if chunk is not None:
-                form_data.extend(chunk)
-            
-            if (idx := form_data.rfind(signal3)) != -1:
-                r.__buff__, form_data = form_data[idx + len(signal3):], form_data[:idx]
-                break
+        sepr1 = b'Content-Disposition: form-data; '
+        sepr2 = b'------'
+        sepr3 = b'name="'
+        sepr4 = b'"'
+        signal3 = b'\r\n\r\n'
 
         json_data = defaultdict(str)
-        
-        while True:
-            await sleep(0)
-            if (dx := form_data.find(signal)) != -1:
-                element, form_data = form_data[:dx], form_data[dx + len(signal):]
-            else:
-                element = form_data
-                
-            if start in element and end in element:
-                _ = element.split(start).pop().split(middle)
-                
-                key = _[0]
 
-                if filename_begin in key and filename_end in key and content_type in key:
-                    fname, _type = key.split(filename_begin).pop().split(filename_end)
-                    json_data["filename"] = fname.decode("utf-8")
-                    json_data["Content-Type"] = (_type := _type.split(content_type).pop().decode("utf-8"))
-                    
-                    if (idx := json_data["Content-Type"].rfind(":")) != -1: json_data["Content-Type"] = json_data["Content-Type"][idx + 1:]
-                    
-                else:
-                    value = _[-1]
-                    if end in value: value = value.split(end).pop(0)
-                    json_data[key.decode("utf-8")] = value.decode("utf-8")
-            
-            if dx == -1:
-                break
-            
-        json_data = dict(json_data)
-        return json_data
-
-    @classmethod
-    async def get_upload(app, r, *args):
-        signal = b'------WebKitFormBoundary'
-
-        async for chunk in app.stream_chunks(r, *args):
+        async for chunk in r.request():
             if chunk:
-                if signal in chunk:
-                    yield chunk.split(signal)[0]
+                data.extend(chunk)
+
+            if (idx := data.rfind(signal3)) != -1:
+                __buff__ = b'' + data[idx + len(signal3):]
+
+                data = data[:idx]
+
+                if b'filename="' in data:
+                    data = data.replace(b'filename=', b'')
+                    
+                    data = data.replace(b'name="file";', b'name="file"')
+                    
+                    if b'\r\nContent-Type:' in data:
+                        data = data.replace(b'\r\nContent-Type:', b'name="Content-Type"')
+
+                r.__stream__.appendleft(__buff__)
+                break
+
+        if data:
+            while True:
+                await sleep(0)
+                if (idx := data.find(sepr1)) == -1:
                     break
                 else:
-                    yield chunk
+                    data = data[idx + len(sepr1):]
+
+                if (idx := data.find(sepr2)) != -1:
+                    form_data, data = data[:idx], data[idx + len(sepr2):]
+                else:
+                    form_data = data
+
+                for name in form_data.split(sepr3):
+                    if (idx := name.find(sepr4)) != -1:
+                        title = name[:idx].decode("utf-8")
+                        value = name[idx + len(sepr4):].strip()
+                        if value.startswith(b'"'):
+                            value = value[1:-1]
+                        json_data[title] = value.decode("utf-8")
+                        
+        return dict(json_data)
+
+    @classmethod
+    async def get_form_data(app, r):
+        return await app.form_data(r)
 
 if __name__ == "__main__":
     pass

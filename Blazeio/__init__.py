@@ -12,7 +12,7 @@ class BlazeioPayloadUtils:
         pass
 
     async def pull(app):
-        async for chunk in Request.stream_chunks(app): yield chunk
+        async for chunk in app.request(): yield chunk
 
     async def request(app):
         while True:
@@ -58,7 +58,7 @@ class BlazeioPayloadUtils:
 
     async def pull_multipart(app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
 
-        async for chunk in Request.stream_chunks(app):
+        async for chunk in app.request():
             if chunk:
                 if (idx := chunk.find(signal2)) != -1:
                     yield chunk[:idx]

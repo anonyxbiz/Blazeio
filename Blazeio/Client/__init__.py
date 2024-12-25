@@ -54,7 +54,7 @@ class BlazeioClientProtocol(Protocol):
 
     def connection_made(app, transport):
         app.transport = transport
-        app.transport.pause_reading()
+        #app.transport.pause_reading()
 
     def data_received(app, data):
         app.buffer.append(data)
@@ -72,7 +72,8 @@ class BlazeioClientProtocol(Protocol):
         app.transport.write(chunk)
 
     async def pull(app, timeout=5):
-        endl = b"\r\n0\r\n\r\n"
+        endl = b"\r\n0"
+        #\r\n0\r'
         if app.response_headers:
             if (cl := app.response_headers.get("Content-Length")):
                 app.expected_cl = int(cl)
@@ -95,8 +96,7 @@ class BlazeioClientProtocol(Protocol):
                 if app.response_headers:
                     app.received_cl += len(buff)
             
-                elif endl in buff: break
-                    
+                if endl in buff: break
                 start = perf_counter()
                 
             else:
@@ -111,7 +111,7 @@ class BlazeioClientProtocol(Protocol):
 
             if not app.transport.is_reading(): app.transport.resume_reading()
                 
-        #app.transport.close()
+        app.transport.close()
 
     async def fetch_headers(app, sepr = b"\r\n\r\n", head_sepr = b"\r\n"):
         tmp = bytearray()
@@ -168,7 +168,7 @@ class Session:
     ):
         host = url
 
-        if await Utl.split_before(host, "https"):
+        if "https" in url:
             port: int = 443
         else:
             port: int = 80
@@ -193,8 +193,8 @@ class Session:
     async def prepare(app,
         url: str,
         method: str = "GET",
-        headers = None,
-        connect_only = False,
+        headers: dict = {},
+        connect_only: bool = False,
     ):
         host, port, path = await app.url_to_host(url)
 
