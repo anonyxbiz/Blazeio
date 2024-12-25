@@ -15,7 +15,7 @@ class BlazeioPayloadUtils:
         async for chunk in app.request(): yield chunk
 
     async def request(app):
-        if not app.transport.is_reading(): app.transport.resume_reading()
+        # if not app.transport.is_reading(): app.transport.resume_reading()
         while True:
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
