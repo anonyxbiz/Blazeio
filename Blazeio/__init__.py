@@ -69,7 +69,7 @@ class BlazeioPayloadUtils:
 
     async def transporter(app, transport):
         await sleep(0)
-        transport.pause_reading()
+        # transport.pause_reading()
 
         app.transport = transport
         
@@ -109,6 +109,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         BlazeioPayloadUtils.__init__(app)
 
     def connection_made(app, transport):
+        transport.pause_reading()
         loop.create_task(app.transporter(transport))
 
     def data_received(app, chunk):
