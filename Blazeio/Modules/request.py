@@ -25,18 +25,30 @@ class Request:
         "%40"      # At symbol (@)
     ]
 
-
-
     @classmethod
     async def stream_chunks(app, r):
         async for chunk in r.request():
             yield chunk
 
     @classmethod
+    async def get_cookie(app, r, val: str):
+        cookie = r.headers.get("Cookie", "null")
+
+        a, b = "%s=" % val, ";"
+
+        if (idx := cookie.find(a)) != -1:
+            cookie = cookie[idx+len(a):].strip()
+
+        if (idx := cookie.find(b)) != -1:
+            cookie = cookie[:idx].strip()
+
+        return cookie
+
+    @classmethod
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
         temp = bytearray()
-        
-        async for chunk in app.stream_chunks(r):
+
+        async for chunk in r.request():
             if chunk:
                 temp.extend(chunk)
 
@@ -161,7 +173,6 @@ class Request:
         else:
             return await app.get_json(r)
 
-
     @classmethod
     async def form_data(app, r):
         data = bytearray()
@@ -171,6 +182,11 @@ class Request:
         sepr3 = b'name="'
         sepr4 = b'"'
         signal3 = b'\r\n\r\n'
+        filename = b'filename="'
+        file_name_before = b'name="file";'
+        file_name_after = b'name="file"'
+        content_type_before = b'\r\nContent-Type:'
+        content_type_after = b'name="Content-Type"'
 
         json_data = defaultdict(str)
 
@@ -179,40 +195,42 @@ class Request:
                 data.extend(chunk)
 
             if (idx := data.rfind(signal3)) != -1:
+                await sleep(0)
                 __buff__ = b'' + data[idx + len(signal3):]
 
                 data = data[:idx]
 
-                if b'filename="' in data:
-                    data = data.replace(b'filename=', b'')
-                    
-                    data = data.replace(b'name="file";', b'name="file"')
-                    
-                    if b'\r\nContent-Type:' in data:
-                        data = data.replace(b'\r\nContent-Type:', b'name="Content-Type"')
+                if (idx := data.find(filename)) != -1:
+                    data = data[:idx] + data[idx+len(filename):]
+                
+                if (idx := data.find(file_name_before)) != -1:
+                    data = data[:idx] + file_name_after + data[idx + len(file_name_before):]
+
+                if (idx := data.find(content_type_before)) != -1:
+                    data = data[:idx] + content_type_after + data[idx + len(content_type_before):]
 
                 r.__stream__.appendleft(__buff__)
                 break
 
         if data:
-            while True:
+            while (idx := data.find(sepr1)) != -1:
                 await sleep(0)
-                if (idx := data.find(sepr1)) == -1:
-                    break
-                else:
-                    data = data[idx + len(sepr1):]
+                data = data[idx + len(sepr1):]
 
                 if (idx := data.find(sepr2)) != -1:
                     form_data, data = data[:idx], data[idx + len(sepr2):]
                 else:
                     form_data = data
-
+                
                 for name in form_data.split(sepr3):
                     if (idx := name.find(sepr4)) != -1:
                         title = name[:idx].decode("utf-8")
                         value = name[idx + len(sepr4):].strip()
                         if value.startswith(b'"'):
-                            value = value[1:-1]
+                            value = value[1:]
+                        if value.endswith(b'"'):
+                            value = value[:-1]
+
                         json_data[title] = value.decode("utf-8")
                         
         return dict(json_data)
