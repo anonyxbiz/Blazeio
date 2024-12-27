@@ -48,10 +48,13 @@ class Request:
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
         temp = bytearray()
 
-        async for chunk in r.request():
-            if chunk:
-                temp.extend(chunk)
-
+        async for chunk in r.pull():
+            temp.extend(chunk)
+        
+        json_data = loads(temp.decode("utf-8"))
+        return json_data
+                    
+        if temp:
             if (idx := temp.find(sepr)) != -1:
                 temp = temp[idx + len(sepr):]
 
@@ -190,7 +193,7 @@ class Request:
 
         json_data = defaultdict(str)
 
-        async for chunk in r.request():
+        async for chunk in r.pull():
             if chunk:
                 data.extend(chunk)
 
@@ -210,6 +213,7 @@ class Request:
                     data = data[:idx] + content_type_after + data[idx + len(content_type_before):]
 
                 r.__stream__.appendleft(__buff__)
+                r.current_length -= len(__buff__)
                 break
 
         if data:

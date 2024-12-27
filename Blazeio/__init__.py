@@ -12,10 +12,21 @@ class BlazeioPayloadUtils:
         pass
 
     async def pull(app):
-        async for chunk in app.request(): yield chunk
+        if not "content_length" in app.__dict__:
+            app.content_length = int(app.headers.get("Content-Length", 0))
+
+        if not "current_length" in app.__dict__:
+            app.current_length = 0
+
+        async for chunk in app.request():
+            if chunk:
+                app.current_length += len(chunk)
+                yield chunk
+            else:
+                if app.current_length >= app.content_length:
+                    break
 
     async def request(app):
-        # if not app.transport.is_reading(): app.transport.resume_reading()
         while True:
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
@@ -283,7 +294,26 @@ class App:
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
 
-    async def run(app, HOST, PORT, **kwargs):
+    def setup_ssl(app, HOST: str, PORT: int, ssl_data: dict):
+        certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
+        if not certfile or not keyfile: raise Err("certfile and keyfile paths are required.")
+        
+        if not exists(certfile) or not exists(keyfile):
+            from os import system
+            system(f'openssl req -x509 -newkey rsa:2048 -keyout {keyfile} -out {certfile} -days 365 -nodes -subj "/CN={HOST}"')
+        
+        from ssl import create_default_context, Purpose 
+        
+        ssl_context = create_default_context(Purpose.CLIENT_AUTH)
+        ssl_context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        return ssl_context
+        
+    async def run(app, HOST: str, PORT: int, **kwargs):
+        if not (ssl_data := kwargs.get("ssl", None)):
+            pass
+        else:
+            kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
+            
         app.server = await loop.create_server(
             lambda: BlazeioPayload(app.handle_client),
             HOST,
@@ -292,7 +322,7 @@ class App:
         )
 
         async with app.server:
-            await Log.info("Blazeio", "Server running on http://%s:%s" % (HOST, PORT))
+            await Log.info("Blazeio", "Server running on %s://%s:%s" % ("http" if not ssl_data else "https", HOST, PORT))
             await app.server.serve_forever()
 
     async def exit(app):
