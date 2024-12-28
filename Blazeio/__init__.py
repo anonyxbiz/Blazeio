@@ -6,8 +6,8 @@ from .Modules.request import *
 from .Client import *
 
 class BlazeioPayloadUtils:
-    def __init__(app):
-        pass
+    def __init__(app, on_client_connected):
+        loop.create_task(app.transporter(on_client_connected))
 
     async def pull(app, timeout: int = 30):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
@@ -27,8 +27,8 @@ class BlazeioPayloadUtils:
                     raise Err("Connection Timed-Out due to inactivity")
 
     async def request(app):
+        # app.transport.resume_reading()
         while True:
-            await sleep(0)
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
 
@@ -39,7 +39,7 @@ class BlazeioPayloadUtils:
                 else:
                     yield None
             
-            # await sleep(0)
+            await sleep(0)
 
     async def buffer_overflow_manager(app):
         while app.__is_buffer_over_high_watermark__:
@@ -55,7 +55,7 @@ class BlazeioPayloadUtils:
         if not app.__is_prepared__:
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
             
-            await app.write(data.encode())
+            await app.write(bytearray(data, "utf-8"))
 
             app.__is_prepared__ = True
             app.__status__ = status
@@ -70,24 +70,29 @@ class BlazeioPayloadUtils:
 
             await app.write(b"\r\n")
 
-    async def transporter(app):
-        await sleep(0)
+    async def transporter(app, on_client_connected):
+        while app.transport is None:
+            await sleep(0)
+
+        app.transport.pause_reading()
         app.__perf_counter__ = perf_counter()
         app.__stream__ = deque()
-        app.__is_buffer_over_high_watermark__ = False
-        app.__exploited__ = False
-        app.__is_alive__ = True
-        app.__is_prepared__ = False
         app.__status__ = 0
         app.method = None
         app.tail = "handle_all_middleware"
         app.path = "handle_all_middleware"
         app.headers = None
         app.current_length = 0
+        app.__is_buffer_over_high_watermark__ = False
+        app.__exploited__ = False
+        app.__is_alive__ = True
+        app.__is_prepared__ = False
+
+
 
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
-        await app.on_client_connected(app)
+        await on_client_connected(app)
         
         await app.close()
         
@@ -104,14 +109,14 @@ class BlazeioPayloadUtils:
         app.transport.close()
 
 class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
+    transport = None
     def __init__(app, on_client_connected):
-        app.on_client_connected = on_client_connected
-        BlazeioPayloadUtils.__init__(app)
+        # app.on_client_connected = on_client_connected
+
+        BlazeioPayloadUtils.__init__(app, on_client_connected)
 
     def connection_made(app, transport):
-        transport.pause_reading()
         app.transport = transport
-        loop.create_task(app.transporter())
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
