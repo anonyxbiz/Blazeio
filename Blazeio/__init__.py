@@ -6,7 +6,6 @@ from .Modules.request import *
 from .Client import *
 
 class BlazeioPayloadUtils:
-    __status__ = 0
     def __init__(app):
         pass
 
@@ -15,8 +14,6 @@ class BlazeioPayloadUtils:
         timestart, timeout = perf_counter(), float(timeout)
 
         if not "content_length" in app.__dict__: app.content_length = int(app.headers.get("Content-Length", 0))
-
-        if not "current_length" in app.__dict__: app.current_length = 0
 
         async for chunk in app.request():
             if chunk:
@@ -31,6 +28,7 @@ class BlazeioPayloadUtils:
 
     async def request(app):
         while True:
+            await sleep(0)
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
 
@@ -41,7 +39,7 @@ class BlazeioPayloadUtils:
                 else:
                     yield None
             
-            await sleep(0)
+            # await sleep(0)
 
     async def buffer_overflow_manager(app):
         while app.__is_buffer_over_high_watermark__:
@@ -57,7 +55,7 @@ class BlazeioPayloadUtils:
         if not app.__is_prepared__:
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
             
-            await app.write(bytearray(data, "utf-8"))
+            await app.write(data.encode())
 
             app.__is_prepared__ = True
             app.__status__ = status
@@ -73,13 +71,9 @@ class BlazeioPayloadUtils:
             await app.write(b"\r\n")
 
     async def transporter(app):
-        await sleep(0)
+        # await sleep(0)
         app.__perf_counter__ = perf_counter()
-    
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
+
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
         await app.on_client_connected(app)
@@ -106,6 +100,12 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__exploited__ = False
         app.__is_alive__ = True
         app.__is_prepared__ = False
+        app.__status__ = 0
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.current_length = 0
 
         BlazeioPayloadUtils.__init__(app)
 
