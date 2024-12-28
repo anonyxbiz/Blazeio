@@ -27,7 +27,6 @@ class BlazeioPayloadUtils:
                     raise Err("Connection Timed-Out due to inactivity")
 
     async def request(app):
-        # app.transport.resume_reading()
         while True:
             if app.__stream__:
                 if app.transport.is_reading(): app.transport.pause_reading()
@@ -71,27 +70,20 @@ class BlazeioPayloadUtils:
             await app.write(b"\r\n")
 
     async def transporter(app):
+        await sleep(0)
         app.__perf_counter__ = perf_counter()
-        app.__status__ = 0
+    
         app.method = None
         app.tail = "handle_all_middleware"
         app.path = "handle_all_middleware"
         app.headers = None
-        app.current_length = 0
-        app.__is_buffer_over_high_watermark__ = False
-        app.__exploited__ = False
-        app.__is_alive__ = True
-        app.__is_prepared__ = False
-
-        # while app.transport is None:await sleep(0)
-
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
         await app.on_client_connected(app)
         
         await app.close()
         
-        await Log.debug(app, " => %s@%s %s Completed in %s seconds" % (app.method, app.__status__, app.path, str(perf_counter() - app.__perf_counter__)[:6]) )
+        await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
 
     async def control(app, duration=0):
         await sleep(duration)
@@ -107,13 +99,16 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
         app.__stream__ = deque()
-        # app.transport = None
+        app.__is_buffer_over_high_watermark__ = False
+        app.__exploited__ = False
+        app.__is_alive__ = True
+        app.__is_prepared__ = False
 
         BlazeioPayloadUtils.__init__(app)
 
     def connection_made(app, transport):
+        transport.pause_reading()
         app.transport = transport
-        app.transport.pause_reading()
         loop.create_task(app.transporter())
 
     def data_received(app, chunk):
