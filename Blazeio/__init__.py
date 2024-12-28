@@ -5,26 +5,29 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Client import *
 
-
-
 class BlazeioPayloadUtils:
+    __status__ = 0
     def __init__(app):
         pass
 
-    async def pull(app):
-        if not "content_length" in app.__dict__:
-            app.content_length = int(app.headers.get("Content-Length", 0))
+    async def pull(app, timeout: int = 30):
+        if app.method in ("GET", "HEAD", "OPTIONS"): return
+        timestart, timeout = perf_counter(), float(timeout)
 
-        if not "current_length" in app.__dict__:
-            app.current_length = 0
+        if not "content_length" in app.__dict__: app.content_length = int(app.headers.get("Content-Length", 0))
+
+        if not "current_length" in app.__dict__: app.current_length = 0
 
         async for chunk in app.request():
             if chunk:
+                timestart = perf_counter()
                 app.current_length += len(chunk)
                 yield chunk
             else:
                 if app.current_length >= app.content_length:
                     break
+                elif perf_counter() - timestart >= timeout:
+                    raise Err("Connection Timed-Out due to inactivity")
 
     async def request(app):
         while True:
@@ -57,6 +60,7 @@ class BlazeioPayloadUtils:
             await app.write(bytearray(data, "utf-8"))
 
             app.__is_prepared__ = True
+            app.__status__ = status
 
         await app.write(b"Server: Blazeio\r\n")
         
@@ -67,17 +71,6 @@ class BlazeioPayloadUtils:
                 )
 
             await app.write(b"\r\n")
-
-    async def pull_multipart(app, signal1 = b'------WebKitFormBoundary', signal2 = b'--\r\n'):
-
-        async for chunk in app.request():
-            if chunk:
-                if (idx := chunk.find(signal2)) != -1:
-                    yield chunk[:idx]
-                    break
-                yield chunk
-            else:
-                yield chunk
 
     async def transporter(app):
         await sleep(0)
@@ -93,7 +86,7 @@ class BlazeioPayloadUtils:
         
         await app.close()
         
-        await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
+        await Log.debug(app, " => %s@%s %s Completed in %s seconds" % (app.method, app.__status__, app.path, str(perf_counter() - app.__perf_counter__)[:6]) )
 
     async def control(app, duration=0):
         await sleep(duration)
