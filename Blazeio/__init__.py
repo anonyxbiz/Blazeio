@@ -7,7 +7,7 @@ from .Client import *
 
 class BlazeioPayloadUtils:
     def __init__(app):
-        loop.create_task(app.transporter())
+        pass
 
     async def pull(app, timeout: int = 30):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
@@ -72,7 +72,6 @@ class BlazeioPayloadUtils:
 
     async def transporter(app):
         app.__perf_counter__ = perf_counter()
-        app.__stream__ = deque()
         app.__status__ = 0
         app.method = None
         app.tail = "handle_all_middleware"
@@ -84,10 +83,7 @@ class BlazeioPayloadUtils:
         app.__is_alive__ = True
         app.__is_prepared__ = False
 
-
-
-        while app.transport is None:
-            await sleep(0)
+        # while app.transport is None:await sleep(0)
 
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
@@ -108,14 +104,17 @@ class BlazeioPayloadUtils:
         app.transport.close()
 
 class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
-    transport = None
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
+        app.__stream__ = deque()
+        # app.transport = None
+
         BlazeioPayloadUtils.__init__(app)
 
     def connection_made(app, transport):
         app.transport = transport
         app.transport.pause_reading()
+        loop.create_task(app.transporter())
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
