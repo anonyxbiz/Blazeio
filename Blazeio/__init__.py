@@ -15,6 +15,8 @@ class BlazeioPayloadUtils:
 
         if not "content_length" in app.__dict__: app.content_length = int(app.headers.get("Content-Length", 0))
 
+        if not "current_length" in app.__dict__: app.current_length = 0
+        
         async for chunk in app.request():
             if chunk:
                 timestart = perf_counter()
