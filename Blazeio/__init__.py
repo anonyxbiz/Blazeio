@@ -7,9 +7,15 @@ from .Client import *
 
 class BlazeioPayloadUtils:
     def __init__(app):
-        pass
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.__is_prepared__ = False
+    
+        # app.__perf_counter__ = perf_counter()
 
-    async def pull(app, timeout: int = 30):
+    async def pull(app, timeout: int = 60):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
         timestart, timeout = perf_counter(), float(timeout)
 
@@ -25,8 +31,10 @@ class BlazeioPayloadUtils:
             else:
                 if app.current_length >= app.content_length:
                     break
-                elif perf_counter() - timestart >= timeout:
-                    raise Err("Connection Timed-Out due to inactivity")
+
+                if perf_counter() - timestart >= timeout:
+                    break
+                    # raise Err("Connection Timed-Out due to inactivity")
 
     async def request(app):
         while True:
@@ -56,10 +64,9 @@ class BlazeioPayloadUtils:
         if not app.__is_prepared__:
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
             
-            await app.write(bytearray(data, "utf-8"))
+            await app.write(data.encode())
 
             app.__is_prepared__ = True
-            app.__status__ = status
 
         await app.write(b"Server: Blazeio\r\n")
         
@@ -69,20 +76,15 @@ class BlazeioPayloadUtils:
                     b"%s: %s\r\n" % (key.encode(), val.encode())
                 )
 
-            await app.write(b"\r\n")
+        await app.write(b"\r\n")
 
     async def transporter(app):
         await sleep(0)
         app.__perf_counter__ = perf_counter()
-    
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
         await app.on_client_connected(app)
-        
+
         await app.close()
         
         await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
@@ -104,7 +106,6 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
-        app.__is_prepared__ = False
 
         BlazeioPayloadUtils.__init__(app)
 
