@@ -4,20 +4,9 @@ from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loo
 from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
 
-while True:
-    try:
-        from ujson import dumps, loads, JSONDecodeError
-        from aiofiles import open as iopen
-        from aiologger import Logger
-        break
-    except ModuleNotFoundError as e:
-        print(e)
-        print("Installing Dependencies...")
-        from os import system
-        system("pip install ujson aiofiles aiologger")
-    except Exception as e:
-        print(e)
-        break
+from ujson import dumps, loads, JSONDecodeError
+from aiofiles import open as iopen
+from aiologger import Logger
 
 from sys import exit
 from datetime import datetime as dt
@@ -31,6 +20,8 @@ from os import stat
 from gzip import compress as gzip_compress
 
 from time import perf_counter, gmtime, strftime, strptime
+
+loop = get_event_loop()
 
 try:
     import uvloop
@@ -56,8 +47,6 @@ class ServerGotInTrouble(Exception):
 
     def __str__(app) -> str:
         return app.message
-
-loop = get_event_loop()
 
 class Log:
     known_exceptions = [

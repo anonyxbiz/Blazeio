@@ -12,29 +12,29 @@ class BlazeioPayloadUtils:
         app.path = "handle_all_middleware"
         app.headers = None
         app.__is_prepared__ = False
-    
-        # app.__perf_counter__ = perf_counter()
+        app.__status__ = 0
 
     async def pull(app, timeout: int = 60):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
         timestart, timeout = perf_counter(), float(timeout)
 
-        if not "content_length" in app.__dict__: app.content_length = int(app.headers.get("Content-Length", 0))
+        if not "content_length" in app.__dict__:
+            app.content_length = int(app.headers.get("Content-Length", 0))
 
-        if not "current_length" in app.__dict__: app.current_length = 0
+        if not "current_length" in app.__dict__:
+            app.current_length = 0
         
         async for chunk in app.request():
             if chunk:
                 timestart = perf_counter()
                 app.current_length += len(chunk)
                 yield chunk
+
             else:
                 if app.current_length >= app.content_length:
                     break
 
-                if perf_counter() - timestart >= timeout:
-                    break
-                    # raise Err("Connection Timed-Out due to inactivity")
+                if perf_counter() - timestart >= timeout: raise Err("Connection Timed-Out due to inactivity")
 
     async def request(app):
         while True:
@@ -67,6 +67,7 @@ class BlazeioPayloadUtils:
             await app.write(data.encode())
 
             app.__is_prepared__ = True
+            app.__status__ = status
 
         await app.write(b"Server: Blazeio\r\n")
         
@@ -87,7 +88,7 @@ class BlazeioPayloadUtils:
 
         await app.close()
         
-        await Log.debug(app, f"Completed in {perf_counter() - app.__perf_counter__:.4f} seconds" )
+        await Log.debug(app, f"Completed with status {app.__status__} in {perf_counter() - app.__perf_counter__:.4f} seconds")
 
     async def control(app, duration=0):
         await sleep(duration)
@@ -102,7 +103,8 @@ class BlazeioPayloadUtils:
 class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.__stream__ = deque()
+        # app.__stream__ = deque()
+        app.__stream__ = None
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
@@ -115,6 +117,8 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         loop.create_task(app.transporter())
 
     def data_received(app, chunk):
+        if app.__stream__ is None:
+            app.__stream__ = deque()
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
@@ -187,9 +191,14 @@ class App:
         }
 
         if not route_name.endswith("_middleware"):
-            route_name = route_name.replace("_", "/")
-
+            if (route := params_.get("route")) is None:
+                route_name = route_name.replace("_", "/")
+            else:
+                route_name = route
+        
         app.declared_routes[route_name] = data
+        loop.run_until_complete(Log.info("Added route => %s." % route_name))
+        
         return func
 
     async def append_class_routes(app, class_):
@@ -249,6 +258,11 @@ class App:
                 print(e)
 
     async def serve_route(app, r):
+        # Handle before_middleware
+        if before_middleware := app.declared_routes.get("before_middleware"):
+            if (resp := await before_middleware.get("func")(r)) is not None:
+                return resp
+
         await Request.set_data(r)
 
         await Log.info(r,
@@ -258,17 +272,14 @@ class App:
             )
         )
 
-        # Handle before_middleware
-        if before_middleware := app.declared_routes.get("before_middleware"):
-            await before_middleware.get("func")(r)
-        
         if route := app.declared_routes.get(r.path):
             await route.get("func")(r)
 
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
             await handle_all_middleware.get("func")(r)
         else:
-            raise Abort("Not Found", 404, "Not Found")
+            return
+            # raise Abort("Not Found", 404, "Not Found")
 
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
@@ -320,40 +331,37 @@ class App:
 
     async def exit(app):
         try:
-            await Log.info("Blazeio", "KeyboardInterrupt Detected, Shutting down gracefully.")
-
-            to_wait_for = []
+            await Log.info("Blazeio", ":: KeyboardInterrupt Detected, Shutting down gracefully.")
 
             for task in all_tasks(loop=loop):
                 if task is not current_task():
                     data = str(task)
-                    name = None
-
-                    if (spr := "name='") in data:
-                        name = data.split(spr)[1].split("'")[0]
+                    if (idx := data.find((sepr := "name='"))) != -1:
+                        name = data[idx + len(sepr):]
+                        if (idx := name.find((sepr := "'"))) != -1:
+                            name = name[:idx]
                     else:
-                        name = data[:10]
+                        name = data
 
                     await Log.info(
                         "Blazeio",
-                        "Task %s Terminated" % name
+                        ":: [%s] Terminated" % name
                     )
+ 
+                    try:
+                        task.cancel()
+                        # await task
+                    except CancelledError:
+                        pass
+                    except Exception as e:
+                        await Log.critical("Blazeio", e)
 
-                    task.cancel()
-                    to_wait_for.append(task)
-
-            for t in to_wait_for:
-                try:
-                    await t
-                except CancelledError:
-                    pass
-
-            await Log.info("Blazeio", "Event loop wiped, ready to exit.")
+            await Log.info("Blazeio", ":: Event loop wiped, ready to exit.")
 
         except Exception as e:
-            await Log.error("Blazeio", e)
+            await Log.critical("Blazeio", str(e))
         finally:
-            await Log.info("Blazeio", "Exited.")
+            await Log.info("Blazeio", ":: Exited.")
             exit()
 
     def runner(app, HOST, PORT, **kwargs):

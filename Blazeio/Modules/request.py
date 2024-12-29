@@ -152,7 +152,7 @@ class Request:
             r.headers = MappingProxyType(r.headers)
             
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 10240, idx = -4):
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 102400, idx = -4):
         __buff__ = bytearray()
 
         async for chunk in r.request():
