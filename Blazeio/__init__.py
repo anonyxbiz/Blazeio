@@ -3,6 +3,7 @@ from .Dependencies import *
 from .Modules.streaming import *
 from .Modules.server_tools import *
 from .Modules.request import *
+from .Modules.reasons import *
 from .Client import *
 
 class BlazeioPayloadUtils:
@@ -13,15 +14,18 @@ class BlazeioPayloadUtils:
         app.headers = None
         app.__is_prepared__ = False
         app.__status__ = 0
+        app.content_length = None
+        app.current_length = None
+        app.__cookie__ = None
 
     async def pull(app, timeout: int = 60):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
         timestart, timeout = perf_counter(), float(timeout)
 
-        if not "content_length" in app.__dict__:
+        if app.content_length is None:
             app.content_length = int(app.headers.get("Content-Length", 0))
 
-        if not "current_length" in app.__dict__:
+        if app.current_length is None:
             app.current_length = 0
         
         async for chunk in app.request():
@@ -31,10 +35,13 @@ class BlazeioPayloadUtils:
                 yield chunk
 
             else:
-                if app.current_length >= app.content_length:
-                    break
-
                 if perf_counter() - timestart >= timeout: raise Err("Connection Timed-Out due to inactivity")
+            
+            if app.current_length >= app.content_length:
+                return
+
+    async def set_cookie(app, cookie):
+        app.__cookie__ = cookie
 
     async def request(app):
         while True:
@@ -60,10 +67,13 @@ class BlazeioPayloadUtils:
         else:
             raise Err("Client has disconnected.")
 
-    async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
+    async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
+            if not reason:
+                reason = StatusReason.reasons.get(status, "Unknown")
+
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
-            
+
             await app.write(data.encode())
 
             app.__is_prepared__ = True
@@ -71,7 +81,10 @@ class BlazeioPayloadUtils:
 
         await app.write(b"Server: Blazeio\r\n")
         
-        if headers:
+        if headers or app.__cookie__:
+            if app.__cookie__:
+                headers["Set-Cookie"] = app.__cookie__
+
             for key, val in headers.items():
                 await app.write(
                     b"%s: %s\r\n" % (key.encode(), val.encode())
@@ -101,9 +114,30 @@ class BlazeioPayloadUtils:
         app.transport.close()
 
 class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
+    __slots__ = (
+        'on_client_connected',
+        '__stream__',
+        '__is_buffer_over_high_watermark__',
+        '__exploited__',
+        '__is_alive__',
+        'transport',
+        'method',
+        'tail',
+        'path',
+        'headers',
+        '__is_prepared__',
+        '__status__',
+        'content_length',
+        'current_length',
+        '__perf_counter__',
+        'ip_host',
+        'ip_port',
+        'identifier',
+        '__cookie__',
+    )
+
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        # app.__stream__ = deque()
         app.__stream__ = None
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
@@ -197,8 +231,16 @@ class App:
                 route_name = route
         
         app.declared_routes[route_name] = data
-        loop.run_until_complete(Log.info("Added route => %s." % route_name))
         
+        if route_name.startswith("/"):
+            component = "route"
+            color = "\033[32m"
+        else:
+            component = "middleware"
+            color = "\033[34m"
+
+        loop.run_until_complete(Log.info("Added %s => %s." % (component, route_name), None, color))
+
         return func
 
     async def append_class_routes(app, class_):
@@ -217,11 +259,6 @@ class App:
 
                 if not name.endswith("_middleware"):
                     route_name = name.replace("_", "/")
-                    await Log.info("Added route => %s." % route_name)
-                else:
-                    await Log.info("Added Middleware => %s." % name)
-
-
                 app.add_route(method, name)
 
             except ValueError:
@@ -245,10 +282,6 @@ class App:
 
                 if not name.endswith("_middleware"):
                     route_name = name.replace("_", "/")
-                    print("Added route => %s." % route_name)
-                else:
-                    print("Added Middleware => %s." % name)
-
 
                 app.add_route(method, name)
 
@@ -291,7 +324,7 @@ class App:
             await app.serve_route(r)
             
         except Abort as e:
-            await e.text(r, *e.args, **e.kwargs)
+            await e.text(r, *e.args)
 
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
         

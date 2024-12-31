@@ -35,6 +35,9 @@ except Exception as e:
     print(e)
 
 class Err(Exception):
+    __slots__ = (
+        'message',
+    )
     def __init__(app, message=None):
         app.message = str(message)
 
@@ -42,6 +45,9 @@ class Err(Exception):
         return app.message
 
 class ServerGotInTrouble(Exception):
+    __slots__ = (
+        'message',
+    )
     def __init__(app, message=None):
         app.message = str(message)
 
@@ -49,11 +55,11 @@ class ServerGotInTrouble(Exception):
         return app.message
 
 class Log:
-    known_exceptions = [
+    known_exceptions = (
         "[Errno 104] Connection reset by peer",
         "Client has disconnected.",
         "Connection lost",
-    ]
+    )
 
     colors = {
         'info': '\033[32m',
@@ -65,11 +71,11 @@ class Log:
     }
 
     @classmethod
-    async def __log__(app, r=None, message=None, logger_=logger.info):
+    async def __log__(app, r=None, message=None, color=None, logger_=logger.info):
         try:
-            log_level = logger_.__name__.split('.')[-1]
-            
-            color = app.colors.get(log_level, app.colors['reset'])
+            log_level = logger_.__name__[logger_.__name__.rfind(".") + 1:]
+
+            color = color or app.colors.get(log_level, app.colors['reset'])
 
             if "BlazeioPayload" in str(r):
                 message = str(message).strip()

@@ -3,13 +3,23 @@ from .request import *
 from .streaming import *      
 
 class Simpleserve:
-    CHUNK_SIZE: int = 1024
-    headers: dict = {
-        "Accept-Ranges": "bytes"
-    }
-    cache_control: dict = {
-        "max-age": "3600"
-    }
+    __slots__ = (
+        'headers',
+        'cache_control',
+        'CHUNK_SIZE',
+        'r',
+        'file_size',
+        'filename',
+        'file_stats',
+        'last_modified',
+        'etag',
+        'last_modified_str',
+        'file',
+        'content_type',
+        'content_disposition',
+        'start',
+        'end',
+    )
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
         if not exists(file):
@@ -17,7 +27,13 @@ class Simpleserve:
 
         app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
 
-        if kwargs: app.__dict__.update(**kwargs)
+        app.headers = kwargs.get("headers", {
+            "Accept-Ranges": "bytes"
+        })
+
+        app.cache_control = kwargs.get("cache_control", {
+            "max-age": "3600"
+        })
 
         return await app.prepare_metadata()
 
