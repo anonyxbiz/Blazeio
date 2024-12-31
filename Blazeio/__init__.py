@@ -6,7 +6,7 @@ from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
 
-"""class BlazeioPayloadUtils:
+class BlazeioPayloadUtils:
     def __init__(app):
         app.method = None
         app.tail = "handle_all_middleware"
@@ -73,18 +73,18 @@ from .Client import *
                 reason = StatusReason.reasons.get(status, "Unknown")
 
             data = "%s %s %s\r\n" % (protocol, str(status), reason)
+            
+            data += "Server: Blazeio\r\n"
+
+            if app.__cookie__:
+                data += "Set-Cookie: %s\r\n" % app.__cookie__
 
             await app.write(data.encode())
 
             app.__is_prepared__ = True
             app.__status__ = status
 
-        await app.write(b"Server: Blazeio\r\n")
-        
-        if headers or app.__cookie__:
-            if app.__cookie__:
-                headers["Set-Cookie"] = app.__cookie__
-
+        if headers:
             for key, val in headers.items():
                 await app.write(
                     b"%s: %s\r\n" % (key.encode(), val.encode())
@@ -142,142 +142,6 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
-
-        BlazeioPayloadUtils.__init__(app)
-
-    def connection_made(app, transport):
-        transport.pause_reading()
-        app.transport = transport
-        loop.create_task(app.transporter())
-
-    def data_received(app, chunk):
-        if app.__stream__ is None:
-            app.__stream__ = deque()
-        app.__stream__.append(chunk)
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    def eof_received(app):
-        app.__exploited__ = True
-
-    def pause_writing(app):
-        app.__is_buffer_over_high_watermark__ = True
-
-    def resume_writing(app):
-        app.__is_buffer_over_high_watermark__ = False"""
-
-
-class BlazeioPayloadUtils:
-    def __init__(app):
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.__is_prepared__ = False
-        app.__status__ = 0
-        app.__cookie__ = None
-
-    async def pull(app, timeout: int = 60):
-        if app.method in ("GET", "HEAD", "OPTIONS"): return
-        timestart, timeout = perf_counter(), float(timeout)
-
-        if not "content_length" in app.__dict__:
-            app.content_length = int(app.headers.get("Content-Length", 0))
-
-        if not "current_length" in app.__dict__:
-            app.current_length = 0
-        
-        async for chunk in app.request():
-            if chunk:
-                timestart = perf_counter()
-                app.current_length += len(chunk)
-                yield chunk
-
-            else:
-                if app.current_length >= app.content_length:
-                    break
-
-                if perf_counter() - timestart >= timeout: raise Err("Connection Timed-Out due to inactivity")
-
-    async def set_cookie(app, cookie):
-        app.__cookie__ = cookie
-
-    async def request(app):
-        while True:
-            if app.__stream__:
-                if app.transport.is_reading(): app.transport.pause_reading()
-
-                yield app.__stream__.popleft()
-            else:
-                if app.__exploited__: break
-                if not app.transport.is_reading(): app.transport.resume_reading()
-                else:
-                    yield None
-            
-            await sleep(0)
-
-    async def buffer_overflow_manager(app):
-        while app.__is_buffer_over_high_watermark__:
-            await sleep(0)
-            if not app.__is_alive__: raise Err("Client has disconnected.")
-
-        if app.__is_alive__:
-            return True
-        else:
-            raise Err("Client has disconnected.")
-
-    async def prepare(app, headers: dict = {}, status: int = 206, reason: str = "Partial Content", protocol: str = "HTTP/1.1"):
-        if not app.__is_prepared__:
-            data = "%s %s %s\r\n" % (protocol, str(status), reason)
-            
-            if app.__cookie__:
-                data += "Set-Cookie: %s\r\n" % app.__cookie__
-            
-            data += "Server: Blazeio\r\n"
-
-            await app.write(data.encode())
-
-            app.__is_prepared__ = True
-            app.__status__ = status
-
-        if headers:
-            for key, val in headers.items():
-                await app.write(
-                    b"%s: %s\r\n" % (key.encode(), val.encode())
-                )
-
-        await app.write(b"\r\n")
-
-    async def transporter(app):
-        await sleep(0)
-        app.__perf_counter__ = perf_counter()
-        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
-
-        await app.on_client_connected(app)
-
-        await app.close()
-        
-        await Log.debug(app, f"Completed with status {app.__status__} in {perf_counter() - app.__perf_counter__:.4f} seconds")
-
-    async def control(app, duration=0):
-        await sleep(duration)
-
-    async def write(app, data: (bytes, bytearray)):
-        if await app.buffer_overflow_manager():
-            app.transport.write(data)
-
-    async def close(app):
-        app.transport.close()
-
-class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
-    def __init__(app, on_client_connected):
-        app.on_client_connected = on_client_connected
-        app.__stream__ = None
-        app.__is_buffer_over_high_watermark__ = False
-        app.__exploited__ = False
-        app.__is_alive__ = True
-
         BlazeioPayloadUtils.__init__(app)
 
     def connection_made(app, transport):

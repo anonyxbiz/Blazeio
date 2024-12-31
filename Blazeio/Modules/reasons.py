@@ -74,6 +74,10 @@ class StatusReason:
         510: "Not Extended",
         511: "Network Authentication Required"
     }
+    __slots__ = ("nonvar",)
+    
+    def __init__(app):
+        app.nonvar = None
 
     @classmethod
     async def toreason(app, status: int):
