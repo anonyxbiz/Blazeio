@@ -62,11 +62,6 @@ class BlazeioPayloadUtils:
             await sleep(0)
             if not app.__is_alive__: raise Err("Client has disconnected.")
 
-        if app.__is_alive__:
-            return True
-        else:
-            raise Err("Client has disconnected.")
-
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
             if not reason:
@@ -107,8 +102,12 @@ class BlazeioPayloadUtils:
         await sleep(duration)
 
     async def write(app, data: (bytes, bytearray)):
-        if await app.buffer_overflow_manager():
+        await app.buffer_overflow_manager()
+        
+        if app.__is_alive__:
             app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
 
     async def close(app):
         app.transport.close()
