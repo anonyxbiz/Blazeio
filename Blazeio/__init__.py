@@ -8,15 +8,7 @@ from .Client import *
 
 class BlazeioPayloadUtils:
     def __init__(app):
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.__is_prepared__ = False
-        app.__status__ = 0
-        app.content_length = None
-        app.current_length = None
-        app.__cookie__ = None
+        pass
 
     async def pull(app, timeout: int = 60):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
@@ -142,6 +134,16 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.__is_prepared__ = False
+        app.__status__ = 0
+        app.content_length = None
+        app.current_length = None
+        app.__cookie__ = None
+
         BlazeioPayloadUtils.__init__(app)
 
     def connection_made(app, transport):
