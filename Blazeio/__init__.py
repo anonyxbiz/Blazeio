@@ -53,6 +53,7 @@ class BlazeioPayloadUtils:
             await sleep(0)
 
     async def buffer_overflow_manager(app):
+        await sleep(0)
         if not app.__is_buffer_over_high_watermark__: return
 
         while app.__is_buffer_over_high_watermark__:
