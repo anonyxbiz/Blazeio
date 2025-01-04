@@ -40,8 +40,11 @@ class BlazeioPayloadUtils:
             if app.current_length >= app.content_length:
                 return
 
-    async def set_cookie(app, cookie):
-        app.__cookie__ = cookie
+    async def set_cookie(app, name: str, value: str, expires: str, secure=""):
+        if secure != "":
+            secure = "; Secure"
+
+        app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
     async def request(app):
         while True:
@@ -67,14 +70,12 @@ class BlazeioPayloadUtils:
             if not reason:
                 reason = StatusReason.reasons.get(status, "Unknown")
 
-            data = "%s %s %s\r\n" % (protocol, str(status), reason)
-            
-            data += "Server: Blazeio\r\n"
+            data = "%s %s %s\r\nServer: Blazeio\r\n" % (protocol, str(status), reason)
 
             if app.__cookie__:
                 data += "Set-Cookie: %s\r\n" % app.__cookie__
 
-            await app.write(data.encode())
+            await app.write(bytearray(data, "utf-8"))
 
             app.__is_prepared__ = True
             app.__status__ = status

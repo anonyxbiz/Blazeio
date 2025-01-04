@@ -32,7 +32,8 @@ class Request:
 
     @classmethod
     async def get_cookie(app, r, val: str):
-        cookie = r.headers.get("Cookie", "null")
+        if not val in (cookie := r.headers.get("Cookie", "null")):
+            return None
 
         a, b = "%s=" % val, ";"
 
