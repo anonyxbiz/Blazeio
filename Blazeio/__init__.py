@@ -138,7 +138,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
 
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.__stream__ = None
+        app.__stream__ = deque()
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
@@ -150,8 +150,6 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         loop.create_task(app.transporter())
 
     def data_received(app, chunk):
-        if app.__stream__ is None:
-            app.__stream__ = deque()
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):

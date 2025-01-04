@@ -165,8 +165,7 @@ class Request:
                 elif len(__buff__) >= max_buff_size:
                     break
 
-        if r.__stream__ is not None:
-            r.__stream__.appendleft(b'' + __buff__[idx + 4:])
+        r.__stream__.appendleft(b'' + __buff__[idx + 4:])
 
         return r
 
