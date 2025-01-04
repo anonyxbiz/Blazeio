@@ -53,6 +53,8 @@ class BlazeioPayloadUtils:
             await sleep(0)
 
     async def buffer_overflow_manager(app):
+        if not app.__is_buffer_over_high_watermark__: return
+
         while app.__is_buffer_over_high_watermark__:
             await sleep(0)
             if not app.__is_alive__: raise Err("Client has disconnected.")
@@ -62,13 +64,11 @@ class BlazeioPayloadUtils:
             if not reason:
                 reason = StatusReason.reasons.get(status, "Unknown")
 
-            data = "%s %s %s\r\nServer: Blazeio\r\n" % (protocol, str(status), reason)
+            await app.write(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
 
             if app.__cookie__:
-                data += "Set-Cookie: %s\r\n" % app.__cookie__
-
-            await app.write(bytearray(data, "utf-8"))
-
+                await app.write(b"Set-Cookie: %s\r\n" % app.__cookie__.encode())
+            
             app.__is_prepared__ = True
             app.__status__ = status
 
@@ -83,7 +83,6 @@ class BlazeioPayloadUtils:
     async def transporter(app):
         await sleep(0)
         app.__perf_counter__ = perf_counter()
-        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
         await app.on_client_connected(app)
 
@@ -149,6 +148,8 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
+        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
+
         loop.create_task(app.transporter())
 
     def data_received(app, chunk):
