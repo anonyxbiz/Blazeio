@@ -7,8 +7,14 @@ from .Modules.reasons import *
 from .Client import *
 
 class BlazeioPayloadUtils:
+    __slots__ = ()
     def __init__(app):
         pass
+
+    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = False):
+        if secure: secure = "; Secure"
+
+        app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
     async def pull(app, timeout: int = 60):
         if app.method in ("GET", "HEAD", "OPTIONS"): return
@@ -31,12 +37,6 @@ class BlazeioPayloadUtils:
             
             if app.current_length >= app.content_length:
                 return
-
-    async def set_cookie(app, name: str, value: str, expires: str, secure=""):
-        if secure != "":
-            secure = "; Secure"
-
-        app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
     async def request(app):
         while True:

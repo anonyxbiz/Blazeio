@@ -8,23 +8,19 @@ from ..Dependencies import p, dumps, loads, Err, Log, sleep
 
 class Deliver:
     @classmethod
-    async def json(app, r, data: dict, status: int = 200, reason = None, headers: dict = {}, indent: int = 4):
+    async def json(app, r, data: dict, status: int = 200, headers: dict = {}, indent: int = 4):
         headers = dict(headers)
-
-        headers["Content-Type"] = "application/json"
-        
-        await r.prepare(headers, status=status, reason=reason)
-
+        headers["Content-Type"] = "application/json; charset=utf-8"
+        await r.prepare(headers, status)
         await r.write(bytearray(dumps(data, indent=indent), "utf-8"))
 
-
     @classmethod
-    async def text(app, r, data, status=200, reason=None, headers={}):
+    async def text(app, r, data, status=200, headers={}):
         headers = dict(headers)
 
-        headers["Content-Type"] = "text/plain"
+        headers["Content-Type"] = "text/plain; charset=utf-8"
         
-        await r.prepare(headers, status=status, reason=reason)
+        await r.prepare(headers, status)
 
         await r.write(bytearray(data, "utf-8"))
 

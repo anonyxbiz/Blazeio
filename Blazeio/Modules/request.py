@@ -2,29 +2,6 @@ from ..Dependencies import *
 from .streaming import *
 
 class Request:
-    bad_strings = [
-        "%20",     # Represents a space
-        "%22",     # Double quote (")
-        "%3C",     # Less-than symbol (<)
-        "%3E",     # Greater-than symbol (>)
-        "%3D",     # Equal sign (=)
-        "%26",     # Ampersand (&)
-        "%3F",     # Question mark (?)
-        "%2F",     # Forward slash (/)
-        "%2B",     # Plus sign (+)
-        "%2C",     # Comma (,)
-        "%23",     # Hash (#)
-        "%25",     # Percent sign (%)
-        "%2E",     # Period (.)
-        "%5B",     # Opening square bracket ([)
-        "%5D",     # Closing square bracket (])
-        "%7B",     # Opening curly brace ({)
-        "%7D",     # Closing curly brace (})
-        "%3A",     # Colon (:)
-        "%3B",     # Semicolon (;)
-        "%40"      # At symbol (@)
-    ]
-
     @classmethod
     async def stream_chunks(app, r):
         async for chunk in r.request():
@@ -32,16 +9,15 @@ class Request:
 
     @classmethod
     async def get_cookie(app, r, val: str):
-        if not val in (cookie := r.headers.get("Cookie", "null")):
+        if not val in (cookie := r.headers.get("Cookie", "")):
             return None
 
-        a, b = "%s=" % val, ";"
+        cookie_start, cookie_end = val + "=", ";"
 
-        if (idx := cookie.find(a)) != -1:
-            cookie = cookie[idx+len(a):].strip()
+        if (idx := cookie.find(cookie_start)) != -1:
+            cookie = cookie[idx+len(cookie_start):]
 
-        if (idx := cookie.find(b)) != -1:
-            cookie = cookie[:idx].strip()
+            if (idx := cookie.find(cookie_end)) != -1: cookie = cookie[:idx]
 
         return cookie
 
@@ -52,40 +28,9 @@ class Request:
         async for chunk in r.pull():
             temp.extend(chunk)
         
-        json_data = loads(temp.decode("utf-8"))
-        return json_data
-                    
-        if temp:
-            if (idx := temp.find(sepr)) != -1:
-                temp = temp[idx + len(sepr):]
+        try: return loads(temp.decode("utf-8"))
+        except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
-            if sepr2 in temp and sepr3 in temp:
-                try:
-                    start = temp.find(sepr2)
-                    
-                    end = temp.rfind(sepr3) + 1
-                    
-                    json_bytes = temp[start:end]
-
-                    json_data = loads(json_bytes.decode("utf-8"))
-                    return json_data
-                except JSONDecodeError:
-                    raise Err("Malformed packets are not valid JSON.")
-
-        raise Err("No valid JSON found in the stream.")
-
-    @classmethod
-    async def param_format(app, param: str):
-        for u in app.bad_strings:
-            if u in param:
-                while u in param:
-                    param = param.replace(u, "")
-                    await sleep(0)
-                    
-            await sleep(0)
-            
-        return param
- 
     @classmethod
     async def get_params(app, r, q = "?", o = "&", y = "="):
         temp = defaultdict(str)
@@ -104,7 +49,7 @@ class Request:
             
             if (idx2 := param.find(y)) != -1:
                 key, value = param[:idx2], param[idx2 + 1:]
-                temp[key] = value
+                temp[key] = unquote(value)
 
             if idx == -1 or idx2 == -1:
                 break
@@ -128,9 +73,8 @@ class Request:
         return r
 
     @classmethod
-    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', mutate=False):
+    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', idx = 0):
         r.headers = defaultdict(str)
-        idx = 0
 
         while True:
             await sleep(0)
@@ -142,18 +86,16 @@ class Request:
             if (sep_idx := header.find(header_key_val)) != -1:
                 key = header[:sep_idx]
                 val = header[sep_idx + 2:]
-                
                 r.headers[key] = val
-            
+
             if idx == -1: break
 
         r.headers = dict(r.headers)
-            
-        if mutate:
-            r.headers = MappingProxyType(r.headers)
+
+        # if mutate: r.headers = MappingProxyType(r.headers)
             
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 102400, idx = -4):
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 1024, idx = -4):
         __buff__ = bytearray()
 
         async for chunk in r.request():
