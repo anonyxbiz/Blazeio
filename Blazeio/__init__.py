@@ -7,7 +7,7 @@ from .Modules.reasons import *
 from .Client import *
 
 class BlazeioPayloadUtils:
-    __slots__ = ()
+    # __slots__ = ()
     def __init__(app):
         pass
 
@@ -57,7 +57,8 @@ class BlazeioPayloadUtils:
 
         while app.__is_buffer_over_high_watermark__:
             await sleep(0)
-            if not app.__is_alive__: raise Err("Client has disconnected.")
+            if not app.__is_alive__:
+                return
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
