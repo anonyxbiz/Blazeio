@@ -73,8 +73,9 @@ class Request:
         return r
 
     @classmethod
-    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', idx = 0):
+    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', mutate=False):
         r.headers = defaultdict(str)
+        idx = 0
 
         while True:
             await sleep(0)
@@ -86,16 +87,18 @@ class Request:
             if (sep_idx := header.find(header_key_val)) != -1:
                 key = header[:sep_idx]
                 val = header[sep_idx + 2:]
+                
                 r.headers[key] = val
-
+            
             if idx == -1: break
 
         r.headers = dict(r.headers)
-
-        # if mutate: r.headers = MappingProxyType(r.headers)
+            
+        if mutate:
+            r.headers = MappingProxyType(r.headers)
             
     @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 1024, idx = -4):
+    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 102400, idx = -4):
         __buff__ = bytearray()
 
         async for chunk in r.request():
