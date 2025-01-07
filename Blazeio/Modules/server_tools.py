@@ -1,6 +1,8 @@
 from ..Dependencies import *
 from .request import *
 from .streaming import *      
+from gzip import compress, decompress
+from asyncio import to_thread
 
 class Simpleserve:
     __slots__ = (
@@ -19,6 +21,12 @@ class Simpleserve:
         'content_disposition',
         'start',
         'end',
+    )
+    compressable = (
+        "text/html",
+        "text/css",
+        "application/javascript",
+        "application/json"
     )
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
@@ -98,9 +106,27 @@ class Simpleserve:
         app = cls()
         if await app.initialize(*args, **kwargs): return
 
+        if app.content_type in app.compressable:
+            if "gzip" in app.r.headers.get("Accept-Encoding", ""):
+                app.headers["Content-Encoding"] = "gzip"
+                if kwargs.get("gzip", True):
+                    kwargs["gzip"] = True
+            else:
+                kwargs["gzip"] = False
+        else:
+            kwargs["gzip"] = False
+
         await app.r.prepare(app.headers)
-        async for chunk in app.pull():
-            await app.r.write(chunk)
+        
+        if not kwargs.get("gzip"):
+            async for chunk in app.pull(): await app.r.write(chunk)
+        else:
+            if app.CHUNK_SIZE < 1024*1024:
+                app.CHUNK_SIZE = 1024*1024
+
+            async for chunk in app.pull():
+                chunk = await to_thread(compress, chunk)
+                await app.r.write(chunk)
 
     async def pull(app):
         async with iopen(app.file, "rb") as f:
