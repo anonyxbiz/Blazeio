@@ -30,9 +30,6 @@ class Simpleserve:
     )
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
-        if not exists(file):
-            raise Abort("Not Found", 404, "Not Found")
-
         app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
 
         app.headers = kwargs.get("headers", {
@@ -103,30 +100,34 @@ class Simpleserve:
 
     @classmethod
     async def push(cls, *args, **kwargs):
+        if not exists(args[1]): raise Abort("Not Found", 404)
+
         app = cls()
-        if await app.initialize(*args, **kwargs): return
+        await app.initialize(*args, **kwargs)
 
         if app.content_type in app.compressable:
             if "gzip" in app.r.headers.get("Accept-Encoding", ""):
-                app.headers["Content-Encoding"] = "gzip"
                 if kwargs.get("gzip", True):
                     kwargs["gzip"] = True
             else:
                 kwargs["gzip"] = False
         else:
             kwargs["gzip"] = False
+        
+        if kwargs.get("gzip"): app.headers["Content-Encoding"] = "gzip"
 
         await app.r.prepare(app.headers)
         
-        if not kwargs.get("gzip"):
-            async for chunk in app.pull(): await app.r.write(chunk)
-        else:
-            if app.CHUNK_SIZE < 1024*1024:
+        if kwargs.get("gzip"): 
+            if app.CHUNK_SIZE < 1024*1:
                 app.CHUNK_SIZE = 1024*1024
 
             async for chunk in app.pull():
                 chunk = await to_thread(compress, chunk)
                 await app.r.write(chunk)
+
+        else:
+            async for chunk in app.pull(): await app.r.write(chunk)
 
     async def pull(app):
         async with iopen(app.file, "rb") as f:

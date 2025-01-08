@@ -60,26 +60,27 @@ class Abort(Exception):
     ):
         app.args = args
 
-    def __str__(app) -> str:
-        return str(app.message)
-    
-    async def text(app, r, message: str = "Something went wrong", status: int = 403, reason = None, headers: dict = {}
+    async def text(
+        app,
+        r,
+        message: str = "Something went wrong",
+        status: int = 403,
+        headers: dict = {},
     ):
         try:
-            headers_ = {
+            headers = dict(headers)
+
+            headers.update({
                 "Content-Type": "text/plain"
-            }
-            
-            if headers: headers_.update(headers)
-            
+            })
+
             await r.prepare(
-                headers_,
-                status,
-                reason
+                headers,
+                status
             )
-            
-            await r.write(bytearray(message, "utf-8"))
-            
+
+            await r.write(message.encode())
+
         except Exception as e:
             await Log.critical(r, e)
         

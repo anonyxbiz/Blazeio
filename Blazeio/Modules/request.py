@@ -1,6 +1,35 @@
 from ..Dependencies import *
 from .streaming import *
 
+
+
+
+class HTTPParser:
+    header_key_val = b': '
+    h_s = b'\r\n'
+
+    @classmethod
+    async def header_parser(app, r, data: bytearray):
+        r.headers = {}
+
+        async def make(header):
+            if (sep_idx := header.find(app.header_key_val)) != -1:
+                key = header[:sep_idx]
+                val = header[sep_idx + 2:]
+
+                r.headers[key.decode("utf-8")] = val.decode("utf-8")
+
+        idx = 0
+        header = data
+
+        while (idx := data.find(app.h_s)) != -1:
+            header, data = data[:idx], data[idx + 2:]
+
+            await make(header)
+
+        await make(header)
+
+
 class Request:
     @classmethod
     async def stream_chunks(app, r):
@@ -27,8 +56,9 @@ class Request:
 
         async for chunk in r.pull():
             temp.extend(chunk)
-        
+
         try: return loads(temp.decode("utf-8"))
+
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod
@@ -57,61 +87,45 @@ class Request:
         return dict(temp)
 
     @classmethod
-    async def set_method(app, r, chunk, sepr1 = b' '):
-        if (idx := chunk.find(sepr1)) != -1:
+    async def set_method(app, r, server, chunk):
+        if (idx := chunk.find(server.__server_config__["__http_request_initial_separatir__"])) != -1:
             r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]
 
-            if (idx1 := chunk.find(sepr1)) != -1:
+            if (idx1 := chunk.find(server.__server_config__["__http_request_initial_separatir__"])) != -1:
                 r.tail, chunk = chunk[:idx1].decode("utf-8"), chunk[idx1 + 1:]
                 if (idx2 := r.tail.find('?')) != -1:
                     r.path = r.tail[:idx2]
                 else:
                     r.path = r.tail
-
-                await app.get_headers(r, chunk)
+                
+                if server.__server_config__["__http_request_auto_header_parsing__"]:
+                    await HTTPParser.header_parser(r, chunk)
+                else:
+                    if not r.__miscellaneous__: r.__miscellaneous__ = deque()
+                    r.__miscellaneous__.append(chunk)
 
         return r
 
     @classmethod
-    async def get_headers(app, r, chunk, header_key_val = ': ', h_s = b'\r\n', mutate=False):
-        r.headers = defaultdict(str)
-        idx = 0
-
-        while True:
-            await sleep(0)
-            if (idx := chunk.find(h_s)) != -1:
-                header, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 2:]
-            else:
-                header = chunk.decode("utf-8")
-
-            if (sep_idx := header.find(header_key_val)) != -1:
-                key = header[:sep_idx]
-                val = header[sep_idx + 2:]
-                
-                r.headers[key] = val
-            
-            if idx == -1: break
-
-        r.headers = dict(r.headers)
-            
-        if mutate:
-            r.headers = MappingProxyType(r.headers)
-            
-    @classmethod
-    async def set_data(app, r, sig = b"\r\n\r\n", max_buff_size = 102400, idx = -4):
+    async def prepare_http_request(app, r, server):
         __buff__ = bytearray()
 
         async for chunk in r.request():
             if chunk:
                 __buff__.extend(chunk)
-                if (idx := __buff__.find(sig)) != -1:
-                    await app.set_method(r, __buff__[:idx])
-                    break
-                elif len(__buff__) >= max_buff_size:
-                    break
 
-        r.__stream__.appendleft(b'' + __buff__[idx + 4:])
+            if (idx := __buff__.find(server.__server_config__["__http_request_heading_end_seperator__"])) != -1:
+                __heading__, __buff__ = __buff__[:idx], b'' + __buff__[idx + server.__server_config__["__http_request_heading_end_seperator_len__"]:]
 
+                await app.set_method(r, server, __heading__)
+                
+                r.__stream__.appendleft(__buff__)
+                break
+
+            elif len(__buff__) >= server.__server_config__["__http_request_max_buff_size__"]:
+                raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
+
+        
         return r
 
     @classmethod

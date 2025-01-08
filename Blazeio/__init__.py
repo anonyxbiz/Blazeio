@@ -6,8 +6,29 @@ from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
 
+
+
+class StatelessTools:
+    __slots__ = ()
+    __non_bodied_http_methods__: tuple = ("GET", "HEAD", "OPTIONS")
+    
+    # Gets passed the app: request object and calculates the timeout without instantiating a class
+    @classmethod
+    async def validate_timeout(cls, app, timeout: float = 5.0):
+        if app.content_length is None:
+            if app.headers is not None: app.content_length = int(app.headers.get("Content-Length", 0))
+
+        if app.current_length >= app.content_length: return False
+
+        if perf_counter() - app.__perf_counter__ >= timeout:
+            if app.current_length >= app.content_length:
+                raise Err("Connection Timed-Out due to inactivity")
+
+        return True
+
+
 class BlazeioPayloadUtils:
-    # __slots__ = ()
+    __slots__ = ()
     def __init__(app):
         pass
 
@@ -16,27 +37,13 @@ class BlazeioPayloadUtils:
 
         app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
-    async def pull(app, timeout: int = 60):
-        if app.method in ("GET", "HEAD", "OPTIONS"): return
-        timestart, timeout = perf_counter(), float(timeout)
-
-        if app.content_length is None:
-            app.content_length = int(app.headers.get("Content-Length", 0))
-
-        if app.current_length is None:
-            app.current_length = 0
-        
+    async def pull(app, timeout: float = 600.0):
         async for chunk in app.request():
             if chunk:
-                timestart = perf_counter()
                 app.current_length += len(chunk)
                 yield chunk
-
             else:
-                if perf_counter() - timestart >= timeout: raise Err("Connection Timed-Out due to inactivity")
-            
-            if app.current_length >= app.content_length:
-                return
+                if not await StatelessTools.validate_timeout(app, timeout): break
 
     async def request(app):
         while True:
@@ -126,6 +133,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         'ip_port',
         'identifier',
         '__cookie__',
+        '__miscellaneous__',
     )
 
     def __init__(app, on_client_connected):
@@ -141,8 +149,9 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__is_prepared__ = False
         app.__status__ = 0
         app.content_length = None
-        app.current_length = None
+        app.current_length = 0
         app.__cookie__ = None
+        app.__miscellaneous__ = None
 
         BlazeioPayloadUtils.__init__(app)
 
@@ -168,22 +177,83 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-class App:
+class Handler:
+    def __init__(app):
+        pass
+
+    async def serve_route(app, r):
+        # Handle before_middleware
+        if before_middleware := app.declared_routes.get("before_middleware"):
+            if (resp := await before_middleware.get("func")(r)) is not None:
+                return resp
+
+        await Request.prepare_http_request(r, app)
+
+        await Log.info(r,
+            "=> %s@ %s" % (
+                r.method,
+                r.path
+            )
+        )
+
+        if route := app.declared_routes.get(r.path):
+            await route.get("func")(r)
+
+        elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
+            await handle_all_middleware.get("func")(r)
+        else:
+            # return
+            raise Abort("Not Found", 404)
+
+        if after_middleware := app.declared_routes.get("after_middleware"):
+            await after_middleware.get("func")(r)
+
+    async def handle_client(app, r):
+        try:
+            app.REQUEST_COUNT += 1
+            r.identifier = app.REQUEST_COUNT
+            await app.serve_route(r)
+            
+        except Abort as e:
+            await e.text(r, *e.args)
+
+        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
+        
+        except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
+            await Log.critical(r, e)
+
+class App(Handler):
     event_loop = loop
     REQUEST_COUNT = 0
     default_methods = ["GET", "POST", "OPTIONS", "PUT", "PATCH", "HEAD", "DELETE"]
     server = None
-
     memory = {
         "routes": OrderedDict(),
         "max_routes_in_memory": 20
     }
     memory["routes"]["null"] = None
     quiet = False
+    
+    __server_config__ = {
+        "__http_request_heading_end_seperator__": b"\r\n\r\n",
+        "__http_request_heading_end_seperator_len__": 4,
+        "__http_request_max_buff_size__": 102400,
+        "__http_request_initial_separatir__": b' ',
+        "__http_request_auto_header_parsing__": True,
+    }
+    
 
     @classmethod
     async def init(app, **kwargs):
         app = app()
+
+        Handler.__init__(app)
+
+        for key, val in dict(kwargs).items():
+            if key in app.__server_config__:
+                app.__server_config__[key] = val
+                kwargs.pop(key, None)
+
         app.__dict__.update(**kwargs)
         app.declared_routes = OrderedDict()
 
@@ -290,47 +360,6 @@ class App:
                 pass
             except Exception as e:
                 print(e)
-
-    async def serve_route(app, r):
-        # Handle before_middleware
-        if before_middleware := app.declared_routes.get("before_middleware"):
-            if (resp := await before_middleware.get("func")(r)) is not None:
-                return resp
-
-        await Request.set_data(r)
-
-        await Log.info(r,
-            "=> %s@ %s" % (
-                r.method,
-                r.path
-            )
-        )
-
-        if route := app.declared_routes.get(r.path):
-            await route.get("func")(r)
-
-        elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
-            await handle_all_middleware.get("func")(r)
-        else:
-            return
-            # raise Abort("Not Found", 404, "Not Found")
-
-        if after_middleware := app.declared_routes.get("after_middleware"):
-            await after_middleware.get("func")(r)
-
-    async def handle_client(app, r):
-        try:
-            app.REQUEST_COUNT += 1
-            r.identifier = app.REQUEST_COUNT
-            await app.serve_route(r)
-            
-        except Abort as e:
-            await e.text(r, *e.args)
-
-        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
-        
-        except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
-            await Log.critical(r, e)
 
     def setup_ssl(app, HOST: str, PORT: int, ssl_data: dict):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
