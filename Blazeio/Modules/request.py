@@ -16,11 +16,7 @@ class HTTPParser:
             if (sep_idx := header.find(app.header_key_val)) != -1:
                 key = header[:sep_idx]
                 val = header[sep_idx + 2:]
-
                 r.headers[key.decode("utf-8")] = val.decode("utf-8")
-
-        idx = 0
-        header = data
 
         while (idx := data.find(app.h_s)) != -1:
             header, data = data[:idx], data[idx + 2:]
@@ -28,7 +24,6 @@ class HTTPParser:
             await make(header)
 
         await make(data)
-
 
 class Request:
     @classmethod

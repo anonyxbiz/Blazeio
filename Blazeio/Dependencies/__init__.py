@@ -19,7 +19,7 @@ from os import stat
 
 from gzip import compress as gzip_compress
 
-from time import perf_counter, gmtime, strftime, strptime
+from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 from urllib.parse import unquote
 
 loop = get_event_loop()

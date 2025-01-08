@@ -178,14 +178,25 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__is_buffer_over_high_watermark__ = False
 
 class Handler:
+    __main_handler__ = None
     def __init__(app):
         pass
 
-    async def serve_route(app, r):
-        # Handle before_middleware
-        if before_middleware := app.declared_routes.get("before_middleware"):
-            if (resp := await before_middleware.get("func")(r)) is not None:
-                return resp
+    # Called on app start
+    async def configure_runtime(app):
+        app.before_middleware = app.declared_routes.get("before_middleware")
+
+        app.after_middleware = app.declared_routes.get("after_middleware")
+
+        app.handle_all_middleware = app.declared_routes.get("handle_all_middleware")
+        
+        if not app.before_middleware and not app.after_middleware: app.__main_handler__ = app.serve_route_no_middleware
+        else:
+            app.__main_handler__ = app.serve_route_with_middleware
+
+    async def serve_route_with_middleware(app, r):
+        if app.before_middleware:
+            if (resp := await app.before_middleware.get("func")(r)) is not None: return resp
 
         await Request.prepare_http_request(r, app)
 
@@ -208,134 +219,34 @@ class Handler:
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
 
+    async def serve_route_no_middleware(app, r):
+        await Request.prepare_http_request(r, app)
+        await Log.info(r,
+            "=> %s@ %s" % (
+                r.method,
+                r.path
+            )
+        )
+
+        if route := app.declared_routes.get(r.path): await route.get("func")(r)
+
+        elif app.handle_all_middleware: await app.handle_all_middleware.get("func")(r)
+        else: raise Abort("Not Found", 404)
+
     async def handle_client(app, r):
         try:
             app.REQUEST_COUNT += 1
             r.identifier = app.REQUEST_COUNT
-            await app.serve_route(r)
-            
+            await app.__main_handler__(r)
         except Abort as e:
             await e.text(r, *e.args)
-
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
-        
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
 
-class App(Handler):
-    event_loop = loop
-    REQUEST_COUNT = 0
-    default_methods = ["GET", "POST", "OPTIONS", "PUT", "PATCH", "HEAD", "DELETE"]
-    server = None
-    memory = {
-        "routes": OrderedDict(),
-        "max_routes_in_memory": 20
-    }
-    memory["routes"]["null"] = None
-    quiet = False
-    
-    __server_config__ = {
-        "__http_request_heading_end_seperator__": b"\r\n\r\n",
-        "__http_request_heading_end_seperator_len__": 4,
-        "__http_request_max_buff_size__": 102400,
-        "__http_request_initial_separatir__": b' ',
-        "__http_request_auto_header_parsing__": True,
-    }
-    
-
-    @classmethod
-    async def init(app, **kwargs):
-        app = app()
-
-        Handler.__init__(app)
-
-        for key, val in dict(kwargs).items():
-            if key in app.__server_config__:
-                app.__server_config__[key] = val
-                kwargs.pop(key, None)
-
-        app.__dict__.update(**kwargs)
-        app.declared_routes = OrderedDict()
-
-        return app
-
-    @classmethod
-    def init_sync(app, **kwargs):
-        return loop.run_until_complete(App.init(**kwargs))
-
-    def add_route(app, func: Callable, route_name = None):
-        if not route_name:
-            route_name = name = str(func.__name__)
-
-        signature = sig(func)
-        params = dict(signature.parameters)
-
-        if (alt_route_name := params.get("route")):
-            route_name = alt_route_name.default
-
-        methods_param = params.get("methods", None)
-        if methods_param:
-            methods = methods_param.default
-        else:
-            methods = app.default_methods
-
-        if isinstance(methods, list):
-            methods = {method: True for method in methods}
-        elif isinstance(methods, str):
-            methods = {methods: True}
-
-        params_ = OrderedDict()
-
-        for k, v in params.items():
-            params_[k] = v.default
-
-        data = {
-            "func": func,
-            "methods": methods,
-            "params": params_
-        }
-
-        if not route_name.endswith("_middleware"):
-            if (route := params_.get("route")) is None:
-                route_name = route_name.replace("_", "/")
-            else:
-                route_name = route
-        
-        app.declared_routes[route_name] = data
-        
-        if route_name.startswith("/"):
-            component = "route"
-            color = "\033[32m"
-        else:
-            component = "middleware"
-            color = "\033[34m"
-
-        loop.run_until_complete(Log.info("Added %s => %s." % (component, route_name), None, color))
-
-        return func
-
-    async def append_class_routes(app, class_):
-        for method in dir(class_):
-            try:
-                method = getattr(class_, method)
-                if not isinstance(method, (Callable,)):
-                    raise ValueError()
-
-                if not (name := str(method.__name__)).startswith("_") or name.startswith("__"):
-                    if not name.endswith("_middleware"):
-                        raise ValueError()
-
-                if not "r" in (params := dict((signature := sig(method)).parameters)):
-                    raise ValueError()
-
-                if not name.endswith("_middleware"):
-                    route_name = name.replace("_", "/")
-                app.add_route(method, name)
-
-            except ValueError:
-                pass
-            except Exception as e:
-                await Log.error(e)
+class OOP_RouteDef:
+    def __init__(app):
+        pass
 
     def attach(app, class_):
         for method in dir(class_):
@@ -361,6 +272,85 @@ class App(Handler):
             except Exception as e:
                 print(e)
 
+    def instantiate(app, to_instantiate: Callable):
+        app.attach(to_instantiate)
+
+        return to_instantiate
+
+class SrvConfig:
+    HOST, PORT = "0.0.0.0", "80"
+    def __init__(app): pass
+
+class App(Handler, OOP_RouteDef):
+    event_loop = loop
+    REQUEST_COUNT = 0
+    declared_routes = OrderedDict()
+    ServerConfig = SrvConfig()
+
+    __server_config__ = {
+        "__http_request_heading_end_seperator__": b"\r\n\r\n",
+        "__http_request_heading_end_seperator_len__": 4,
+        "__http_request_max_buff_size__": 102400,
+        "__http_request_initial_separatir__": b' ',
+        "__http_request_auto_header_parsing__": True,
+    }
+    
+
+    @classmethod
+    async def init(app, **kwargs):
+        app = app()
+        for i in app.__class__.__bases__: i.__init__(app)
+
+        for key, val in dict(kwargs).items():
+            if key in app.__server_config__:
+                app.__server_config__[key] = val
+                kwargs.pop(key, None)
+        
+        if kwargs:
+            app.ServerConfig.__dict__.update(**kwargs)
+
+        return app
+
+    @classmethod
+    def init_sync(app, **kwargs):
+        return loop.run_until_complete(App.init(**kwargs))
+
+    def add_route(app, func: Callable, route_name: str = ""):
+        params = {k: (\
+            v.default if str(v.default) != "<class 'inspect._empty'>"\
+            else None\
+        ) for k, v in dict(sig(func).parameters).items()}
+
+        if route_name == "": route_name = str(func.__name__)
+
+        if not route_name.endswith("_middleware"):
+            if (route := params.get("route")) is None:
+                i, x = "_", "/"
+
+                while (idx := route_name.find(i)) != -1:
+                    timedotsleep(0)
+                    route_name = route_name[:idx] + x + route_name[idx + len(i):]
+            else:
+                route_name = route
+        
+        data = {
+            "func": func,
+            "params": params
+        }
+
+        app.declared_routes[route_name] = data
+
+        if route_name.startswith("/"):
+            component = "route"
+            color = "\033[32m"
+        else:
+            component = "middleware"
+            color = "\033[34m"
+
+        loop.run_until_complete(Log.info("Added %s => %s." % (component, route_name), None, color))
+
+        return func
+
     def setup_ssl(app, HOST: str, PORT: int, ssl_data: dict):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
         if not certfile or not keyfile: raise Err("certfile and keyfile paths are required.")
@@ -380,7 +370,9 @@ class App(Handler):
             pass
         else:
             kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
-            
+        
+        await app.configure_runtime()
+
         app.server = await loop.create_server(
             lambda: BlazeioPayload(app.handle_client),
             HOST,
@@ -427,7 +419,10 @@ class App(Handler):
             await Log.info("Blazeio", ":: Exited.")
             exit()
 
-    def runner(app, HOST, PORT, **kwargs):
+    def runner(app, HOST=None, PORT=None, **kwargs):
+        HOST = HOST or app.ServerConfig.host
+        PORT = PORT or app.ServerConfig.port
+
         try:
             if not kwargs.get("backlog"):
                 kwargs["backlog"] = 5000
