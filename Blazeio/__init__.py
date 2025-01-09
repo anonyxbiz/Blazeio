@@ -7,7 +7,6 @@ from .Modules.reasons import *
 from .Client import *
 
 
-
 class StatelessTools:
     __slots__ = ()
     __non_bodied_http_methods__: tuple = ("GET", "HEAD", "OPTIONS")
@@ -25,7 +24,6 @@ class StatelessTools:
                 raise Err("Connection Timed-Out due to inactivity")
 
         return True
-
 
 class BlazeioPayloadUtils:
     __slots__ = ()
@@ -134,6 +132,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         'identifier',
         '__cookie__',
         '__miscellaneous__',
+        '__timeout__',
     )
 
     def __init__(app, on_client_connected):
@@ -152,6 +151,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.current_length = 0
         app.__cookie__ = None
         app.__miscellaneous__ = None
+        app.__timeout__ = None
 
         BlazeioPayloadUtils.__init__(app)
 
@@ -279,9 +279,57 @@ class OOP_RouteDef:
 
 class SrvConfig:
     HOST, PORT = "0.0.0.0", "80"
+    __timeout__ = float(60*10)
+    __timeout_check_freq__ = 5
     def __init__(app): pass
 
-class App(Handler, OOP_RouteDef):
+class Timeout:
+    def __init__(app):
+        app.event_loop.create_task(app.task())
+    
+    async def task(app):
+        while True:
+            await sleep(app.ServerConfig.__timeout_check_freq__)
+            await app.check()
+
+    async def cancel(app, Payload, task, msg: str):
+        try:
+            task.cancel()
+            await task
+        except CancelledError: pass
+        except Exception as e: await Log.critical("Blazeio", str(e))
+        
+        await Log.warning(Payload, msg)
+
+    async def enforce_timeout(app, task):
+        coro = task.get_coro()
+        if not hasattr(coro, "cr_frame"): return
+
+        if not (Payload := coro.cr_frame.f_locals.get("app")): return
+
+        if not "<Blazeio.BlazeioPayload" in str(Payload): return
+
+        if not hasattr(Payload, "__perf_counter__"): return
+
+        if not Payload.__is_alive__: await app.cancel(Payload, task, "Task [%s] cancelled -- client disconnected." % (task.get_name()))
+
+        __perf_counter__ = getattr(Payload, "__perf_counter__")
+
+        duration = perf_counter() - __perf_counter__
+        
+        timeout = Payload.__timeout__ or app.ServerConfig.__timeout__
+
+        if duration >= timeout: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
+
+    async def check(app):
+        for task in all_tasks():
+            if task is not current_task():
+                try:
+                    await app.enforce_timeout(task)
+                except AttributeError as e: await Log.warning(e)
+                except Exception as e: await Log.warning(e)
+
+class App(Handler, OOP_RouteDef, Timeout):
     event_loop = loop
     REQUEST_COUNT = 0
     declared_routes = OrderedDict()
@@ -390,13 +438,7 @@ class App(Handler, OOP_RouteDef):
 
             for task in all_tasks(loop=loop):
                 if task is not current_task():
-                    data = str(task)
-                    if (idx := data.find((sepr := "name='"))) != -1:
-                        name = data[idx + len(sepr):]
-                        if (idx := name.find((sepr := "'"))) != -1:
-                            name = name[:idx]
-                    else:
-                        name = data
+                    name = task.get_name()
 
                     await Log.info(
                         "Blazeio",
@@ -406,15 +448,12 @@ class App(Handler, OOP_RouteDef):
                     try:
                         task.cancel()
                         # await task
-                    except CancelledError:
-                        pass
-                    except Exception as e:
-                        await Log.critical("Blazeio", e)
+                    except CancelledError: pass
+                    except Exception as e: await Log.critical("Blazeio", e)
 
             await Log.info("Blazeio", ":: Event loop wiped, ready to exit.")
 
-        except Exception as e:
-            await Log.critical("Blazeio", str(e))
+        except Exception as e: await Log.critical("Blazeio", str(e))
         finally:
             await Log.info("Blazeio", ":: Exited.")
             exit()
