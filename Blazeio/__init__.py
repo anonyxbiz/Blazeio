@@ -6,25 +6,6 @@ from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
 
-
-class StatelessTools:
-    __slots__ = ()
-    __non_bodied_http_methods__: tuple = ("GET", "HEAD", "OPTIONS")
-    
-    # Gets passed the app: request object and calculates the timeout without instantiating a class
-    @classmethod
-    async def validate_timeout(cls, app, timeout: float = 5.0):
-        if app.content_length is None:
-            if app.headers is not None: app.content_length = int(app.headers.get("Content-Length", 0))
-
-        if app.current_length >= app.content_length: return False
-
-        if perf_counter() - app.__perf_counter__ >= timeout:
-            if app.current_length >= app.content_length:
-                raise Err("Connection Timed-Out due to inactivity")
-
-        return True
-
 class BlazeioPayloadUtils:
     __slots__ = ()
     def __init__(app):
@@ -35,13 +16,15 @@ class BlazeioPayloadUtils:
 
         app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
-    async def pull(app, timeout: float = 600.0):
+    async def pull(app):
+        if app.content_length is None:
+            if app.headers is not None: app.content_length = int(app.headers.get("Content-Length", 0))
+
         async for chunk in app.request():
             if chunk:
                 app.current_length += len(chunk)
                 yield chunk
-            else:
-                if not await StatelessTools.validate_timeout(app, timeout): break
+            elif app.current_length >= app.content_length: return
 
     async def request(app):
         while True:
@@ -54,7 +37,7 @@ class BlazeioPayloadUtils:
                 if not app.transport.is_reading(): app.transport.resume_reading()
                 else:
                     yield None
-            
+
             await sleep(0)
 
     async def buffer_overflow_manager(app):
@@ -62,8 +45,6 @@ class BlazeioPayloadUtils:
 
         while app.__is_buffer_over_high_watermark__:
             await sleep(0)
-            if not app.__is_alive__:
-                return
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
@@ -101,11 +82,8 @@ class BlazeioPayloadUtils:
 
     async def write(app, data: (bytes, bytearray)):
         await app.buffer_overflow_manager()
-        
-        if app.__is_alive__:
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
+
+        if app.__is_alive__: app.transport.write(data)
 
     async def close(app):
         app.transport.close()
@@ -133,6 +111,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         '__cookie__',
         '__miscellaneous__',
         '__timeout__',
+        '__time_disconnected__',
     )
 
     def __init__(app, on_client_connected):
@@ -166,6 +145,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
+        app.__time_disconnected__ = perf_counter()
         app.__is_alive__ = False
 
     def eof_received(app):
@@ -239,7 +219,7 @@ class Handler:
             r.identifier = app.REQUEST_COUNT
             await app.__main_handler__(r)
         except Abort as e:
-            await e.text(r, *e.args)
+            await e.text()
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
@@ -283,35 +263,50 @@ class SrvConfig:
     __timeout_check_freq__ = 5
     def __init__(app): pass
 
-class Timeout:
+class Monitoring:
     def __init__(app):
-        app.event_loop.create_task(app.task())
-    
-    async def task(app):
+        app.event_loop.create_task(app.timeout_task())
+        app.event_loop.create_task(app.health_checking_task())
+
+    async def timeout_task(app):
         while True:
             await sleep(app.ServerConfig.__timeout_check_freq__)
-            await app.check()
+            await app.check(app.enforce_timeout)
 
-    async def cancel(app, Payload, task, msg: str):
+    async def health_checking_task(app):
+        while True:
+            await sleep(1)
+            await app.check(app.enforce_health)
+
+    async def enforce_health(app, task):
+        if not (Payload := await app.get_payload(task)): return
+
+        if not hasattr(Payload, "__perf_counter__"): return
+
+        if not Payload.__is_alive__:
+            if perf_counter() - Payload.__time_disconnected__ >= 0.5:
+                await app.cancel(Payload, task, "%s Disconnected" % Payload.identifier)
+
+    async def cancel(app, Payload, task, msg: str = ""):
         try:
             task.cancel()
             await task
         except CancelledError: pass
         except Exception as e: await Log.critical("Blazeio", str(e))
+
+        if msg != "": await Log.warning(Payload, msg)
+
+    async def get_payload(app, task):
+        coro = task.get_coro()
+
+        if not hasattr(coro, "cr_frame") or not (Payload := coro.cr_frame.f_locals.get("app")) or not "<Blazeio.BlazeioPayload" in str(Payload): return
         
-        await Log.warning(Payload, msg)
+        return Payload
 
     async def enforce_timeout(app, task):
-        coro = task.get_coro()
-        if not hasattr(coro, "cr_frame"): return
-
-        if not (Payload := coro.cr_frame.f_locals.get("app")): return
-
-        if not "<Blazeio.BlazeioPayload" in str(Payload): return
+        if not (Payload := await app.get_payload(task)): return
 
         if not hasattr(Payload, "__perf_counter__"): return
-
-        if not Payload.__is_alive__: await app.cancel(Payload, task, "Task [%s] cancelled -- client disconnected." % (task.get_name()))
 
         __perf_counter__ = getattr(Payload, "__perf_counter__")
 
@@ -321,15 +316,15 @@ class Timeout:
 
         if duration >= timeout: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
 
-    async def check(app):
+    async def check(app, handler):
         for task in all_tasks():
             if task is not current_task():
                 try:
-                    await app.enforce_timeout(task)
+                    await handler(task)
                 except AttributeError as e: await Log.warning(e)
                 except Exception as e: await Log.warning(e)
 
-class App(Handler, OOP_RouteDef, Timeout):
+class App(Handler, OOP_RouteDef, Monitoring):
     event_loop = loop
     REQUEST_COUNT = 0
     declared_routes = OrderedDict()
