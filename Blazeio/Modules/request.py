@@ -27,11 +27,6 @@ class HTTPParser:
 
 class Request:
     @classmethod
-    async def stream_chunks(app, r):
-        async for chunk in r.request():
-            yield chunk
-
-    @classmethod
     async def get_cookie(app, r, val: str):
         if not val in (cookie := r.headers.get("Cookie", "")):
             return None
@@ -124,7 +119,10 @@ class Request:
         return r
 
     @classmethod
-    async def body_or_params(app, r):
+    async def body_or_params(app, r=None):
+        if r is None:
+            r = await Context.r()
+
         if r.method in ["GET", "OPTIONS", "HEAD"]:
             return await app.get_params(r)
         else:

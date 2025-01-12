@@ -6,6 +6,7 @@ from types import MappingProxyType
 
 from ujson import dumps, loads, JSONDecodeError
 from aiofiles import open as iopen
+from aiofile import async_open
 from aiologger import Logger
 
 from sys import exit
@@ -21,6 +22,7 @@ from gzip import compress as gzip_compress
 
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 from urllib.parse import unquote
+from threading import Thread
 
 loop = get_event_loop()
 

@@ -8,8 +8,7 @@ from .Client import *
 
 class BlazeioPayloadUtils:
     __slots__ = ()
-    def __init__(app):
-        pass
+    def __init__(app): pass
 
     async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = False):
         if secure: secure = "; Secure"
@@ -17,14 +16,16 @@ class BlazeioPayloadUtils:
         app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
     async def pull(app):
-        if app.content_length is None:
-            if app.headers is not None: app.content_length = int(app.headers.get("Content-Length", 0))
+        if app.content_length is None and app.headers is not None: app.content_length = int(app.headers.get("Content-Length", 0))
+
+        elif app.headers is None: raise Err("Headers cannot be None")
 
         async for chunk in app.request():
-            if chunk:
+            if chunk and app.current_length <= app.content_length:
                 app.current_length += len(chunk)
                 yield chunk
-            elif app.current_length >= app.content_length: return
+            elif app.current_length >= app.content_length:
+                break
 
     async def request(app):
         while True:
@@ -84,6 +85,7 @@ class BlazeioPayloadUtils:
         await app.buffer_overflow_manager()
 
         if app.__is_alive__: app.transport.write(data)
+        else: raise Err("Client has disconnected.")
 
     async def close(app):
         app.transport.close()
@@ -260,32 +262,35 @@ class OOP_RouteDef:
 class SrvConfig:
     HOST, PORT = "0.0.0.0", "80"
     __timeout__ = float(60*10)
-    __timeout_check_freq__ = 5
+    __timeout_check_freq__ = 1
+    __health_check_freq__ = 1
     def __init__(app): pass
 
 class Monitoring:
     def __init__(app):
-        app.event_loop.create_task(app.timeout_task())
-        app.event_loop.create_task(app.health_checking_task())
+        app.terminate = False
+        app.Monitoring_thread_loop = app.event_loop
+        app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor,)
+        app.Monitoring_thread.start()
+        app.on_exit_middleware(app.Monitoring_thread_join)
+        # app.Monitoring_thread_monitor()
+
+    def Monitoring_thread_join(app):
+        app.terminate = True
+        app.Monitoring_thread.join()
+
+    def Monitoring_thread_monitor(app):
+        app.Monitoring_thread_loop.create_task(app.timeout_task())
 
     async def timeout_task(app):
-        while True:
+        while not app.terminate:
             await sleep(app.ServerConfig.__timeout_check_freq__)
             await app.check(app.enforce_timeout)
 
-    async def health_checking_task(app):
-        while True:
-            await sleep(1)
-            await app.check(app.enforce_health)
-
-    async def enforce_health(app, task):
-        if not (Payload := await app.get_payload(task)): return
-
-        if not hasattr(Payload, "__perf_counter__"): return
-
+    async def enforce_health(app, task, Payload):
         if not Payload.__is_alive__:
-            if perf_counter() - Payload.__time_disconnected__ >= 0.5:
-                await app.cancel(Payload, task, "%s Disconnected" % Payload.identifier)
+            await app.cancel(Payload, task, "BlazeioHealth:: Task [%s] diconnected." % task.get_name())
+            return True
 
     async def cancel(app, Payload, task, msg: str = ""):
         try:
@@ -296,17 +301,15 @@ class Monitoring:
 
         if msg != "": await Log.warning(Payload, msg)
 
-    async def get_payload(app, task):
-        coro = task.get_coro()
-
-        if not hasattr(coro, "cr_frame") or not (Payload := coro.cr_frame.f_locals.get("app")) or not "<Blazeio.BlazeioPayload" in str(Payload): return
-        
-        return Payload
-
     async def enforce_timeout(app, task):
-        if not (Payload := await app.get_payload(task)): return
+        coro = task.get_coro()
+        args = coro.cr_frame.f_locals
+        Payload = args.get("app")
+        if not isinstance(Payload, BlazeioPayload): return
 
         if not hasattr(Payload, "__perf_counter__"): return
+        
+        if await app.enforce_health(task, Payload): return
 
         __perf_counter__ = getattr(Payload, "__perf_counter__")
 
@@ -317,18 +320,26 @@ class Monitoring:
         if duration >= timeout: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
 
     async def check(app, handler):
-        for task in all_tasks():
+        for task in all_tasks(loop=loop):
             if task is not current_task():
                 try:
-                    await handler(task)
+                    await app.enforce_timeout(task)
                 except AttributeError as e: await Log.warning(e)
                 except Exception as e: await Log.warning(e)
+
+class OnExit:
+    __slots__ = ("func", "args", "kwargs")
+
+    def __init__(app, func, *args, **kwargs): app.func, app.args, app.kwargs = func, args, kwargs
+    
+    def run(app): app.func(*app.args, **app.kwargs)
 
 class App(Handler, OOP_RouteDef, Monitoring):
     event_loop = loop
     REQUEST_COUNT = 0
     declared_routes = OrderedDict()
     ServerConfig = SrvConfig()
+    on_exit = deque()
 
     __server_config__ = {
         "__http_request_heading_end_seperator__": b"\r\n\r\n",
@@ -337,7 +348,6 @@ class App(Handler, OOP_RouteDef, Monitoring):
         "__http_request_initial_separatir__": b' ',
         "__http_request_auto_header_parsing__": True,
     }
-    
 
     @classmethod
     async def init(app, **kwargs):
@@ -427,31 +437,39 @@ class App(Handler, OOP_RouteDef, Monitoring):
             await Log.info("Blazeio", "Server running on %s://%s:%s" % ("http" if not ssl_data else "https", HOST, PORT))
             await app.server.serve_forever()
 
+    async def cancelloop(app, loop):
+        for task in all_tasks(loop=loop):
+            if task is not current_task():
+                name = task.get_name()
+                await Log.info(
+                    "Blazeio.exit",
+                    ":: [%s] Terminated" % name
+                )
+ 
+                try:
+                    task.cancel()
+                    # await task
+                except CancelledError: pass
+                except Exception as e: await Log.critical("Blazeio.exit", e)
+
     async def exit(app):
         try:
-            await Log.info("Blazeio", ":: KeyboardInterrupt Detected, Shutting down gracefully.")
+            await Log.info("Blazeio.exit", ":: KeyboardInterrupt Detected, Shutting down gracefully.")
 
-            for task in all_tasks(loop=loop):
-                if task is not current_task():
-                    name = task.get_name()
+            for do in app.on_exit:
+                await Log.info("Blazeio.exit", ":: running on_exit func: %s." % do.func.__name__)
+                do.run()
+            
+            await app.cancelloop(app.event_loop)
 
-                    await Log.info(
-                        "Blazeio",
-                        ":: [%s] Terminated" % name
-                    )
- 
-                    try:
-                        task.cancel()
-                        # await task
-                    except CancelledError: pass
-                    except Exception as e: await Log.critical("Blazeio", e)
+            await Log.info("Blazeio.exit", ":: Event loop wiped, ready to exit.")
 
-            await Log.info("Blazeio", ":: Event loop wiped, ready to exit.")
-
-        except Exception as e: await Log.critical("Blazeio", str(e))
+        except Exception as e: await Log.critical("Blazeio.exit", str(e))
         finally:
-            await Log.info("Blazeio", ":: Exited.")
+            await Log.info("Blazeio.exit", ":: Exited.")
             exit()
+
+    def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))
 
     def runner(app, HOST=None, PORT=None, **kwargs):
         HOST = HOST or app.ServerConfig.host
