@@ -262,8 +262,8 @@ class OOP_RouteDef:
 class SrvConfig:
     HOST, PORT = "0.0.0.0", "80"
     __timeout__ = float(60*10)
-    __timeout_check_freq__ = 1
-    __health_check_freq__ = 1
+    __timeout_check_freq__ = 5
+    __health_check_freq__ = 5
     def __init__(app): pass
 
 class Monitoring:
