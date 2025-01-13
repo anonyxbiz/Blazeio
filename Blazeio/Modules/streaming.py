@@ -94,7 +94,7 @@ class Abort(Exception):
             await app.r.write(message.encode())
 
         except Exception as e:
-            await Log.critical(r, e)
+            await Log.critical(app.r, e)
         
 if __name__ == "__main__":
     pass
