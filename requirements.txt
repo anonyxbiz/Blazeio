@@ -1,4 +1,3 @@
 ujson
 aiologger
-aiofiles
 aiofile

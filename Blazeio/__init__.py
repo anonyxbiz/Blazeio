@@ -69,7 +69,6 @@ class BlazeioPayloadUtils:
         await app.write(b"\r\n")
 
     async def transporter(app):
-        # await sleep(0)
         app.__perf_counter__ = perf_counter()
 
         await app.on_client_connected(app)
@@ -147,7 +146,6 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__stream__.append(chunk)
 
     def connection_lost(app, exc):
-        app.__time_disconnected__ = perf_counter()
         app.__is_alive__ = False
 
     def eof_received(app):
@@ -273,19 +271,18 @@ class Monitoring:
         app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor,)
         app.Monitoring_thread.start()
         app.on_exit_middleware(app.Monitoring_thread_join)
-        # app.Monitoring_thread_monitor()
 
     def Monitoring_thread_join(app):
         app.terminate = True
         app.Monitoring_thread.join()
 
     def Monitoring_thread_monitor(app):
-        app.Monitoring_thread_loop.create_task(app.timeout_task())
+        app.Monitoring_thread_loop.create_task(app.__monitor_loop__())
 
-    async def timeout_task(app):
+    async def __monitor_loop__(app):
         while not app.terminate:
             await sleep(app.ServerConfig.__timeout_check_freq__)
-            await app.check(app.enforce_timeout)
+            await app.check()
 
     async def enforce_health(app, task, Payload):
         if not Payload.__is_alive__:
@@ -301,31 +298,31 @@ class Monitoring:
 
         if msg != "": await Log.warning(Payload, msg)
 
-    async def enforce_timeout(app, task):
+    async def inspect_task(app, task):
         coro = task.get_coro()
-        args = coro.cr_frame.f_locals
+        args = coro.cr_frame
+        if args is None: return
+        else: args = args.f_locals
+
         Payload = args.get("app")
-        if not isinstance(Payload, BlazeioPayload): return
+
+        if not "BlazeioPayload" in str(Payload): return
 
         if not hasattr(Payload, "__perf_counter__"): return
         
         if await app.enforce_health(task, Payload): return
-
-        __perf_counter__ = getattr(Payload, "__perf_counter__")
-
-        duration = perf_counter() - __perf_counter__
         
+        duration = perf_counter() - getattr(Payload, "__perf_counter__")
+
         timeout = Payload.__timeout__ or app.ServerConfig.__timeout__
 
-        if duration >= timeout: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
+        condition = duration >= timeout
 
-    async def check(app, handler):
+        if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
+
+    async def check(app):
         for task in all_tasks(loop=loop):
-            if task is not current_task():
-                try:
-                    await app.enforce_timeout(task)
-                except AttributeError as e: await Log.warning(e)
-                except Exception as e: await Log.warning(e)
+            if task is not current_task(): await app.inspect_task(task)
 
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
