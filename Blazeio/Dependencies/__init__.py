@@ -5,7 +5,7 @@ from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
 
 from ujson import dumps, loads, JSONDecodeError
-from aiofiles import open as iopen
+# from aiofiles import open as iopen
 from aiofile import async_open
 from aiologger import Logger
 
