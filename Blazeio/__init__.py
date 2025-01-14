@@ -322,7 +322,13 @@ class Monitoring:
 
     async def check(app):
         for task in all_tasks(loop=loop):
-            if task is not current_task(): await app.inspect_task(task)
+            if task is not current_task():
+                try:
+                    await app.inspect_task(task)
+                except AttributeError:
+                    pass
+                except Exception as e:
+                    await Log.critical(e)
 
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
