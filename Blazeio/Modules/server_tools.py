@@ -97,22 +97,16 @@ class Simpleserve:
 
         app = cls()
         await app.initialize(*args, **kwargs)
-
-        if app.content_type in app.compressable:
-            if "gzip" in app.r.headers.get("Accept-Encoding", ""):
-                if kwargs.get("gzip", True):
-                    kwargs["gzip"] = True
-            else:
-                kwargs["gzip"] = False
-        else:
-            kwargs["gzip"] = False
         
-        if kwargs.get("gzip"): app.headers["Content-Encoding"] = "gzip"
+        gzip = False
+        if "gzip" in app.r.headers.get("Accept-Encoding", "") and kwargs.get("gzip") and app.content_type in app.compressable: gzip = True
+
+        if gzip: app.headers["Content-Encoding"] = "gzip"
 
         await app.r.prepare(app.headers)
         
-        if kwargs.get("gzip"): 
-            if app.CHUNK_SIZE < 1024*1:
+        if gzip: 
+            if app.CHUNK_SIZE < 1024*1024:
                 app.CHUNK_SIZE = 1024*1024
 
             async for chunk in app.pull():

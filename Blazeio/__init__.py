@@ -83,8 +83,10 @@ class BlazeioPayloadUtils:
     async def write(app, data: (bytes, bytearray)):
         await app.buffer_overflow_manager()
 
-        if app.__is_alive__: app.transport.write(data)
-        else: raise Err("Client has disconnected.")
+        if not app.transport.is_closing():
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
 
     async def close(app):
         app.transport.close()
@@ -158,12 +160,30 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         app.__is_buffer_over_high_watermark__ = False
 
 class Handler:
-    __main_handler__ = None
-    def __init__(app):
-        pass
+    __main_handler__ = NotImplemented
+    def __init__(app): pass
 
-    # Called on app start
-    async def configure_runtime(app):
+    async def log_request(app, r):
+        await Log.info(r,
+            "=> %s@ %s" % (
+                r.method,
+                r.path
+            )
+        )
+
+    def __server_handler__(app):
+        def decorator(func: Callable):
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+
+            app.__main_handler__ = func
+            return wrapper
+
+        return decorator
+
+    async def configure_server_handler(app):
+        if app.__main_handler__ is not NotImplemented: return
+
         app.before_middleware = app.declared_routes.get("before_middleware")
 
         app.after_middleware = app.declared_routes.get("after_middleware")
@@ -285,7 +305,7 @@ class Monitoring:
             await app.check()
 
     async def enforce_health(app, task, Payload):
-        if not Payload.__is_alive__:
+        if not Payload.__is_alive__ or Payload.transport.is_closing():
             await app.cancel(Payload, task, "BlazeioHealth:: Task [%s] diconnected." % task.get_name())
             return True
 
@@ -382,7 +402,6 @@ class App(Handler, OOP_RouteDef, Monitoring):
         if not route_name.endswith("_middleware"):
             if (route := params.get("route")) is None:
                 i, x = "_", "/"
-
                 while (idx := route_name.find(i)) != -1:
                     timedotsleep(0)
                     route_name = route_name[:idx] + x + route_name[idx + len(i):]
@@ -391,7 +410,8 @@ class App(Handler, OOP_RouteDef, Monitoring):
         
         data = {
             "func": func,
-            "params": params
+            "params": params,
+            "len": len(route_name),
         }
 
         app.declared_routes[route_name] = data
@@ -426,8 +446,8 @@ class App(Handler, OOP_RouteDef, Monitoring):
             pass
         else:
             kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
-        
-        await app.configure_runtime()
+
+        await app.configure_server_handler()
 
         app.server = await loop.create_server(
             lambda: BlazeioPayload(app.handle_client),
