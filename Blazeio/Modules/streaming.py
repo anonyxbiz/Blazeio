@@ -1,10 +1,5 @@
 from ..Dependencies import *
 
-
-
-
-
-
 class Context:
     @classmethod
     async def r(app):
@@ -95,6 +90,15 @@ class Abort(Exception):
 
         except Exception as e:
             await Log.critical(app.r, e)
-        
+
+class __Payload__:
+    __slots__ = ()
+    def __init__(app): pass
+
+    def __getattr__(app, name):
+        return getattr(current_task().get_coro().cr_frame.f_locals.get("app"), name)
+
+Payload = __Payload__()
+
 if __name__ == "__main__":
     pass

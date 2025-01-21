@@ -45,6 +45,7 @@ class BlazeioPayloadUtils:
         if not app.__is_buffer_over_high_watermark__: return
 
         while app.__is_buffer_over_high_watermark__:
+            if app.transport.is_closing(): raise Err("Client has disconnected.")
             await sleep(0)
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
@@ -113,8 +114,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
         'identifier',
         '__cookie__',
         '__miscellaneous__',
-        '__timeout__',
-        '__time_disconnected__',
+        '__timeout__'
     )
 
     def __init__(app, on_client_connected):
@@ -170,6 +170,10 @@ class Handler:
                 r.path
             )
         )
+    
+    def __set_main_handler__(app, func: Callable):
+        app.__main_handler__ = func
+        return func
 
     def __server_handler__(app):
         def decorator(func: Callable):
@@ -255,7 +259,11 @@ class OOP_RouteDef:
                 if not isinstance(method, (Callable,)):
                     raise ValueError()
 
-                if not (name := str(method.__name__)).startswith("_") or name.startswith("__"):
+                if (name := str(method.__name__)) == "__main_handler__":
+                    app.__main_handler__ = method
+                    raise ValueError()
+
+                if not name.startswith("_") or name.startswith("__"):
                     if not name.endswith("_middleware"):
                         raise ValueError()
 
