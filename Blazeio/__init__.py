@@ -194,7 +194,8 @@ class Handler:
 
         app.handle_all_middleware = app.declared_routes.get("handle_all_middleware")
         
-        if not app.before_middleware and not app.after_middleware: app.__main_handler__ = app.serve_route_no_middleware
+        if not app.before_middleware and not app.after_middleware and not app.handle_all_middleware:
+            app.__main_handler__ = app.serve_route_no_middleware
         else:
             app.__main_handler__ = app.serve_route_with_middleware
 
