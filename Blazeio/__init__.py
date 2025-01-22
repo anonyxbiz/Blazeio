@@ -244,6 +244,7 @@ class Handler:
         except Abort as e:
             await e.text()
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
+        except KeyboardInterrupt as e: raise e
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
 
@@ -319,8 +320,9 @@ class Monitoring:
     async def cancel(app, Payload, task, msg: str = ""):
         try:
             task.cancel()
-            await task
+            # await task
         except CancelledError: pass
+        except KeyboardInterrupt as e: raise e
         except Exception as e: await Log.critical("Blazeio", str(e))
 
         if msg != "": await Log.warning(Payload, msg)
@@ -354,6 +356,7 @@ class Monitoring:
                     await app.inspect_task(task)
                 except AttributeError:
                     pass
+                except KeyboardInterrupt as e: raise e
                 except Exception as e:
                     await Log.critical(e)
 
@@ -496,6 +499,8 @@ class App(Handler, OOP_RouteDef, Monitoring):
 
         except Exception as e: await Log.critical("Blazeio.exit", str(e))
         finally:
+            await app.server.wait_closed()
+
             await Log.info("Blazeio.exit", ":: Exited.")
             exit()
 
@@ -519,6 +524,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
                 loop.run_until_complete(app.run(HOST, PORT, **kwargs))
             
         except KeyboardInterrupt:
+            app.server.close()
             loop.run_until_complete(app.exit())
 
 if __name__ == "__main__":
