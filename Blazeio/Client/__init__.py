@@ -62,6 +62,7 @@ class BlazeioClientProtocol(asyncProtocol):
                 if app.transport.is_reading(): app.transport.pause_reading()
 
                 yield app.__stream__.popleft()
+                if not app.transport.is_reading(): app.transport.resume_reading()
 
             if not app.__stream__:
                 if app.__is_at_eof__: break
@@ -152,13 +153,18 @@ class Session:
             app.host, app.port, app.path, connect_only = host, port, path, True
 
         # app.transport, app.protocol = await Pool.get_conn(app.host, app.port)
+        
+        if not connect_only:
+            app.transport, app.protocol = await loop.create_connection(
+                lambda: BlazeioClientProtocol(),
+                host=app.host, port=app.port, ssl=ssl_context if app.port == 443 else None
+            )
+        else:
+            app.transport, app.protocol = await loop.create_connection(
+                lambda: BlazeioClientProtocol(),
+                host=app.host, port=app.port, ssl=None
+            )
 
-        app.transport, app.protocol = await loop.create_connection(
-            lambda: BlazeioClientProtocol(),
-            host=app.host, port=app.port, ssl=ssl_context if app.port == 443 else None
-        )
-
-        if connect_only:
             return app.protocol
         
         if content is not None and not app.headers.get("Content-Length"):

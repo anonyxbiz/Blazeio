@@ -234,7 +234,6 @@ class Handler:
 
         if route := app.declared_routes.get(r.path): await route.get("func")(r)
 
-        elif app.handle_all_middleware: await app.handle_all_middleware.get("func")(r)
         else: raise Abort("Not Found", 404)
 
     async def handle_client(app, r):
