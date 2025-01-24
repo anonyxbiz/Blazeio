@@ -1,7 +1,8 @@
 # Blazeio.Client
 from ..Dependencies import *
+from urllib.parse import urlparse
 
-from ssl import create_default_context, SSLError
+from ssl import create_default_context, SSLError, Purpose
 
 class Utl:
     @classmethod
@@ -39,7 +40,6 @@ class BlazeioClientProtocol(asyncProtocol):
     def __init__(app):
         app.__stream__ = deque()
         app.__is_at_eof__ = False
-        app.__max_buff_len__ = 5
 
     def connection_made(app, transport):
         app.transport = transport
@@ -47,8 +47,6 @@ class BlazeioClientProtocol(asyncProtocol):
 
     def data_received(app, data):
         app.__stream__.append(data)
-        if len(app.__stream__) >= app.__max_buff_len__:
-            app.transport.pause_reading()
 
     def eof_received(app):
         app.__is_at_eof__ = True
@@ -59,15 +57,17 @@ class BlazeioClientProtocol(asyncProtocol):
     async def pull(app):
         while True:
             while app.__stream__:
-                if app.transport.is_reading(): app.transport.pause_reading()
+                app.transport.pause_reading()
 
                 yield app.__stream__.popleft()
-                if not app.transport.is_reading(): app.transport.resume_reading()
+
+                app.transport.resume_reading()
 
             if not app.__stream__:
+                if app.transport.is_closing(): break
+
                 if app.__is_at_eof__: break
                 if not app.transport.is_reading(): app.transport.resume_reading()
-                if app.transport.is_closing(): break
                 else: yield None
 
             await sleep(0)
@@ -80,57 +80,32 @@ class BlazeioClientProtocol(asyncProtocol):
 
 ssl_context = create_default_context()
 
-class __Pool__:
-    __slots__ = ()
-    conns = {}
-
-    def __init__(app): pass
-
-    async def get_conn(app, host, port):
-        if not (conn := app.conns.get((host, port))):
-            conn = await loop.create_connection(
-                lambda: BlazeioClientProtocol(),
-                host=host, port=port, ssl=ssl_context if port == 443 else None
-            )
-            app.conns[(host, port)] = conn
-
-        return conn
-
-# Pool = __Pool__()
-
 class Session:
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code")
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only")
 
     def __init__(app, *args, **kwargs):
         app.args, app.kwargs = args, kwargs
         app.response_headers = defaultdict(str)
         app.status_code = 0
 
-    async def url_to_host(app, url: str, sepr: str = "://", sepr2: str = ":", sepr3: str = "/"):
-        host = url
+    async def url_to_host(app, url: str):
+        parsed_url = urlparse(url)
+        host = parsed_url.hostname
 
-        if "https" in url:
-            port: int = 443
-        else:
-            port: int = 80
+        path = parsed_url.path
+        port = parsed_url.port
+        
+        if parsed_url.query:
+            path += "?%s" % parsed_url.query
 
-        if (_ := await Utl.split_after(host, sepr)):
-            host = _
-        else:
-            raise Err("%s is not a valid host" % host)
-
-        if (_ := await Utl.split_between(host, sepr3)):
-            host = _[0]
-            path = sepr3 + _[1]
-
-            if (__ := await Utl.split_between(host, sepr2)):
-                port = int(__[1])
-                host = __[0]
-        else:
-            path = "/"
+        if not port:
+            if url.startswith("https"):
+                port = 443
+            else:
+                port = 80
 
         return host, port, path
-    
+
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
 
@@ -142,31 +117,37 @@ class Session:
         except Exception as e:
             await p("Err: %s" % str(e))
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host: int = 0, port: int = 0, path: str = "", content = None):
-        if not host and not port and not path:
-            app.method = method
-            app.host, app.port, app.path = await app.url_to_host(url)
+    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host: int = 0, port: int = 0, path: str = "", content = None, proxy={}, **kwargs):
+        app.method = method
+        app.headers = dict(headers)
+        app.proxy = proxy
+        app.connect_only = connect_only
 
-            app.headers = dict(headers)
+        if not host and not port:
+            app.host, app.port, app.path = await app.url_to_host(url)
             if not "Host" in app.headers: app.headers["Host"] = app.host
         else:
-            app.host, app.port, app.path, connect_only = host, port, path, True
+            app.host, app.port, app.path, app.connect_only = host, port, path, True
 
-        # app.transport, app.protocol = await Pool.get_conn(app.host, app.port)
-        
-        if not connect_only:
+        if not app.connect_only:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(),
-                host=app.host, port=app.port, ssl=ssl_context if app.port == 443 else None
+                host=app.host,
+                port=app.port,
+                ssl=ssl_context if app.port == 443 else None
             )
+        elif app.proxy: await app.setup_proxy()
+
         else:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(),
-                host=app.host, port=app.port, ssl=None
+                host=app.host,
+                port=app.port,
+                **kwargs
             )
 
-            return app.protocol
-        
+        if app.connect_only: return app.protocol
+
         if content is not None and not app.headers.get("Content-Length"):
             app.headers["Transfer-Encoding"] = "chunked"
 
@@ -177,17 +158,43 @@ class Session:
         await app.protocol.push(b"\r\n")
         
         if content is not None:
-            async for chunk in content:
-                chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
-
-                await app.protocol.push(chunk)
-            
-            await app.protocol.push(b"0\r\n\r\n")
+            if app.headers.get("Transfer-Encoding"):
+                async for chunk in content:
+                    chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
+    
+                    await app.protocol.push(chunk)
+                
+                await app.protocol.push(b"0\r\n\r\n")
+            else:
+                async for chunk in content:
+                    if chunk: await app.protocol.push(chunk)
 
             await app.prepare_http()
 
         return app
-    
+
+    async def setup_proxy(app,):
+        payload = b'CONNECT %s:%s HTTP/1.1\r\nProxy-Connection: keep-alive\r\n%sUser-Agent: Dalvik/2.1.0 (Linux; U; Android 12; TECNO BF6 Build/SP1A.210812.001)\r\n\r\n' % (app.host.encode(), str(app.port).encode(), b'Proxy-Authorization: Basic %s\r\n' % auth.encode() if (auth := app.proxy.get("auth")) else b'')
+
+        app.transport, app.protocol = await loop.create_connection(
+            lambda: BlazeioClientProtocol(),
+            host=app.proxy.get("host"),
+            port=app.proxy.get("port"),
+        )
+        
+        await app.protocol.push(payload)
+
+        async for chunk in app.protocol.pull():
+            if chunk:
+                print(chunk)
+                break
+        
+        ctx = create_default_context(purpose=Purpose.SERVER_AUTH)
+        
+        print(dir(app.transport))
+
+        app.transport._start_tls_compatible(ctx)
+
     async def push(app, *args): await app.protocol.push(*args)
 
     async def prepare_http(app, sepr1=b"\r\n", sepr2=b": ", header_end = b"\r\n\r\n", headers=None,):

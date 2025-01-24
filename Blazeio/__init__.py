@@ -500,7 +500,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
 
         except Exception as e: await Log.critical("Blazeio.exit", str(e))
         finally:
-            await app.server.wait_closed()
+            # await app.server.wait_closed()
 
             await Log.info("Blazeio.exit", ":: Exited.")
             exit()
