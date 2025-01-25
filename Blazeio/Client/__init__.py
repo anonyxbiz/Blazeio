@@ -64,7 +64,7 @@ class BlazeioClientProtocol(asyncProtocol):
                 app.transport.resume_reading()
 
             if not app.__stream__:
-                if app.transport.is_closing(): break
+                if app.transport.is_closing(): raise Err("Client has disconnected.")
 
                 if app.__is_at_eof__: break
                 if not app.transport.is_reading(): app.transport.resume_reading()

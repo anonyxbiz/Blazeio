@@ -456,7 +456,8 @@ class App(Handler, OOP_RouteDef, Monitoring):
         if not (ssl_data := kwargs.get("ssl", None)):
             pass
         else:
-            kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
+            if isinstance(ssl_data, dict):
+                kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
 
         await app.configure_server_handler()
 
