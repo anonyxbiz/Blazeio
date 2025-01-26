@@ -1,6 +1,7 @@
 # Blazeio.Client
 from ..Dependencies import *
 from urllib.parse import urlparse
+from asyncio import BufferedProtocol
 
 from ssl import create_default_context, SSLError, Purpose
 
@@ -66,11 +67,77 @@ class BlazeioClientProtocol(asyncProtocol):
             if not app.__stream__:
                 if app.transport.is_closing(): raise Err("Client has disconnected.")
 
-                if app.__is_at_eof__: break
+                if app.__is_at_eof__: raise Err("Client has disconnected.")
+
                 if not app.transport.is_reading(): app.transport.resume_reading()
                 else: yield None
 
             await sleep(0)
+
+    async def push(app, data: (bytes, bytearray)):
+        if not app.transport.is_closing():
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
+
+class BlazeioClientProtocolBuffered(BufferedProtocol):
+    __slots__ = (
+        '__is_at_eof__',
+        '__is_alive__',
+        'transport',
+        '__buff__',
+        '__nbytes__',
+        'buff_len',
+        'sizehint',
+    )
+
+    def __init__(app):
+        app.buff_len = 1024
+        app.__buff__ = bytearray(app.buff_len)
+        app.__nbytes__ = app.buff_len
+        app.__is_at_eof__ = False
+        app.sizehint = 0
+
+    def connection_made(app, transport):
+        transport.pause_reading()
+        app.transport = transport
+        app.__is_alive__ = True
+
+    def eof_received(app):
+        app.__is_at_eof__ = True
+
+    def connection_lost(app, exc):
+        app.__is_alive__ = False
+
+    def buffer_updated(app, nbytes):
+        app.transport.pause_reading()
+        app.__nbytes__ = nbytes
+
+    async def pull(app, buff_len=None):
+        if buff_len:
+            app.buff_len = buff_len
+            app.__buff__ = bytearray(app.buff_len)
+
+        app.transport.resume_reading()
+
+        while not app.__is_at_eof__ and not app.transport.is_closing():
+            if app.transport.is_reading():
+                await sleep(0)
+                continue
+
+            chunk, app.__buff__[:app.__nbytes__] = bytes(memoryview(app.__buff__)[:app.__nbytes__]), bytearray(app.buff_len)
+            
+            if chunk != bytes(bytearray(app.buff_len)):
+                yield chunk
+
+            app.transport.resume_reading()
+
+    def get_buffer(app, sizehint):
+        app.sizehint = sizehint
+        if sizehint > len(app.__buff__):
+            app.__buff__ += bytearray(sizehint - len(app.__buff__))
+
+        return memoryview(app.__buff__)[: sizehint or app.buff_len]
 
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():
@@ -117,7 +184,7 @@ class Session:
         except Exception as e:
             await p("Err: %s" % str(e))
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host: int = 0, port: int = 0, path: str = "", content = None, proxy={}, **kwargs):
+    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, **kwargs):
         app.method = method
         app.headers = dict(headers)
         app.proxy = proxy

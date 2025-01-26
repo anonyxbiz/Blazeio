@@ -5,6 +5,7 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
+from asyncio import BufferedProtocol
 
 class BlazeioPayloadUtils:
     __slots__ = ()
@@ -146,6 +147,163 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
 
     def data_received(app, chunk):
         app.__stream__.append(chunk)
+
+    def connection_lost(app, exc):
+        app.__is_alive__ = False
+
+    def eof_received(app):
+        app.__exploited__ = True
+
+    def pause_writing(app):
+        app.__is_buffer_over_high_watermark__ = True
+
+    def resume_writing(app):
+        app.__is_buffer_over_high_watermark__ = False
+
+class BlazeioPayloadBuffered(BufferedProtocol):
+    __slots__ = (
+        'on_client_connected',
+        '__stream__',
+        '__is_buffer_over_high_watermark__',
+        '__exploited__',
+        '__is_alive__',
+        'transport',
+        'method',
+        'tail',
+        'path',
+        'headers',
+        '__is_prepared__',
+        '__status__',
+        'content_length',
+        'current_length',
+        '__perf_counter__',
+        'ip_host',
+        'ip_port',
+        'identifier',
+        '__cookie__',
+        '__miscellaneous__',
+        '__timeout__',
+        '__buff__',
+        '__nbytes__',
+        'buff_len',
+    )
+    
+    def __init__(app, on_client_connected):
+        app.on_client_connected = on_client_connected
+        app.buff_len = 1024
+        app.__buff__ = bytearray(app.buff_len+1)
+        app.__is_buffer_over_high_watermark__ = False
+        app.__exploited__ = False
+        app.__is_alive__ = True
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.__is_prepared__ = False
+        app.__status__ = 0
+        app.content_length = None
+        app.current_length = 0
+        app.__cookie__ = None
+        app.__miscellaneous__ = None
+        app.__timeout__ = None
+        app.__nbytes__ = app.buff_len
+
+    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = False):
+        if secure: secure = "; Secure"
+
+        app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
+
+    async def buffer_overflow_manager(app):
+        if not app.__is_buffer_over_high_watermark__: return
+
+        while app.__is_buffer_over_high_watermark__:
+            if app.transport.is_closing(): raise Err("Client has disconnected.")
+            await sleep(0)
+
+    async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
+        if not app.__is_prepared__:
+            if not reason:
+                reason = StatusReason.reasons.get(status, "Unknown")
+
+            await app.write(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
+
+            if app.__cookie__:
+                await app.write(b"Set-Cookie: %s\r\n" % app.__cookie__.encode())
+            
+            app.__is_prepared__ = True
+            app.__status__ = status
+
+        if headers:
+            for key, val in headers.items():
+                await app.write(
+                    b"%s: %s\r\n" % (key.encode(), val.encode())
+                )
+
+        await app.write(b"\r\n")
+
+    async def transporter(app):
+        app.__perf_counter__ = perf_counter()
+
+        await app.on_client_connected(app)
+
+        await app.close()
+        
+        await Log.debug(app, f"Completed with status {app.__status__} in {perf_counter() - app.__perf_counter__:.4f} seconds")
+
+    async def control(app, duration=0):
+        await sleep(duration)
+
+    async def write(app, data: (bytes, bytearray)):
+        await app.buffer_overflow_manager()
+
+        if not app.transport.is_closing():
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
+
+    async def close(app):
+        app.transport.close()
+
+    def connection_made(app, transport):
+        transport.pause_reading()
+        app.transport = transport
+        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
+
+        loop.create_task(app.transporter())
+
+    def buffer_updated(app, nbytes):
+        app.transport.pause_reading()
+        app.__nbytes__ = nbytes
+    
+    async def pull(app, buff_len=None):
+        if buff_len:
+            app.buff_len = buff_len
+            app.__buff__ = bytearray(app.buff_len+1)
+
+        if app.__nbytes__ >= app.buff_len: pass
+        else:
+            return
+
+        if not app.transport.is_reading(): app.transport.resume_reading()
+
+        while app.__nbytes__ >= app.buff_len:
+            if app.transport.is_reading():
+                await sleep(0)
+                continue
+
+            yield bytes(memoryview(app.__buff__
+        )[:app.__nbytes__])
+
+            app.transport.resume_reading()
+
+        yield bytes(memoryview(app.__buff__
+        )[:app.__nbytes__])
+
+    def get_buffer(app, sizehint):
+        if sizehint > len(app.__buff__):
+            app.__buff__ += bytearray(sizehint - len(app.__buff__))
+
+        return memoryview(app.__buff__)[:sizehint]
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
@@ -460,9 +618,14 @@ class App(Handler, OOP_RouteDef, Monitoring):
                 kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
 
         await app.configure_server_handler()
+        
+        if (protocol := kwargs.get("protocol")):
+            kwargs.pop("protocol")
+        else:
+            protocol = BlazeioPayload
 
         app.server = await loop.create_server(
-            lambda: BlazeioPayload(app.handle_client),
+            lambda: protocol(app.handle_client),
             HOST,
             PORT,
             **kwargs
