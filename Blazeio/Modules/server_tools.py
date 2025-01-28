@@ -31,6 +31,7 @@ class Simpleserve:
 
     async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
         app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
+        if not exists(app.file): raise Abort("Not Found", 404)
 
         app.headers = kwargs.get("headers", {
             "Accept-Ranges": "bytes"
@@ -93,8 +94,6 @@ class Simpleserve:
 
     @classmethod
     async def push(cls, *args, **kwargs):
-        if not exists(args[1]): raise Abort("Not Found", 404)
-
         app = cls()
         await app.initialize(*args, **kwargs)
         

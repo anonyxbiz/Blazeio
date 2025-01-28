@@ -358,9 +358,6 @@ class Handler:
             app.__main_handler__ = app.serve_route_with_middleware
 
     async def serve_route_with_middleware(app, r):
-        if app.before_middleware:
-            if (resp := await app.before_middleware.get("func")(r)) is not None: return resp
-
         await Request.prepare_http_request(r, app)
 
         await Log.info(r,
@@ -369,6 +366,9 @@ class Handler:
                 r.path
             )
         )
+
+        if app.before_middleware:
+            await app.before_middleware.get("func")(r)
 
         if route := app.declared_routes.get(r.path):
             await route.get("func")(r)
