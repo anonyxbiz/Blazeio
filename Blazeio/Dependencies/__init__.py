@@ -5,8 +5,7 @@ from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
 
 from ujson import dumps, loads, JSONDecodeError
-# from aiofiles import open as iopen
-from aiofile import async_open
+
 from aiologger import Logger
 
 from sys import exit
@@ -31,6 +30,12 @@ try:
     uvloop.install()
 except:
     pass
+
+try:
+    from aiofile import async_open
+except Exception as e:
+    print("aiofile not installed, Blazeio won't serve files without it")
+    async_open = NotImplemented
 
 try:
     logger = Logger.with_default_handlers(name='BlazeioLogger')
@@ -205,7 +210,6 @@ class VersionControlla:
 
             else:
                 break
-
 
 try:
     p = Log.info

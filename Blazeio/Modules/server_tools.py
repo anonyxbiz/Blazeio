@@ -21,6 +21,7 @@ class Simpleserve:
         'content_disposition',
         'start',
         'end',
+        'range_',
     )
     compressable = (
         "text/html",
@@ -76,7 +77,7 @@ class Simpleserve:
             "Content-Disposition": app.content_disposition,
             "Last-Modified": app.last_modified_str,
             "Etag": app.etag,
-            #"Content-Length": str(app.file_size),
+            "Content-Length": str(app.file_size),
         })
         
         if app.cache_control:
@@ -84,13 +85,14 @@ class Simpleserve:
             
 
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
+            app.range_ = range_
             br = range_[idx + 1:]
             app.start = int(br[:br.rfind("-")])
             app.end = app.file_size - 1
 
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
         else:
-            app.start, app.end = 0, app.file_size
+            app.start, app.end, app.range_ = 0, app.file_size, range_
 
     @classmethod
     async def push(cls, *args, **kwargs):
@@ -98,12 +100,12 @@ class Simpleserve:
         await app.initialize(*args, **kwargs)
         
         gzip = False
-        if "gzip" in app.r.headers.get("Accept-Encoding", "") and kwargs.get("gzip") and app.content_type in app.compressable: gzip = True
+        if all(["gzip" in app.r.headers.get("Accept-Encoding", ""), kwargs.get("gzip"), app.content_type in app.compressable]): gzip = True
 
         if gzip: app.headers["Content-Encoding"] = "gzip"
 
-        await app.r.prepare(app.headers)
-        
+        await app.r.prepare(app.headers, 206 if app.range_ else 200)
+
         if gzip: 
             if app.CHUNK_SIZE < 1024*1024:
                 app.CHUNK_SIZE = 1024*1024
@@ -117,15 +119,13 @@ class Simpleserve:
 
     async def pull(app):
         async with async_open(app.file, "rb") as f:
-            f.seek(app.start)
+            if app.start: f.seek(app.start)
             
             while (chunk := await f.read(app.CHUNK_SIZE)):
                 yield chunk
 
                 if app.start >= app.end: break
-
                 app.start += len(chunk)
-
                 f.seek(app.start)
 
 if __name__ == "__main__":

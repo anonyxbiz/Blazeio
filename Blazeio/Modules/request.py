@@ -1,9 +1,6 @@
 from ..Dependencies import *
 from .streaming import *
 
-
-
-
 class HTTPParser:
     header_key_val = b': '
     h_s = b'\r\n'

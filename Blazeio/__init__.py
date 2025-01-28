@@ -359,7 +359,6 @@ class Handler:
 
     async def serve_route_with_middleware(app, r):
         await Request.prepare_http_request(r, app)
-
         await Log.info(r,
             "=> %s@ %s" % (
                 r.method,
@@ -367,17 +366,14 @@ class Handler:
             )
         )
 
-        if app.before_middleware:
-            await app.before_middleware.get("func")(r)
+        if app.before_middleware: await app.before_middleware.get("func")(r)
 
-        if route := app.declared_routes.get(r.path):
-            await route.get("func")(r)
+        if route := app.declared_routes.get(r.path): await route.get("func")(r)
 
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
             await handle_all_middleware.get("func")(r)
-        else:
-            # return
-            raise Abort("Not Found", 404)
+
+        else: raise Abort("Not Found", 404)
 
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
