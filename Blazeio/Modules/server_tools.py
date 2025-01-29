@@ -76,8 +76,7 @@ class Simpleserve:
             "Content-Type": app.content_type,
             "Content-Disposition": app.content_disposition,
             "Last-Modified": app.last_modified_str,
-            "Etag": app.etag,
-            "Content-Length": str(app.file_size),
+            "Etag": app.etag
         })
         
         if app.cache_control:
@@ -93,6 +92,7 @@ class Simpleserve:
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
         else:
             app.start, app.end, app.range_ = 0, app.file_size, range_
+            app.headers["Content-Length"] = str(app.file_size)
 
     @classmethod
     async def push(cls, *args, **kwargs):
