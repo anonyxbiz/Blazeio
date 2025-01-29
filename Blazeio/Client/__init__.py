@@ -2,6 +2,7 @@
 from ..Dependencies import *
 from urllib.parse import urlparse
 from asyncio import BufferedProtocol
+from collections.abc import Iterable
 
 from ssl import create_default_context, SSLError, Purpose
 
@@ -216,7 +217,10 @@ class Session:
         if app.connect_only: return app.protocol
 
         if content is not None and not app.headers.get("Content-Length"):
-            app.headers["Transfer-Encoding"] = "chunked"
+            if not isinstance(content, (bytes, bytearray)):
+                app.headers["Transfer-Encoding"] = "chunked"
+            else:
+                app.headers["Content-Length"] = str(len(content))
 
         await app.protocol.push(bytearray("%s %s HTTP/1.1\r\n" % (app.method, app.path), "utf-8"))
 
@@ -225,16 +229,21 @@ class Session:
         await app.protocol.push(b"\r\n")
         
         if content is not None:
-            if app.headers.get("Transfer-Encoding"):
-                async for chunk in content:
-                    chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
-    
-                    await app.protocol.push(chunk)
-                
-                await app.protocol.push(b"0\r\n\r\n")
+            if isinstance(content, (bytes, bytearray)):
+                await app.protocol.push(content)
+                await app.prepare_http()
+                return app
             else:
-                async for chunk in content:
-                    if chunk: await app.protocol.push(chunk)
+                if app.headers.get("Transfer-Encoding"):
+                    async for chunk in content:
+                        chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
+        
+                        await app.protocol.push(chunk)
+                    
+                    await app.protocol.push(b"0\r\n\r\n")
+                else:
+                    async for chunk in content:
+                        if chunk: await app.protocol.push(chunk)
 
             await app.prepare_http()
 
