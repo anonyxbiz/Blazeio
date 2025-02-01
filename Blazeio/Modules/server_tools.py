@@ -133,12 +133,9 @@ class Simpleserve:
         with open(app.file, "rb") as f:
             mm = mmap(f.fileno(), 0, access=ACCESS_READ)  
             view = memoryview(mm)
-            
-            s, e = app.start, app.CHUNK_SIZE
 
-            while (chunk := view[s:e]):
-                s += app.CHUNK_SIZE
-                e += app.CHUNK_SIZE
+            while (chunk := view[app.start:app.start + app.CHUNK_SIZE]):
+                app.start += len(chunk)
 
                 yield bytes(chunk)
                 await sleep(0)
