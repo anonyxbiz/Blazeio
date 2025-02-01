@@ -117,7 +117,7 @@ class Simpleserve:
         else:
             async for chunk in app.pull(): await app.r.write(chunk)
 
-    async def pull_(app):
+    async def pull(app):
         async with async_open(app.file, "rb") as f:
             if app.start: f.seek(app.start)
             
@@ -128,7 +128,7 @@ class Simpleserve:
                 app.start += len(chunk)
                 f.seek(app.start)
 
-    async def pull(app):
+    async def pull_(app):
         buffer = bytearray(app.CHUNK_SIZE)
 
         with open(app.file, "rb") as f:
