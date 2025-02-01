@@ -2,7 +2,8 @@ from ..Dependencies import *
 from .request import *
 from .streaming import *      
 from gzip import compress, decompress
-from asyncio import to_thread
+from asyncio import to_thread, sleep
+from mmap import mmap, ACCESS_READ
 
 class Simpleserve:
     __slots__ = (
@@ -117,7 +118,7 @@ class Simpleserve:
         else:
             async for chunk in app.pull(): await app.r.write(chunk)
 
-    async def pull(app):
+    async def pull_(app):
         async with async_open(app.file, "rb") as f:
             if app.start: f.seek(app.start)
             
@@ -127,6 +128,20 @@ class Simpleserve:
                 if app.start >= app.end: break
                 app.start += len(chunk)
                 f.seek(app.start)
+
+    async def pull(app):
+        with open(app.file, "rb") as f:
+            mm = mmap(f.fileno(), 0, access=ACCESS_READ)  
+            view = memoryview(mm)
+            
+            s, e = app.start, app.CHUNK_SIZE
+
+            while (chunk := view[s:e]):
+                s += app.CHUNK_SIZE
+                e += app.CHUNK_SIZE
+
+                yield bytes(chunk)
+                await sleep(0)
 
 if __name__ == "__main__":
     pass

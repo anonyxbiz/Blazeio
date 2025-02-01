@@ -188,7 +188,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.__buff__ = bytearray(1024)
+        app.__buff__ = bytearray(8192)
 
         app.__stream__ = deque()
         app.__is_buffer_over_high_watermark__ = False
@@ -556,7 +556,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
         if (protocol := kwargs.get("protocol")):
             kwargs.pop("protocol")
         else:
-            protocol = BlazeioPayload
+            protocol = BlazeioPayloadBuffered
 
         app.server = await loop.create_server(
             lambda: protocol(app.handle_client),
