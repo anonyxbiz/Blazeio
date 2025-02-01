@@ -160,7 +160,7 @@ class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
 
-class BlazeioPayloadBuffered(BufferedProtocol):
+class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     __slots__ = (
         'on_client_connected',
         '__stream__',
@@ -183,15 +183,14 @@ class BlazeioPayloadBuffered(BufferedProtocol):
         '__cookie__',
         '__miscellaneous__',
         '__timeout__',
-        '__buff__',
-        '__nbytes__',
-        'buff_len',
+        '__buff__'
     )
     
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.buff_len = 1024
-        app.__buff__ = bytearray(app.buff_len+1)
+        app.__buff__ = bytearray(1024)
+
+        app.__stream__ = deque()
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
@@ -206,66 +205,26 @@ class BlazeioPayloadBuffered(BufferedProtocol):
         app.__cookie__ = None
         app.__miscellaneous__ = None
         app.__timeout__ = None
-        app.__nbytes__ = app.buff_len
 
-    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = False):
-        if secure: secure = "; Secure"
+        BlazeioPayloadUtils.__init__(app)
+    
+    async def set_chunk_size(app, size: int):
+        app.__buff__ = bytearray(size)
 
-        app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
+    async def request(app):
+        while True:
+            if app.__stream__:
+                yield app.__stream__.popleft()
+                app.transport.resume_reading()
+            else:
+                if app.__exploited__: break
+                if not app.transport.is_reading(): app.transport.resume_reading()
+                else:
+                    yield None
 
-    async def buffer_overflow_manager(app):
-        if not app.__is_buffer_over_high_watermark__: return
-
-        while app.__is_buffer_over_high_watermark__:
-            if app.transport.is_closing(): raise Err("Client has disconnected.")
             await sleep(0)
 
-    async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
-        if not app.__is_prepared__:
-            if not reason:
-                reason = StatusReason.reasons.get(status, "Unknown")
-
-            await app.write(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
-
-            if app.__cookie__:
-                await app.write(b"Set-Cookie: %s\r\n" % app.__cookie__.encode())
-            
-            app.__is_prepared__ = True
-            app.__status__ = status
-
-        if headers:
-            for key, val in headers.items():
-                await app.write(
-                    b"%s: %s\r\n" % (key.encode(), val.encode())
-                )
-
-        await app.write(b"\r\n")
-
-    async def transporter(app):
-        app.__perf_counter__ = perf_counter()
-
-        await app.on_client_connected(app)
-
-        await app.close()
-        
-        await Log.debug(app, f"Completed with status {app.__status__} in {perf_counter() - app.__perf_counter__:.4f} seconds")
-
-    async def control(app, duration=0):
-        await sleep(duration)
-
-    async def write(app, data: (bytes, bytearray)):
-        await app.buffer_overflow_manager()
-
-        if not app.transport.is_closing():
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-
-    async def close(app):
-        app.transport.close()
-
     def connection_made(app, transport):
-        transport.pause_reading()
         app.transport = transport
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
@@ -273,31 +232,7 @@ class BlazeioPayloadBuffered(BufferedProtocol):
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__nbytes__ = nbytes
-    
-    async def pull(app, buff_len=None):
-        if buff_len:
-            app.buff_len = buff_len
-            app.__buff__ = bytearray(app.buff_len+1)
-
-        if app.__nbytes__ >= app.buff_len: pass
-        else:
-            return
-
-        if not app.transport.is_reading(): app.transport.resume_reading()
-
-        while app.__nbytes__ >= app.buff_len:
-            if app.transport.is_reading():
-                await sleep(0)
-                continue
-
-            yield bytes(memoryview(app.__buff__
-        )[:app.__nbytes__])
-
-            app.transport.resume_reading()
-
-        yield bytes(memoryview(app.__buff__
-        )[:app.__nbytes__])
+        app.__stream__.append(bytes(app.__buff__[:nbytes]))
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__):
