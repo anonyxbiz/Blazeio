@@ -188,7 +188,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
-        app.__buff__ = bytearray(8192)
+        app.__buff__ = bytearray(4096)
 
         app.__stream__ = deque()
         app.__is_buffer_over_high_watermark__ = False
@@ -212,8 +212,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__buff__ = bytearray(size)
 
     async def request(app):
-        if not app.transport.is_reading(): app.transport.resume_reading()
-
         while True:
             if app.__stream__:
                 yield bytes(app.__stream__.popleft())
@@ -227,7 +225,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
             await sleep(0)
 
     def connection_made(app, transport):
-        transport.pause_reading()
+        # transport.pause_reading()
         app.transport = transport
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
