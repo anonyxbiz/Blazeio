@@ -212,9 +212,11 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__buff__ = bytearray(size)
 
     async def request(app):
+        if not app.transport.is_reading(): app.transport.resume_reading()
+
         while True:
             if app.__stream__:
-                yield app.__stream__.popleft()
+                yield bytes(app.__stream__.popleft())
                 app.transport.resume_reading()
             else:
                 if app.__exploited__: break
@@ -225,7 +227,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
             await sleep(0)
 
     def connection_made(app, transport):
-        app.transport.pause_reading()
+        transport.pause_reading()
         app.transport = transport
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
@@ -233,7 +235,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__stream__.append(bytes(app.__buff__[:nbytes]))
+        app.__stream__.append(app.__buff__[:nbytes])
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__):
