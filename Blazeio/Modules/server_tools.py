@@ -3,7 +3,6 @@ from .request import *
 from .streaming import *      
 from gzip import compress, decompress
 from asyncio import to_thread, sleep
-from mmap import mmap, ACCESS_READ
 
 class Simpleserve:
     __slots__ = (
@@ -130,15 +129,18 @@ class Simpleserve:
                 f.seek(app.start)
 
     async def pull(app):
+        buffer = bytearray(app.CHUNK_SIZE)
+
         with open(app.file, "rb") as f:
-            mm = mmap(f.fileno(), 0, access=ACCESS_READ)  
-            view = memoryview(mm)
+            view = memoryview(buffer)
+            f.seek(app.start)
+            f.readinto(view)
 
-            while (chunk := view[app.start:app.start + app.CHUNK_SIZE]):
-                app.start += len(chunk)
-
+            while (chunk := view[:app.CHUNK_SIZE]):
                 yield bytes(chunk)
                 await sleep(0)
+
+                f.readinto(view)
 
 if __name__ == "__main__":
     pass
