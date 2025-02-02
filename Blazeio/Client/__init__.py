@@ -87,17 +87,15 @@ class BlazeioClientProtocolBuffered(BufferedProtocol):
         '__is_alive__',
         'transport',
         '__buff__',
-        '__nbytes__',
-        'buff_len',
-        'sizehint',
+        '__stream__',
+        '__buff_requested__',
     )
 
     def __init__(app):
-        app.buff_len = 1024
-        app.__buff__ = bytearray(app.buff_len)
-        app.__nbytes__ = app.buff_len
+        app.__buff__ = bytearray(1024)
+        app.__stream__ = deque()
         app.__is_at_eof__ = False
-        app.sizehint = 0
+        app.__buff_requested__ = False
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -112,33 +110,33 @@ class BlazeioClientProtocolBuffered(BufferedProtocol):
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__nbytes__ = nbytes
+        app.__buff_requested__ = False
 
-    async def pull(app, buff_len=None):
-        if buff_len:
-            app.buff_len = buff_len
-            app.__buff__ = bytearray(app.buff_len)
+        app.__stream__.append(memoryview(app.__buff__)[:nbytes])
 
-        app.transport.resume_reading()
+    async def pull(app):
+        while True:
+            if app.__stream__:
+                yield bytes(app.__stream__.popleft())
+                if not app.transport.is_reading():
+                    app.transport.resume_reading()
+            else:
+                if app.transport.is_closing() or app.__is_at_eof__: break
 
-        while not app.__is_at_eof__ and not app.transport.is_closing():
-            if app.transport.is_reading():
-                await sleep(0)
-                continue
+                if not app.transport.is_reading():
+                    app.transport.resume_reading()
+                else: yield None
 
-            chunk, app.__buff__[:app.__nbytes__] = bytes(memoryview(app.__buff__)[:app.__nbytes__]), bytearray(app.buff_len)
-            
-            if chunk != bytes(bytearray(app.buff_len)):
-                yield chunk
-
-            app.transport.resume_reading()
+            await sleep(0)
 
     def get_buffer(app, sizehint):
-        app.sizehint = sizehint
-        if sizehint > len(app.__buff__):
-            app.__buff__ += bytearray(sizehint - len(app.__buff__))
+        app.__buff_requested__ = True
 
-        return memoryview(app.__buff__)[: sizehint or app.buff_len]
+        if sizehint > len(app.__buff__):
+            app.__buff__ = bytearray(sizehint)
+            return memoryview(app.__buff__)[:sizehint]
+        else:
+            return memoryview(app.__buff__)[:len(app.__buff__)]
 
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():
@@ -199,7 +197,7 @@ class Session:
 
         if not app.connect_only:
             app.transport, app.protocol = await loop.create_connection(
-                lambda: BlazeioClientProtocol(),
+                lambda: BlazeioClientProtocolBuffered(),
                 host=app.host,
                 port=app.port,
                 ssl=ssl_context if app.port == 443 else None
