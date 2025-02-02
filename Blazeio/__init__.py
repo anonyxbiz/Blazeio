@@ -5,10 +5,11 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
-from asyncio import BufferedProtocol
 
 class BlazeioPayloadUtils:
     __slots__ = ()
+    non_bodied_methods = {"GET", "HEAD", "OPTIONS"}
+
     def __init__(app): pass
 
     async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = False):
@@ -17,37 +18,24 @@ class BlazeioPayloadUtils:
         app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
     async def pull(app):
-        if app.content_length is None and app.headers is not None: app.content_length = int(app.headers.get("Content-Length", 0))
+        if app.headers is None: raise Err("Request not prepared.")
 
-        elif app.headers is None: raise Err("Headers cannot be None")
+        if app.content_length is None: app.content_length = int(app.headers.get("Content-Length", 0))
+
+        if app.method in app.non_bodied_methods: return
 
         async for chunk in app.request():
-            if chunk and app.current_length <= app.content_length:
-                app.current_length += len(chunk)
-                yield chunk
-            elif app.current_length >= app.content_length:
-                break
+            app.current_length += len(chunk)
+            yield chunk
 
-    async def request(app):
-        while True:
-            if app.__stream__:
-                if app.transport.is_reading(): app.transport.pause_reading()
-
-                yield app.__stream__.popleft()
-            else:
-                if app.__exploited__: break
-                if not app.transport.is_reading(): app.transport.resume_reading()
-                else:
-                    yield None
-
-            await sleep(0)
+            if app.current_length >= app.content_length: break
 
     async def buffer_overflow_manager(app):
         if not app.__is_buffer_over_high_watermark__: return
 
-        while app.__is_buffer_over_high_watermark__:
-            if app.transport.is_closing(): raise Err("Client has disconnected.")
-            await sleep(0)
+        await app.__resume_writing_event__.wait()
+
+        app.__resume_writing_event__.clear()
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
@@ -183,7 +171,9 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__cookie__',
         '__miscellaneous__',
         '__timeout__',
-        '__buff__'
+        '__buff__',
+        '__stream_event__',
+        '__low_watermark_event__',
     )
     
     def __init__(app, on_client_connected):
@@ -191,6 +181,9 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__buff__ = bytearray(4096)
 
         app.__stream__ = deque()
+        app.__stream_event__ = Event()
+        app.__low_watermark_event__ = Event()
+
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
@@ -213,19 +206,19 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
     async def request(app):
         while True:
-            if app.__stream__:
-                yield bytes(app.__stream__.popleft())
-                app.transport.resume_reading()
-            else:
-                if app.__exploited__: break
-                if not app.transport.is_reading(): app.transport.resume_reading()
-                else:
-                    yield None
+            if not app.transport.is_reading(): app.transport.resume_reading()
 
+            await app.__stream_event__.wait()
+
+            while app.__stream__:
+                yield bytes(app.__stream__.popleft())
+
+            if app.transport.is_closing(): break
+            
             await sleep(0)
 
     def connection_made(app, transport):
-        # transport.pause_reading()
+        transport.pause_reading()
         app.transport = transport
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
@@ -234,6 +227,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
         app.__stream__.append(app.__buff__[:nbytes])
+        app.__stream_event__.set()
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__):
@@ -252,6 +246,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
+        app.__resume_writing_event__.set()
 
 class Handler:
     __main_handler__ = NotImplemented

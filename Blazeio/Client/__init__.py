@@ -1,7 +1,6 @@
 # Blazeio.Client
 from ..Dependencies import *
 from urllib.parse import urlparse
-from asyncio import BufferedProtocol
 from collections.abc import Iterable
 
 from ssl import create_default_context, SSLError, Purpose
@@ -28,60 +27,7 @@ class Utl:
         else:
             return False
 
-class BlazeioClientProtocol(asyncProtocol):
-    __slots__ = (
-        '__stream__',
-        '__is_at_eof__',
-        '__is_alive__',
-        'transport',
-        '__max_buff_len__',
-        'host',
-        'port'
-    )
-
-    def __init__(app):
-        app.__stream__ = deque()
-        app.__is_at_eof__ = False
-
-    def connection_made(app, transport):
-        app.transport = transport
-        app.__is_alive__ = True
-
-    def data_received(app, data):
-        app.__stream__.append(data)
-
-    def eof_received(app):
-        app.__is_at_eof__ = True
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    async def pull(app):
-        while True:
-            while app.__stream__:
-                app.transport.pause_reading()
-
-                yield app.__stream__.popleft()
-
-                app.transport.resume_reading()
-
-            if not app.__stream__:
-                if app.transport.is_closing(): raise Err("Client has disconnected.")
-
-                if app.__is_at_eof__: raise Err("Client has disconnected.")
-
-                if not app.transport.is_reading(): app.transport.resume_reading()
-                else: yield None
-
-            await sleep(0)
-
-    async def push(app, data: (bytes, bytearray)):
-        if not app.transport.is_closing():
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-
-class BlazeioClientProtocolBuffered(BufferedProtocol):
+class BlazeioClientProtocol(BufferedProtocol):
     __slots__ = (
         '__is_at_eof__',
         '__is_alive__',
@@ -89,6 +35,7 @@ class BlazeioClientProtocolBuffered(BufferedProtocol):
         '__buff__',
         '__stream__',
         '__buff_requested__',
+        '__stream_event__',
     )
 
     def __init__(app):
@@ -96,7 +43,11 @@ class BlazeioClientProtocolBuffered(BufferedProtocol):
         app.__stream__ = deque()
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
+        app.__stream_event__ = Event()
 
+    async def set_buffer(app, size: int):
+        app.__buff__ = bytearray(size)
+        
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
@@ -113,19 +64,19 @@ class BlazeioClientProtocolBuffered(BufferedProtocol):
         app.__buff_requested__ = False
 
         app.__stream__.append(memoryview(app.__buff__)[:nbytes])
+        app.__stream_event__.set()
 
     async def pull(app):
         while True:
-            if app.__stream__:
-                yield bytes(app.__stream__.popleft())
-                if not app.transport.is_reading():
-                    app.transport.resume_reading()
-            else:
-                if app.transport.is_closing() or app.__is_at_eof__: break
+            if not app.transport.is_reading(): app.transport.resume_reading()
 
-                if not app.transport.is_reading():
-                    app.transport.resume_reading()
-                else: yield None
+            await app.__stream_event__.wait()
+
+            while app.__stream__:
+                yield bytes(app.__stream__.popleft())
+
+            if app.transport.is_closing() or app.__is_at_eof__:
+                break
 
             await sleep(0)
 
@@ -197,13 +148,11 @@ class Session:
 
         if not app.connect_only:
             app.transport, app.protocol = await loop.create_connection(
-                lambda: BlazeioClientProtocolBuffered(),
+                lambda: BlazeioClientProtocol(),
                 host=app.host,
                 port=app.port,
                 ssl=ssl_context if app.port == 443 else None
             )
-        elif app.proxy: await app.setup_proxy()
-
         else:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(),
@@ -246,28 +195,6 @@ class Session:
             await app.prepare_http()
 
         return app
-
-    async def setup_proxy(app,):
-        payload = b'CONNECT %s:%s HTTP/1.1\r\nProxy-Connection: keep-alive\r\n%sUser-Agent: Dalvik/2.1.0 (Linux; U; Android 12; TECNO BF6 Build/SP1A.210812.001)\r\n\r\n' % (app.host.encode(), str(app.port).encode(), b'Proxy-Authorization: Basic %s\r\n' % auth.encode() if (auth := app.proxy.get("auth")) else b'')
-
-        app.transport, app.protocol = await loop.create_connection(
-            lambda: BlazeioClientProtocol(),
-            host=app.proxy.get("host"),
-            port=app.proxy.get("port"),
-        )
-        
-        await app.protocol.push(payload)
-
-        async for chunk in app.protocol.pull():
-            if chunk:
-                print(chunk)
-                break
-        
-        ctx = create_default_context(purpose=Purpose.SERVER_AUTH)
-        
-        print(dir(app.transport))
-
-        app.transport._start_tls_compatible(ctx)
 
     async def push(app, *args): await app.protocol.push(*args)
 
@@ -358,7 +285,9 @@ class Session:
     
     async def aread(app, decode=False):
         data = bytearray()
-        async for chunk in app.pull(): data.extend(chunk)
+        async for chunk in app.pull():
+            if chunk:
+                data.extend(chunk)
 
         return data if not decode else data.decode("utf-8")
     
