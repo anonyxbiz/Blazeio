@@ -173,7 +173,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__timeout__',
         '__buff__',
         '__stream_event__',
-        '__low_watermark_event__',
+        '__resume_writing_event__',
     )
     
     def __init__(app, on_client_connected):
@@ -182,7 +182,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
         app.__stream__ = deque()
         app.__stream_event__ = Event()
-        app.__low_watermark_event__ = Event()
+        app.__resume_writing_event__ = Event()
 
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
