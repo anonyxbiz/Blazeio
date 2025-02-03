@@ -22,7 +22,7 @@ class BlazeioPayloadUtils:
 
         if app.content_length is None: app.content_length = int(app.headers.get("Content-Length", 0))
 
-        if app.method in app.non_bodied_methods: return
+        if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
         async for chunk in app.request():
             app.current_length += len(chunk)
@@ -208,13 +208,14 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         while True:
             if not app.transport.is_reading(): app.transport.resume_reading()
 
-            await app.__stream_event__.wait()
-
             while app.__stream__:
                 yield bytes(app.__stream__.popleft())
 
             if app.transport.is_closing(): break
-            
+
+            await app.__stream_event__.wait()
+            app.__stream_event__.clear()
+
             await sleep(0)
 
     def connection_made(app, transport):

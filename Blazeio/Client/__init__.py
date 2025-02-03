@@ -66,17 +66,19 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__stream__.append(memoryview(app.__buff__)[:nbytes])
         app.__stream_event__.set()
 
-    async def pull(app):
+    async def pull(app, memory=False):
         while True:
             if not app.transport.is_reading(): app.transport.resume_reading()
 
-            await app.__stream_event__.wait()
-
             while app.__stream__:
-                yield bytes(app.__stream__.popleft())
+                if not memory: yield bytes(app.__stream__.popleft())
+                else: yield app.__stream__.popleft()
 
             if app.transport.is_closing() or app.__is_at_eof__:
                 break
+
+            await app.__stream_event__.wait()
+            app.__stream_event__.clear()
 
             await sleep(0)
 
@@ -222,15 +224,17 @@ class Session:
             
             key, value = header[:idx], header[idx + len(sepr2):]
             
-            app.response_headers[key.decode("utf-8")] = value.decode("utf-8")
+            app.response_headers[key.decode("utf-8").lower()] = value.decode("utf-8")
+
+            await sleep(0)
         
         app.response_headers = dict(app.response_headers)
-        app.received_len, app.content_length = 0, int(app.response_headers.get('Content-Length',  0))
+        app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
 
     async def get_handler(app):
-        if app.response_headers.get("Transfer-Encoding") == "chunked":
+        if app.response_headers.get("transfer-encoding") == "chunked":
             handler = app.handle_chunked
-        elif app.response_headers.get("Content-Length"):
+        elif app.response_headers.get("content-length"):
             handler = app.handle_raw
         else:
             handler = app.protocol.pull
@@ -238,30 +242,12 @@ class Session:
         return handler
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
-        buff, chunk_size = bytearray(), None
-
         async for chunk in app.protocol.pull():
-            if not chunk: continue
-
-            if not chunk_size:
-                buff.extend(chunk)
-                if (idx := buff.find(sepr1)) != -1:
-                    chunk_size = b"" + buff[:idx]
-                    chunk_size = int(chunk_size.decode(), 16)
-                    chunk, buff = buff[idx + len(sepr1):], bytearray()
-                else: continue
-            
-
-            if (endsig_idx := chunk.find(endsig)) != -1:
-                chunk = chunk[:endsig_idx]
-            
-            if len(chunk) >= 10:
-                if (sepr1_idx := chunk[:10].find(sepr1)) != -1:
-                    chunk = chunk[sepr1_idx:]
+            if endsig in chunk:
+                yield chunk
+                break
 
             yield chunk
-
-            if endsig_idx != -1: break
 
     async def handle_raw(app):
         async for chunk in app.protocol.pull():
