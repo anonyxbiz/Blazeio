@@ -211,11 +211,13 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         while True:
             if not app.transport.is_reading() and not app.__stream__:
                 app.transport.resume_reading()
+                continue
 
-            elif app.__stream__:
+            if app.__stream__:
                 yield bytes(app.__stream__.popleft())
+                continue
 
-            elif app.transport.is_closing(): break
+            if app.transport.is_closing(): break
 
             # await app.__stream_event__.wait()
             # app.__stream_event__.clear()
