@@ -4,10 +4,6 @@ from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loo
 from collections import deque, defaultdict, OrderedDict
 from types import MappingProxyType
 
-from ujson import dumps, loads, JSONDecodeError
-
-from aiologger import Logger
-
 from sys import exit
 from datetime import datetime as dt
 from inspect import signature as sig, stack
@@ -23,24 +19,10 @@ from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 from urllib.parse import unquote
 from threading import Thread
 
-loop = get_event_loop()
+from aiologger import Logger
+from ujson import dumps, loads, JSONDecodeError
 
-try:
-    import uvloop
-    uvloop.install()
-except:
-    pass
-
-try:
-    from aiofile import async_open
-except Exception as e:
-    print("aiofile not installed, Blazeio won't serve files without it")
-    async_open = NotImplemented
-
-try:
-    logger = Logger.with_default_handlers(name='BlazeioLogger')
-except Exception as e:
-    print(e)
+logger = Logger.with_default_handlers(name='BlazeioLogger')
 
 class Err(Exception):
     __slots__ = (
@@ -61,6 +43,30 @@ class ServerGotInTrouble(Exception):
 
     def __str__(app) -> str:
         return app.message
+
+routines = {
+    ("loop = get_event_loop()", "loop = None"),
+    ("import uvloop", ""),
+    ("uvloop.install()", ""),
+    ("from aiofile import async_open", "async_open = NotImplemented"),
+}
+
+def routine_executor(arg):
+    for if_, else_ in arg:
+        try:
+            exec(if_, globals())
+        except Exception as e:
+            e = str(e).strip()
+            if not "uvloop" in e: print("routine_executor Exception: %s\n" % e)
+
+            if else_ == NotImplemented:
+                raise Err("A required package is not installed.")
+            try:
+                exec(else_, globals())
+            except Exception as e:
+                print("routine_executor Exception: %s\n" % str(e).strip())
+
+routine_executor(routines)
 
 class Log:
     known_exceptions = (
@@ -211,9 +217,7 @@ class VersionControlla:
             else:
                 break
 
-try:
-    p = Log.info
-    loop.run_until_complete(Log.debug(""))
-except Exception as e:
-    print("Exception")
-    print(e)
+routine_executor({
+    ('p = Log.info', 'p = None'),
+    ('loop.run_until_complete(Log.debug(""))', '')
+})
