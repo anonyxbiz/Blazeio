@@ -35,7 +35,7 @@ class BlazeioPayloadUtils:
         if not app.__is_buffer_over_high_watermark__: return
 
         while app.__is_buffer_over_high_watermark__:
-            await sleep(0.01)
+            await sleep(0.0001)
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
