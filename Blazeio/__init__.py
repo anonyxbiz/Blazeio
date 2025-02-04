@@ -25,20 +25,17 @@ class BlazeioPayloadUtils:
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
         async for chunk in app.request():
-            app.current_length += len(chunk)
-            yield chunk
+            if chunk:
+                app.current_length += len(chunk)
+                yield chunk
 
             if app.current_length >= app.content_length: break
 
     async def buffer_overflow_manager(app):
-        while app.__is_buffer_over_high_watermark__:
-            await sleep(0.0001)
-
         if not app.__is_buffer_over_high_watermark__: return
 
-        await app.__resume_writing_event__.wait()
-
-        app.__resume_writing_event__.clear()
+        while app.__is_buffer_over_high_watermark__:
+            await sleep(0.01)
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
@@ -209,18 +206,18 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
     async def request(app):
         while True:
-            if not app.transport.is_reading() and not app.__stream__:
-                app.transport.resume_reading()
-
-            elif app.__stream__:
+            if app.__stream__:
                 yield bytes(app.__stream__.popleft())
+
+            elif not app.transport.is_reading():
+                app.transport.resume_reading()
 
             elif app.transport.is_closing(): break
 
             # await app.__stream_event__.wait()
             # app.__stream_event__.clear()
-
             await sleep(0.0001)
+            yield None
 
     def connection_made(app, transport):
         transport.pause_reading()
