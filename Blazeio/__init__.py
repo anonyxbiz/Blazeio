@@ -219,7 +219,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
             await sleep(0)
 
     def connection_made(app, transport):
-        # transport.pause_reading()
+        transport.pause_reading()
         app.transport = transport
         app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
 
