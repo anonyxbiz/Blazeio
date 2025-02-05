@@ -16,7 +16,8 @@ from os import stat
 from gzip import compress as gzip_compress
 
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse, parse_qs
+
 from threading import Thread
 
 from aiologger import Logger
