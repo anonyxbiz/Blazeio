@@ -22,6 +22,7 @@ class Simpleserve:
         'start',
         'end',
         'range_',
+        'status',
     )
     compressable = (
         "text/html",
@@ -41,6 +42,7 @@ class Simpleserve:
         app.cache_control = kwargs.get("cache_control", {
             "max-age": "3600"
         })
+        app.status = 200
 
         return await app.prepare_metadata()
 
@@ -81,7 +83,6 @@ class Simpleserve:
         
         if app.cache_control:
             app.headers["Cache-Control"] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
-            
 
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
             app.range_ = range_
@@ -90,9 +91,11 @@ class Simpleserve:
             app.end = app.file_size - 1
 
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
+            app.status = 206
         else:
             app.start, app.end, app.range_ = 0, app.file_size, range_
             app.headers["Content-Length"] = str(app.file_size)
+            app.status = 200
 
     @classmethod
     async def push(cls, *args, **kwargs):
@@ -104,7 +107,7 @@ class Simpleserve:
 
         if gzip: app.headers["Content-Encoding"] = "gzip"
 
-        await app.r.prepare(app.headers, 206 if app.range_ else 200)
+        await app.r.prepare(app.headers, app.status)
 
         if gzip: 
             if app.CHUNK_SIZE < 1024*1024:
