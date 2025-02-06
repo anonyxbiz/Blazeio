@@ -30,13 +30,6 @@ class BlazeioPayloadUtils:
 
             if app.current_length >= app.content_length: break
 
-    async def buffer_overflow_manager(app):
-        if not app.__is_buffer_over_high_watermark__: return
-
-        await app.__resume_writing_event__.wait()
-
-        app.__resume_writing_event__.clear()
-
     async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
         if not app.__is_prepared__:
             if not reason:
@@ -172,18 +165,12 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__miscellaneous__',
         '__timeout__',
         '__buff__',
-        '__stream_event__',
-        '__resume_writing_event__',
     )
     
     def __init__(app, on_client_connected):
         app.on_client_connected = on_client_connected
         app.__buff__ = bytearray(4096)
-
         app.__stream__ = deque()
-        app.__stream_event__ = Event()
-        app.__resume_writing_event__ = Event()
-
         app.__is_buffer_over_high_watermark__ = False
         app.__exploited__ = False
         app.__is_alive__ = True
@@ -204,19 +191,27 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     async def set_chunk_size(app, size: int):
         app.__buff__ = bytearray(size)
 
+    async def buffer_overflow_manager(app):
+        if not app.__is_buffer_over_high_watermark__: return
+
+        while app.__is_buffer_over_high_watermark__:
+            await sleep(0.001)
+
     async def request(app):
         while True:
             if not app.transport.is_reading(): app.transport.resume_reading()
 
             while app.__stream__:
+                if not app.transport.is_reading(): app.transport.resume_reading()
+
                 yield bytes(app.__stream__.popleft())
 
             if app.transport.is_closing(): break
 
-            await app.__stream_event__.wait()
-            app.__stream_event__.clear()
-
             await sleep(0)
+
+            if not app.__stream__:
+                yield None
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -228,7 +223,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
         app.__stream__.append(app.__buff__[:nbytes])
-        app.__stream_event__.set()
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__):
@@ -247,7 +241,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
-        app.__resume_writing_event__.set()
 
 class Handler:
     __main_handler__ = NotImplemented
