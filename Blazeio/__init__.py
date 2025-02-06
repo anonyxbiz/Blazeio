@@ -311,8 +311,8 @@ class Handler:
 
     async def handle_client(app, r):
         try:
-            app.REQUEST_COUNT += 1
-            r.identifier = app.REQUEST_COUNT
+            if app.ServerConfig.__log_requests__: app.REQUEST_COUNT += 1
+            if app.ServerConfig.__log_requests__: r.identifier = app.REQUEST_COUNT
             await app.__main_handler__(r)
         except Abort as e:
             await e.text()
