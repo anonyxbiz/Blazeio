@@ -53,13 +53,9 @@ class BlazeioPayloadUtils:
         await app.write(b"\r\n")
 
     async def transporter(app):
-        app.__perf_counter__ = perf_counter()
-
         await app.on_client_connected(app)
 
         await app.close()
-        
-        await Log.debug(app, f"Completed with status {app.__status__} in {perf_counter() - app.__perf_counter__:.4f} seconds")
 
     async def control(app, duration=0):
         await sleep(duration)
@@ -166,6 +162,8 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__miscellaneous__',
         '__timeout__',
         '__buff__',
+        '__stream__sleep',
+        '__overflow_sleep',
     )
     
     def __init__(app, on_client_connected):
@@ -186,6 +184,8 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__cookie__ = None
         app.__miscellaneous__ = None
         app.__timeout__ = None
+        app.__stream__sleep = 0
+        app.__overflow_sleep = 0
 
         BlazeioPayloadUtils.__init__(app)
     
@@ -196,29 +196,24 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         if not app.__is_buffer_over_high_watermark__: return
 
         while app.__is_buffer_over_high_watermark__:
-            await sleep(0.001)
+            await sleep(app.__overflow_sleep)
 
     async def request(app):
         while True:
             if not app.transport.is_reading(): app.transport.resume_reading()
 
             while app.__stream__:
-                if not app.transport.is_reading(): app.transport.resume_reading()
-
                 yield bytes(app.__stream__.popleft())
 
             if app.transport.is_closing(): break
 
-            await sleep(0)
+            await sleep(app.__stream__sleep)
 
             if not app.__stream__:
                 yield None
 
     def connection_made(app, transport):
-        transport.pause_reading()
         app.transport = transport
-        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
-
         loop.create_task(app.transporter())
 
     def buffer_updated(app, nbytes):
@@ -248,6 +243,12 @@ class Handler:
     def __init__(app): pass
 
     async def log_request(app, r):
+        if not app.ServerConfig.__log_requests__: return
+
+        r.ip_host, r.ip_port = r.transport.get_extra_info('peername')
+
+        r.__perf_counter__ = perf_counter()
+
         await Log.info(r,
             "=> %s@ %s" % (
                 r.method,
@@ -285,12 +286,8 @@ class Handler:
 
     async def serve_route_with_middleware(app, r):
         await Request.prepare_http_request(r, app)
-        await Log.info(r,
-            "=> %s@ %s" % (
-                r.method,
-                r.path
-            )
-        )
+
+        await app.log_request(r)
 
         if app.before_middleware: await app.before_middleware.get("func")(r)
 
@@ -306,12 +303,7 @@ class Handler:
 
     async def serve_route_no_middleware(app, r):
         await Request.prepare_http_request(r, app)
-        await Log.info(r,
-            "=> %s@ %s" % (
-                r.method,
-                r.path
-            )
-        )
+        await app.log_request(r)
 
         if route := app.declared_routes.get(r.path): await route.get("func")(r)
 
@@ -328,6 +320,9 @@ class Handler:
         except KeyboardInterrupt as e: raise e
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
+
+        if app.ServerConfig.__log_requests__:
+            await Log.debug(r, f"Completed with status {r.__status__} in {perf_counter() - r.__perf_counter__:.4f} seconds")
 
 class OOP_RouteDef:
     def __init__(app):
@@ -371,6 +366,7 @@ class SrvConfig:
     __timeout__ = float(60*10)
     __timeout_check_freq__ = 5
     __health_check_freq__ = 5
+    __log_requests__ = True
     def __init__(app): pass
 
 class Monitoring:
