@@ -164,6 +164,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__buff__',
         '__stream__sleep',
         '__overflow_sleep',
+        '__buff__memory__',
     )
     
     def __init__(app, on_client_connected):
@@ -186,6 +187,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__timeout__ = None
         app.__stream__sleep = 0
         app.__overflow_sleep = 0
+        app.__buff__memory__ = memoryview(app.__buff__)
 
         BlazeioPayloadUtils.__init__(app)
     
@@ -197,34 +199,41 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
 
         while app.__is_buffer_over_high_watermark__:
             await sleep(app.__overflow_sleep)
+    
+    async def prepend(app, chunk):
+        app.__stream__.appendleft(chunk)
 
     async def request(app):
         while True:
-            if not app.transport.is_reading(): app.transport.resume_reading()
+            if not app.transport.is_reading() and not app.__stream__: app.transport.resume_reading()
 
             while app.__stream__:
-                yield bytes(app.__stream__.popleft())
+                if not isinstance(chunk := app.__stream__.popleft(), (bytes, bytearray)):
+                    chunk = bytes(app.__buff__memory__[:chunk])
 
-            if app.transport.is_closing(): break
+                yield chunk
+            
+            if not app.__stream__:
+                if app.transport.is_closing() or app.__exploited__: break
 
             await sleep(app.__stream__sleep)
 
-            if not app.__stream__:
-                yield None
+            if not app.__stream__: yield None
 
     def connection_made(app, transport):
         app.transport = transport
+        app.transport.pause_reading()
         loop.create_task(app.transporter())
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__stream__.append(app.__buff__[:nbytes])
+        app.__stream__.append(nbytes)
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__):
             app.__buff__ += bytearray(sizehint - len(app.__buff__))
 
-        return memoryview(app.__buff__)[:sizehint]
+        return app.__buff__memory__[:sizehint]
 
     def connection_lost(app, exc):
         app.__is_alive__ = False

@@ -107,6 +107,7 @@ class Request:
                 await app.set_method(r, server, __heading__)
                 
                 r.__stream__.appendleft(__buff__)
+
                 break
 
             elif len(__buff__) >= server.__server_config__["__http_request_max_buff_size__"]:
@@ -160,8 +161,11 @@ class Request:
 
                 if (idx := data.find(content_type_before)) != -1:
                     data = data[:idx] + content_type_after + data[idx + len(content_type_before):]
+                
+                # await r.prepend(__buff__)
 
                 r.__stream__.appendleft(__buff__)
+
                 r.current_length -= len(__buff__)
                 break
 
