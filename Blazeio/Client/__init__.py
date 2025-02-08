@@ -35,7 +35,8 @@ class BlazeioClientProtocol(BufferedProtocol):
         '__buff__',
         '__stream__',
         '__buff_requested__',
-        '__stream_event__',
+        '__buff__memory__',
+        '__stream__sleep',
     )
 
     def __init__(app):
@@ -43,7 +44,8 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__stream__ = deque()
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
-        app.__stream_event__ = Event()
+        app.__buff__memory__ = memoryview(app.__buff__)
+        app.__stream__sleep = 0
 
     async def set_buffer(app, size: int):
         app.__buff__ = bytearray(size)
@@ -61,35 +63,33 @@ class BlazeioClientProtocol(BufferedProtocol):
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__buff_requested__ = False
+        app.__stream__.append(nbytes)
 
-        app.__stream__.append(memoryview(app.__buff__)[:nbytes])
-        app.__stream_event__.set()
-
-    async def pull(app, memory=False):
+    async def pull(app):
         while True:
-            if not app.transport.is_reading(): app.transport.resume_reading()
+            if not app.transport.is_reading() and not app.__stream__: app.transport.resume_reading()
 
             while app.__stream__:
-                if not memory: yield bytes(app.__stream__.popleft())
-                else: yield app.__stream__.popleft()
+                if not isinstance(chunk := app.__stream__.popleft(), (bytes, bytearray)):
+                    chunk = bytes(app.__buff__memory__[:chunk])
 
-            if app.transport.is_closing() or app.__is_at_eof__:
-                break
+                yield chunk
+            
+            if not app.__stream__:
+                if app.transport.is_closing() or app.__is_at_eof__: break
 
-            await app.__stream_event__.wait()
-            app.__stream_event__.clear()
+            await sleep(app.__stream__sleep)
 
-            await sleep(0)
+            if not app.__stream__: yield None
 
     def get_buffer(app, sizehint):
         app.__buff_requested__ = True
 
         if sizehint > len(app.__buff__):
             app.__buff__ = bytearray(sizehint)
-            return memoryview(app.__buff__)[:sizehint]
+            return app.__buff__memory__[:sizehint]
         else:
-            return memoryview(app.__buff__)[:len(app.__buff__)]
+            return app.__buff__memory__[:len(app.__buff__)]
 
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():
@@ -243,11 +243,12 @@ class Session:
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         async for chunk in app.protocol.pull():
-            if endsig in chunk:
+            if chunk:
+                if endsig in chunk:
+                    yield chunk
+                    break
+    
                 yield chunk
-                break
-
-            yield chunk
 
     async def handle_raw(app):
         async for chunk in app.protocol.pull():
