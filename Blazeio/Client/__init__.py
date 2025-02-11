@@ -83,13 +83,14 @@ class BlazeioClientProtocol(BufferedProtocol):
             if not app.__stream__: yield None
 
     def get_buffer(app, sizehint):
-        app.__buff_requested__ = True
-
-        if sizehint > len(app.__buff__):
-            app.__buff__ = bytearray(sizehint)
-            return app.__buff__memory__[:sizehint]
-        else:
-            return app.__buff__memory__[:len(app.__buff__)]
+        try:
+            if sizehint > len(app.__buff__):
+                app.__buff__ = bytearray(sizehint)
+                return app.__buff__memory__[:sizehint]
+            else:
+                return app.__buff__memory__[:len(app.__buff__)]
+        except Exception as e:
+            print("get_buffer Exception: %s" % str(e))
 
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():

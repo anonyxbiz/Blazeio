@@ -230,10 +230,13 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__stream__.append(nbytes)
 
     def get_buffer(app, sizehint):
-        if sizehint > len(app.__buff__):
-            app.__buff__ += bytearray(sizehint - len(app.__buff__))
-
-        return app.__buff__memory__[:sizehint]
+        try:
+            if sizehint > len(app.__buff__memory__):
+                app.__buff__ += bytearray(sizehint - len(app.__buff__memory__))
+    
+            return app.__buff__memory__[:sizehint]
+        except Exception as e:
+            print("get_buffer Exception: %s" % str(e))
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
@@ -320,9 +323,13 @@ class Handler:
 
     async def handle_client(app, r):
         try:
-            if app.ServerConfig.__log_requests__: app.REQUEST_COUNT += 1
-            if app.ServerConfig.__log_requests__: r.identifier = app.REQUEST_COUNT
+            if app.ServerConfig.__log_requests__:
+                r.__perf_counter__ = perf_counter()
+                app.REQUEST_COUNT += 1
+                r.identifier = app.REQUEST_COUNT
+
             await app.__main_handler__(r)
+
         except Abort as e:
             await e.text()
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
