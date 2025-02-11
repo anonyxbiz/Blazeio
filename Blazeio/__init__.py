@@ -233,8 +233,11 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         try:
             if sizehint > len(app.__buff__memory__):
                 app.__buff__ += bytearray(sizehint - len(app.__buff__memory__))
-    
-            return app.__buff__memory__[:sizehint]
+
+                return app.__buff__memory__
+            else:
+                return app.__buff__memory__[:sizehint]
+
         except Exception as e:
             print("get_buffer Exception: %s" % str(e))
 
