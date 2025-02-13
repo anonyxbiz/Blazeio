@@ -11,17 +11,20 @@ from typing import Callable
 
 from mimetypes import guess_type
 from os.path import basename, getsize, exists, join
-from os import stat
+from os import stat, kill, getpid
+from signal import SIGKILL
 
 from gzip import compress as gzip_compress
 
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
-from urllib.parse import unquote, urlparse, parse_qs
+from urllib.parse import unquote, urlparse, parse_qs, quote
 
 from threading import Thread
 
 from aiologger import Logger
 from ujson import dumps, loads, JSONDecodeError
+
+pid = getpid()
 
 logger = Logger.with_default_handlers(name='BlazeioLogger')
 

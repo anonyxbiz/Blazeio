@@ -15,12 +15,14 @@ class HTTPParser:
                 val = header[sep_idx + 2:]
                 r.headers[key.decode("utf-8")] = val.decode("utf-8")
 
-        while (idx := data.find(app.h_s)) != -1:
+        while (idx := data.find(app.h_s)):
+            if idx == -1:
+                await make(data)
+                break
+
             header, data = data[:idx], data[idx + 2:]
 
             await make(header)
-
-        await make(data)
 
 class Request:
     @classmethod
@@ -59,16 +61,18 @@ class Request:
         
         while True:
             await sleep(0)
-            if (idx := params.find(o)) != -1:
-                param, params = params[:idx], params[idx + 1:]
-            else:
-                param = params
-            
-            if (idx2 := param.find(y)) != -1:
-                key, value = param[:idx2], param[idx2 + 1:]
-                temp[key] = unquote(value)
 
-            if idx == -1 or idx2 == -1:
+            if (idx := params.find(y)) != -1:
+                key, value = params[:idx], params[idx + 1:]
+
+                if (idx_end := value.find(q)) != -1:
+                    pass
+                elif (idx := value.find(o)) != -1:
+                    value, params = value[:idx], value[idx + 1:]
+
+            temp[key] = value
+
+            if idx == -1 or idx_end != -1:
                 break
 
         return dict(temp)
@@ -112,8 +116,10 @@ class Request:
 
             elif len(__buff__) >= server.__server_config__["__http_request_max_buff_size__"]:
                 raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
-
         
+        if not r.method:
+            raise Err("Request has no headers")
+
         return r
 
     @classmethod

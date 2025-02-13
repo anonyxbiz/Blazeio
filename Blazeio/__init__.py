@@ -569,7 +569,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
         )
 
         async with app.server:
-            await Log.info("Blazeio", "Server running on %s://%s:%s" % ("http" if not ssl_data else "https", HOST, PORT))
+            await Log.info("Blazeio [PID: %s]" % pid, "Server running on %s://%s:%s" % ("http" if not ssl_data else "https", HOST, PORT))
             await app.server.serve_forever()
 
     async def cancelloop(app, loop):
@@ -602,9 +602,9 @@ class App(Handler, OOP_RouteDef, Monitoring):
         except Exception as e: await Log.critical("Blazeio.exit", str(e))
         finally:
             # await app.server.wait_closed()
-
             await Log.info("Blazeio.exit", ":: Exited.")
-            exit()
+
+            kill(pid, SIGKILL)
 
     def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))
 

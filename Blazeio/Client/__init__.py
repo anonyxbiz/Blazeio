@@ -108,15 +108,31 @@ class Session:
         app.response_headers = defaultdict(str)
         app.status_code = 0
 
-    async def url_to_host(app, url: str):
-        parsed_url = urlparse(url)
-        host = parsed_url.hostname
+    async def quote(app, text: str, SAFE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~") -> str:
 
-        path = parsed_url.path
-        port = parsed_url.port
-        
-        if parsed_url.query:
-            path += "?%s" % parsed_url.query
+        return "".join(f"%{hex(ord(c))[2:].upper()}" if c not in SAFE_CHARS else c for c in text)
+
+    async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
+        parsed_url = {}
+
+        if (idx := url.find(scheme_sepr)) != -1:
+            parsed_url["hostname"] = url[idx + len(scheme_sepr):]
+
+            if (idx := parsed_url["hostname"].find(host_sepr)) != -1:
+                parsed_url["path"], parsed_url["hostname"] = parsed_url["hostname"][idx:], parsed_url["hostname"][:idx]
+
+            if (idx := parsed_url["hostname"].find(port_sepr)) != -1:
+                parsed_url["port"], parsed_url["hostname"] = int(parsed_url["hostname"][idx + len(port_sepr):]), parsed_url["hostname"][:idx]
+
+            if (idx := parsed_url["path"].find(param_sepr)) != -1:
+                parsed_url["query"], parsed_url["path"] = parsed_url["path"][idx + len(param_sepr):], parsed_url["path"][:idx]
+
+        host = parsed_url.get("hostname")
+        path = parsed_url.get("path")
+        port = parsed_url.get("port")
+
+        if (query := parsed_url.get("query")):
+            path += "?%s" % query
 
         if not port:
             if url.startswith("https"):
@@ -233,7 +249,7 @@ class Session:
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
 
     async def get_handler(app):
-        if app.response_headers.get("transfer-encoding") == "chunked":
+        if app.response_headers.get("transfer-encoding"):
             handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
             handler = app.handle_raw
@@ -243,13 +259,38 @@ class Session:
         return handler
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
+        end = 0
+        started = False
+        x = bytearray()
+
         async for chunk in app.protocol.pull():
-            if chunk:
-                if endsig in chunk:
-                    yield chunk
-                    break
-    
-                yield chunk
+            if not chunk: continue
+            x.extend(chunk)
+
+            if (idx := x.rfind(endsig)) != -1:
+                x = x[:idx] + sepr1
+                end = 1
+
+            if (idx := x.find(sepr1)) == -1:
+                chunk, x = x, bytearray()
+            else:
+                chunk = b""
+
+            while (idx := x.find(sepr1)) != -1:
+                if not started:
+                    started = True
+                    _, x = x[idx + len(sepr1):], bytearray()
+                    chunk += _
+                else:
+                    started = False
+                    _, x = x[:idx], x[idx + len(sepr1):]
+                    chunk += _
+
+                await sleep(0)
+
+            yield chunk
+
+            if end: break
 
     async def handle_raw(app):
         async for chunk in app.protocol.pull():
