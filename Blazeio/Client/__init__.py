@@ -126,27 +126,32 @@ class Session:
         host = parsed_url.get("hostname")
         path = parsed_url.get("path")
         port = parsed_url.get("port")
-
+        
         if (query := parsed_url.get("query")):
-            params = await Request.get_params(url="?%s" % query)
-
-            query = "?"
-
-            for k,v in params.items():
-                v = await Request.url_encode(v)
-
-                if query == "?": x = ""
-                else: x = "&"
-
-                query += "%s%s=%s" % (x, k, v)
-
-            path += query
+            if "%" in query:
+                path = (path := url[url.find("//")+2:])[path.find("/"):]
+            else:
+                params = await Request.get_params(url="?%s" % query)
+    
+                query = "?"
+    
+                for k,v in params.items():
+                    v = await Request.url_encode(v)
+    
+                    if query == "?": x = ""
+                    else: x = "&"
+    
+                    query += "%s%s=%s" % (x, k, v)
+    
+                path += query
 
         if not port:
             if url.startswith("https"):
                 port = 443
             else:
                 port = 80
+        
+        # await p("%s--%s--%s--\n%s" % (host, port, path, url))
 
         return host, port, path
 
@@ -295,6 +300,9 @@ class Session:
                     chunk += _
 
                 await sleep(0)
+            
+            if not chunk:
+                continue
 
             yield chunk
 
