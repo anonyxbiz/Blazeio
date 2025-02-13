@@ -1,6 +1,6 @@
 # Blazeio.Client
 from ..Dependencies import *
-from urllib.parse import urlparse
+from ..Modules.request import *
 from collections.abc import Iterable
 
 from ssl import create_default_context, SSLError, Purpose
@@ -108,10 +108,6 @@ class Session:
         app.response_headers = defaultdict(str)
         app.status_code = 0
 
-    async def quote(app, text: str, SAFE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~") -> str:
-
-        return "".join(f"%{hex(ord(c))[2:].upper()}" if c not in SAFE_CHARS else c for c in text)
-
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
         parsed_url = {}
 
@@ -132,7 +128,19 @@ class Session:
         port = parsed_url.get("port")
 
         if (query := parsed_url.get("query")):
-            path += "?%s" % query
+            params = await Request.get_params(url="?%s" % query)
+
+            query = "?"
+
+            for k,v in params.items():
+                v = await Request.url_encode(v)
+
+                if query == "?": x = ""
+                else: x = "&"
+
+                query += "%s%s=%s" % (x, k, v)
+
+            path += query
 
         if not port:
             if url.startswith("https"):
