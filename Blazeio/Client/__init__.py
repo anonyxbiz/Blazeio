@@ -128,22 +128,18 @@ class Session:
         port = parsed_url.get("port")
         
         if (query := parsed_url.get("query")):
-            if "%" in query:
-                path = (path := url[url.find("//")+2:])[path.find("/"):]
-            else:
-                params = await Request.get_params(url="?%s" % query)
+            params = await Request.get_params(url="?%s" % query)
+            query = "?"
     
-                query = "?"
+            for k,v in params.items():
+                v = await Request.url_encode(v)
     
-                for k,v in params.items():
-                    v = await Request.url_encode(v)
+                if query == "?": x = ""
+                else: x = "&"
     
-                    if query == "?": x = ""
-                    else: x = "&"
+                query += "%s%s=%s" % (x, k, v)
     
-                    query += "%s%s=%s" % (x, k, v)
-    
-                path += query
+            path += query
 
         if not port:
             if url.startswith("https"):
@@ -158,13 +154,16 @@ class Session:
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
 
-    async def __aexit__(app, ext1, ext2, ext3):
-        return
+    async def __aexit__(app, exc_type, exc_value, traceback):
+        if exc_type:
+            await Log.critical("Exception caught: %s" % exc_value)
+            return True
+
         try:
-            pass
+            app.protocol.transport.close()
         except CancelledError: pass
         except Exception as e:
-            await p("Err: %s" % str(e))
+            await Log.critical("Err: %s" % str(e))
 
     async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, **kwargs):
         app.method = method
@@ -174,7 +173,10 @@ class Session:
 
         if not host and not port:
             app.host, app.port, app.path = await app.url_to_host(url)
-            if not "Host" in app.headers: app.headers["Host"] = app.host
+
+            if not any(h in app.headers for h in ["Host", "authority", ":authority", "X-Forwarded-Host"]):
+                app.headers["Host"] = app.host
+
         else:
             app.host, app.port, app.path, app.connect_only = host, port, path, True
 
@@ -201,7 +203,14 @@ class Session:
             else:
                 app.headers["Content-Length"] = str(len(content))
 
-        await app.protocol.push(bytearray("%s %s HTTP/1.1\r\n" % (app.method, app.path), "utf-8"))
+        http_version = "1.1"
+
+        if ":authority" in app.headers:
+            http_version = "2"
+        elif "alt-svc" in app.headers and "h3" in app.headers["alt-svc"]:  
+            http_version = "3"  
+
+        await app.protocol.push(bytearray("%s %s HTTP/%s\r\n" % (app.method, app.path, http_version), "utf-8"))
 
         for key, val in app.headers.items(): await app.protocol.push(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
 
@@ -216,7 +225,6 @@ class Session:
                 if app.headers.get("Transfer-Encoding"):
                     async for chunk in content:
                         chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
-        
                         await app.protocol.push(chunk)
                     
                     await app.protocol.push(b"0\r\n\r\n")
@@ -272,41 +280,37 @@ class Session:
         return handler
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
-        end = 0
-        started = False
-        x = bytearray()
-
+        end, buff = False, bytearray()
+        read, size = 0, False
         async for chunk in app.protocol.pull():
             if not chunk: continue
-            x.extend(chunk)
+            if endsig in chunk: end = True
 
-            if (idx := x.rfind(endsig)) != -1:
-                x = x[:idx] + sepr1
-                end = 1
+            if not size:
+                buff.extend(chunk)
+                if (idx := buff.find(sepr1)) != -1:
+                    size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
 
-            if (idx := x.find(sepr1)) == -1:
-                chunk, x = x, bytearray()
-            else:
-                chunk = b""
-
-            while (idx := x.find(sepr1)) != -1:
-                if not started:
-                    started = True
-                    _, x = x[idx + len(sepr1):], bytearray()
-                    chunk += _
+                    chunk = buff
                 else:
-                    started = False
-                    _, x = x[:idx], x[idx + len(sepr1):]
-                    chunk += _
+                    continue
 
-                await sleep(0)
-            
-            if not chunk:
-                continue
+            read += len(chunk)
 
-            yield chunk
+            if read < size:
+                yield chunk
+            else:
+                chunk_size = read - size
+                chunk, buff = chunk[:-chunk_size], bytearray(chunk[-chunk_size:])
+                
+                if buff.startswith(sepr1):
+                    buff = buff[len(sepr1):]
 
-            if end: break
+                read, size = 0, False
+                yield chunk
+
+            if end:
+                break
 
     async def handle_raw(app):
         async for chunk in app.protocol.pull():
@@ -326,13 +330,13 @@ class Session:
         handler = await app.get_handler()
 
         async for chunk in handler():
-            yield chunk
+            if chunk:
+                yield chunk
     
     async def aread(app, decode=False):
         data = bytearray()
         async for chunk in app.pull():
-            if chunk:
-                data.extend(chunk)
+            data.extend(chunk)
 
         return data if not decode else data.decode("utf-8")
     
