@@ -84,7 +84,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 
     def get_buffer(app, sizehint):
         try:
-            if sizehint > len(app.__buff__):
+            if sizehint >= len(app.__buff__):
                 app.__buff__ = bytearray(sizehint)
                 return app.__buff__memory__[:sizehint]
             else:
