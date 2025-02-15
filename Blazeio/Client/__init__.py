@@ -37,15 +37,23 @@ class BlazeioClientProtocol(BufferedProtocol):
         '__buff_requested__',
         '__buff__memory__',
         '__stream__sleep',
+        '__chunk_size__',
     )
 
-    def __init__(app):
-        app.__buff__ = bytearray(1024)
-        app.__stream__ = deque()
+    def __init__(app, **kwargs):
+        app.__chunk_size__ = 1024
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
-        app.__buff__memory__ = memoryview(app.__buff__)
         app.__stream__sleep = 0
+        
+        if kwargs:
+            for key, val in kwargs.items():
+                if key in app.__slots__:
+                    setattr(app, key, val)
+
+        app.__stream__ = deque()
+        app.__buff__ = bytearray(app.__chunk_size__)
+        app.__buff__memory__ = memoryview(app.__buff__)
 
     async def set_buffer(app, size: int):
         app.__buff__ = bytearray(size)
@@ -89,6 +97,7 @@ class BlazeioClientProtocol(BufferedProtocol):
                 return app.__buff__memory__[:sizehint]
             else:
                 return app.__buff__memory__[:len(app.__buff__)]
+
         except Exception as e:
             print("get_buffer Exception: %s" % str(e))
 
@@ -107,6 +116,17 @@ class Session:
         app.args, app.kwargs = args, kwargs
         app.response_headers = defaultdict(str)
         app.status_code = 0
+
+    async def __aenter__(app):
+        return await app.create_connection(*app.args, **app.kwargs)
+
+    async def __aexit__(app, exc_type, exc_value, traceback):
+        app.protocol.transport.close()
+
+        if exc_type:
+            await Log.critical("Exception caught: %s--%s" % (exc_value, traceback))
+
+            return True
 
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
         parsed_url = {}
@@ -151,51 +171,33 @@ class Session:
 
         return host, port, path
 
-    async def __aenter__(app):
-        return await app.create_connection(*app.args, **app.kwargs)
-
-    async def __aexit__(app, exc_type, exc_value, traceback):
-        if exc_type:
-            await Log.critical("Exception caught: %s" % exc_value)
-            return True
-
-        try:
-            app.protocol.transport.close()
-        except CancelledError: pass
-        except Exception as e:
-            await Log.critical("Err: %s" % str(e))
-
     async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, **kwargs):
         app.method = method
         app.headers = dict(headers)
         app.proxy = proxy
         app.connect_only = connect_only
 
-        if not host and not port:
+        if url and not host and not port:
             app.host, app.port, app.path = await app.url_to_host(url)
-
-            if not any(h in app.headers for h in ["Host", "authority", ":authority", "X-Forwarded-Host"]):
-                app.headers["Host"] = app.host
-
         else:
-            app.host, app.port, app.path, app.connect_only = host, port, path, True
+            app.host, app.port, app.path, app.connect_only = host, port, path, connect_only
 
         if not app.connect_only:
             app.transport, app.protocol = await loop.create_connection(
-                lambda: BlazeioClientProtocol(),
+                lambda: BlazeioClientProtocol(**kwargs),
                 host=app.host,
                 port=app.port,
-                ssl=ssl_context if app.port == 443 else None
+                ssl=ssl_context if app.port == 443 else None,
             )
         else:
             app.transport, app.protocol = await loop.create_connection(
-                lambda: BlazeioClientProtocol(),
+                lambda: BlazeioClientProtocol(**kwargs),
                 host=app.host,
                 port=app.port,
                 **kwargs
             )
 
-        if app.connect_only: return app.protocol
+        if app.connect_only: return app
 
         if content is not None and not app.headers.get("Content-Length"):
             if not isinstance(content, (bytes, bytearray)):
@@ -203,16 +205,20 @@ class Session:
             else:
                 app.headers["Content-Length"] = str(len(content))
 
+        if not any(h in app.headers for h in ["Host", "authority", ":authority", "X-Forwarded-Host"]): app.headers["Host"] = app.host
+
         http_version = "1.1"
 
         if ":authority" in app.headers:
             http_version = "2"
         elif "alt-svc" in app.headers and "h3" in app.headers["alt-svc"]:  
-            http_version = "3"  
+            http_version = "3"
 
-        await app.protocol.push(bytearray("%s %s HTTP/%s\r\n" % (app.method, app.path, http_version), "utf-8"))
+        payload = b"%s %s HTTP/%s\r\n" % (app.method.encode(), app.path.encode(), http_version.encode())
 
-        for key, val in app.headers.items(): await app.protocol.push(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
+        await app.protocol.push(payload)
+
+        for key, val in app.headers.items(): await app.protocol.push(b"%s: %s\r\n" % (key.encode(), val.encode()))
 
         await app.protocol.push(b"\r\n")
         
@@ -236,8 +242,6 @@ class Session:
 
         return app
 
-    async def push(app, *args): await app.protocol.push(*args)
-
     async def prepare_http(app, sepr1=b"\r\n", sepr2=b": ", header_end = b"\r\n\r\n", headers=None,):
         buff = bytearray()
 
@@ -250,6 +254,8 @@ class Session:
                 break
 
         while headers and (idx := headers.find(sepr1)):
+            await sleep(0)
+
             if idx != -1: header, headers = headers[:idx], headers[idx + len(sepr1):]
             else: header, headers = headers, bytearray()
 
@@ -263,8 +269,6 @@ class Session:
             key, value = header[:idx], header[idx + len(sepr2):]
             
             app.response_headers[key.decode("utf-8").lower()] = value.decode("utf-8")
-
-            await sleep(0)
         
         app.response_headers = dict(app.response_headers)
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
@@ -282,17 +286,30 @@ class Session:
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
         read, size = 0, False
+
         async for chunk in app.protocol.pull():
             if not chunk: continue
-            if endsig in chunk: end = True
+            if endsig in chunk or endsig in chunk: end = True
 
             if not size:
                 buff.extend(chunk)
-                if (idx := buff.find(sepr1)) != -1:
-                    size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                try:
+                    if (idx := buff.find(sepr1)) != -1:
+                        if buff[:idx] != b'':
+                            size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                        else:
+                            buff = buff[idx + len(sepr1):]
+                            if (idx := buff.find(sepr1)):
+                                size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                            else:
+                                continue
 
-                    chunk = buff
-                else:
+                        chunk = buff
+                    else:
+                        continue
+
+                except Exception as e:
+                    await Log.critical(e)
                     continue
 
             read += len(chunk)
@@ -300,29 +317,32 @@ class Session:
             if read < size:
                 yield chunk
             else:
-                chunk_size = read - size
-                chunk, buff = chunk[:-chunk_size], bytearray(chunk[-chunk_size:])
-                
-                if buff.startswith(sepr1):
-                    buff = buff[len(sepr1):]
+                excess_chunk_size = read - size
+                chunk_size = len(chunk) - excess_chunk_size
 
-                read, size = 0, False
+                if excess_chunk_size > 0:
+                    chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
+
+                    if (idx := buff.find(sepr1)) != -1:
+                        buff = buff[idx + len(sepr1):]
+
+                    read, size = 0, False
+
                 yield chunk
 
-            if end:
-                break
+            if end: break
 
     async def handle_raw(app):
         async for chunk in app.protocol.pull():
-            if not chunk and app.received_len >= app.content_length:
-                break
-            
-            if not chunk: continue
+            if not chunk:
+                if app.received_len >= app.content_length: break
+
+                continue
 
             app.received_len += len(chunk)
 
             yield chunk
-    
+
     async def pull(app, http=True):
         if http and not app.response_headers:
             await app.prepare_http()
