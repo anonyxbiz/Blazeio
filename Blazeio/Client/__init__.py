@@ -110,7 +110,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 ssl_context = create_default_context()
 
 class Session:
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only")
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout")
 
     def __init__(app, *args, **kwargs):
         app.args, app.kwargs = args, kwargs
@@ -124,9 +124,9 @@ class Session:
         app.protocol.transport.close()
 
         if exc_type:
-            await Log.critical("Exception caught: %s--%s" % (exc_value, traceback))
-
-            return True
+            await Log.critical("Exception caught: %s, %s, %s" % (exc_type, exc_value, traceback))
+        
+        return
 
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
         parsed_url = {}
@@ -171,11 +171,12 @@ class Session:
 
         return host, port, path
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, **kwargs):
+    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, **kwargs):
         app.method = method
         app.headers = dict(headers)
-        app.proxy = proxy
+        app.proxy = dict(proxy)
         app.connect_only = connect_only
+        app.timeout = timeout
 
         if url and not host and not port:
             app.host, app.port, app.path = await app.url_to_host(url)
@@ -199,55 +200,49 @@ class Session:
 
         if app.connect_only: return app
 
-        if content is not None and not app.headers.get("Content-Length"):
+        if content is not None and not app.headers.get("Content-Length") and app.method not in {"GET", "HEAD", "OPTIONS"}:
             if not isinstance(content, (bytes, bytearray)):
                 app.headers["Transfer-Encoding"] = "chunked"
             else:
                 app.headers["Content-Length"] = str(len(content))
 
-        if not any(h in app.headers for h in ["Host", "authority", ":authority", "X-Forwarded-Host"]): app.headers["Host"] = app.host
+        if add_host:
+            if not all(h in app.headers for h in ["Host", "authority", ":authority", "X-Forwarded-Host"]): app.headers["Host"] = app.host
 
         http_version = "1.1"
 
-        if ":authority" in app.headers:
-            http_version = "2"
-        elif "alt-svc" in app.headers and "h3" in app.headers["alt-svc"]:  
-            http_version = "3"
+        payload = bytearray("%s %s HTTP/%s\r\n" % (app.method, app.path, http_version), "utf-8")
 
-        payload = b"%s %s HTTP/%s\r\n" % (app.method.encode(), app.path.encode(), http_version.encode())
+        for key, val in app.headers.items(): payload.extend(b"%s: %s\r\n" % (key.encode(), val.encode()))
+
+        payload.extend(b"\r\n")
 
         await app.protocol.push(payload)
 
-        for key, val in app.headers.items(): await app.protocol.push(b"%s: %s\r\n" % (key.encode(), val.encode()))
-
-        await app.protocol.push(b"\r\n")
-        
         if content is not None:
-            if isinstance(content, (bytes, bytearray)):
-                await app.protocol.push(content)
-                await app.prepare_http()
-                return app
-            else:
-                if app.headers.get("Transfer-Encoding"):
-                    async for chunk in content:
-                        chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
-                        await app.protocol.push(chunk)
+            if app.headers.get("Content-Length"):
+                async for chunk in content: await app.protocol.push(chunk)
+
+            elif app.headers.get("Transfer-Encoding") == "chunked":
+                async for chunk in content:
+                    chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
+
+                    await app.protocol.push(chunk)
                     
-                    await app.protocol.push(b"0\r\n\r\n")
-                else:
-                    async for chunk in content:
-                        if chunk: await app.protocol.push(chunk)
+                await app.protocol.push(b"0\r\n\r\n")
 
             await app.prepare_http()
 
         return app
 
     async def prepare_http(app, sepr1=b"\r\n", sepr2=b": ", header_end = b"\r\n\r\n", headers=None,):
-        buff = bytearray()
+        if app.response_headers: return
 
+        buff = bytearray()
         async for chunk in app.protocol.pull():
             if not chunk: continue
             buff.extend(chunk)
+
             if (idx := buff.find(header_end)) != -1:
                 headers, buff = buff[:idx], buff[idx + len(header_end):]
                 app.protocol.__stream__.appendleft(buff)
@@ -286,9 +281,21 @@ class Session:
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
         read, size = 0, False
+        
+        idle_time = perf_counter()
 
         async for chunk in app.protocol.pull():
-            if not chunk: continue
+            if not chunk:
+                if end:
+                    break
+
+                if perf_counter() - idle_time >= app.timeout:
+                    raise Err("Timed Out")
+
+                continue
+            else:
+                idle_time = perf_counter()
+
             if endsig in chunk or endsig in chunk: end = True
 
             if not size:
@@ -320,14 +327,9 @@ class Session:
                 excess_chunk_size = read - size
                 chunk_size = len(chunk) - excess_chunk_size
 
-                if excess_chunk_size > 0:
-                    chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
+                chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
 
-                    if (idx := buff.find(sepr1)) != -1:
-                        buff = buff[idx + len(sepr1):]
-
-                    read, size = 0, False
-
+                read, size = 0, False
                 yield chunk
 
             if end: break
