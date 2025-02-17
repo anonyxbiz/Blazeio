@@ -17,17 +17,17 @@ class BlazeioPayloadUtils:
 
         app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
 
-    async def pull(app):
+    async def pull(app, *args):
         if app.headers is None: raise Err("Request not prepared.")
 
         if app.content_length is None: app.content_length = int(app.headers.get("Content-Length", 0))
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app.request():
-            if chunk:
-                app.current_length += len(chunk)
-                yield chunk
+        async for chunk in app.ayield(*args):
+            app.current_length += len(chunk)
+
+            yield chunk
 
             if app.current_length >= app.content_length: break
 
@@ -70,6 +70,18 @@ class BlazeioPayloadUtils:
 
     async def close(app):
         app.transport.close()
+
+    async def ayield(app, timeout: float = 30.0):
+        idle_time = None
+        async for chunk in app.request():
+            if chunk:
+                yield chunk
+                idle_time = None
+            else:
+                if idle_time is None:
+                    idle_time = perf_counter()
+
+                if perf_counter() - idle_time >= timeout: break
 
 class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     __slots__ = (

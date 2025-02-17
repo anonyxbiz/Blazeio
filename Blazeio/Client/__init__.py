@@ -124,8 +124,8 @@ class Session:
         app.protocol.transport.close()
 
         if exc_type:
-            await Log.critical("Exception caught: %s, %s, %s" % (exc_type, exc_value, traceback))
-        
+            raise exc_type(exc_value)
+
         return
 
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
@@ -178,7 +178,7 @@ class Session:
         app.connect_only = connect_only
         app.timeout = timeout
 
-        if url and not host and not port:
+        if not host and not port:
             app.host, app.port, app.path = await app.url_to_host(url)
         else:
             app.host, app.port, app.path, app.connect_only = host, port, path, connect_only
@@ -195,7 +195,7 @@ class Session:
                 lambda: BlazeioClientProtocol(**kwargs),
                 host=app.host,
                 port=app.port,
-                **kwargs
+                **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__}
             )
 
         if app.connect_only: return app
@@ -239,8 +239,7 @@ class Session:
         if app.response_headers: return
 
         buff = bytearray()
-        async for chunk in app.protocol.pull():
-            if not chunk: continue
+        async for chunk in app.ayield():
             buff.extend(chunk)
 
             if (idx := buff.find(header_end)) != -1:
@@ -281,21 +280,8 @@ class Session:
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
         read, size = 0, False
-        
-        idle_time = perf_counter()
 
-        async for chunk in app.protocol.pull():
-            if not chunk:
-                if end:
-                    break
-
-                if perf_counter() - idle_time >= app.timeout:
-                    raise Err("Timed Out")
-
-                continue
-            else:
-                idle_time = perf_counter()
-
+        async for chunk in app.ayield():
             if endsig in chunk or endsig in chunk: end = True
 
             if not size:
@@ -335,11 +321,8 @@ class Session:
             if end: break
 
     async def handle_raw(app):
-        async for chunk in app.protocol.pull():
-            if not chunk:
-                if app.received_len >= app.content_length: break
-
-                continue
+        async for chunk in app.ayield():
+            if app.received_len >= app.content_length: break
 
             app.received_len += len(chunk)
 
@@ -364,6 +347,21 @@ class Session:
     
     async def json(app):
         return loads(await app.aread(decode=True))
-  
+
+    async def push(app, *args):
+        return await app.protocol.push(*args)
+
+    async def ayield(app, timeout: float = 30.0):
+        idle_time = None
+        async for chunk in app.protocol.pull():
+            if chunk:
+                yield chunk
+                idle_time = None
+            else:
+                if idle_time is None:
+                    idle_time = perf_counter()
+
+                if perf_counter() - idle_time >= timeout: break
+
 if __name__ == "__main__":
     pass
