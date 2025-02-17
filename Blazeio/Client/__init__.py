@@ -281,9 +281,11 @@ class Session:
         end, buff = False, bytearray()
         read, size = 0, False
 
-        async for chunk in app.ayield():
-            if endsig in chunk or endsig in chunk: end = True
+        async for chunk in app.protocol.pull():
+            if chunk:
+                if endsig in chunk or endsig in chunk: end = True
 
+            if not chunk: continue
             if not size:
                 buff.extend(chunk)
                 try:
@@ -321,9 +323,10 @@ class Session:
             if end: break
 
     async def handle_raw(app):
-        async for chunk in app.ayield():
+        async for chunk in app.protocol.pull():
             if app.received_len >= app.content_length: break
 
+            if not chunk: continue
             app.received_len += len(chunk)
 
             yield chunk

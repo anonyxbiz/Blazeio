@@ -24,10 +24,11 @@ class BlazeioPayloadUtils:
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app.ayield(*args):
-            app.current_length += len(chunk)
-
-            yield chunk
+        async for chunk in app.request():
+            if chunk:
+                app.current_length += len(chunk)
+    
+                yield chunk
 
             if app.current_length >= app.content_length: break
 
