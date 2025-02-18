@@ -167,7 +167,7 @@ class Request:
 
                 await app.set_method(r, server, __heading__)
                 
-                r.__stream__.appendleft(__buff__)
+                await r.prepend(__buff__)
 
                 break
 

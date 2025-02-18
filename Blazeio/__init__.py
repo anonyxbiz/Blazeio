@@ -197,8 +197,8 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         while app.__is_buffer_over_high_watermark__:
             await sleep(app.__overflow_sleep)
     
-    async def prepend(app, chunk):
-        app.__stream__.appendleft(chunk)
+    async def prepend(app, data):
+        app.__stream__.appendleft(data)
 
     async def set_chunk_size(app, sizehint: int):
         app.__buff__ = bytearray(sizehint)
@@ -216,8 +216,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
                     chunk = bytes(app.__buff__memory__[:chunk])
 
                 yield chunk
-
-                await app.ensure_reading()
 
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break

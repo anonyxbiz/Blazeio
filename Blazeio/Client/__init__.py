@@ -58,6 +58,13 @@ class BlazeioClientProtocol(BufferedProtocol):
     async def set_buffer(app, sizehint: int):
         app.__buff__ = bytearray(sizehint)
 
+    async def prepend(app, data):
+        sizehint = len(data)
+        if sizehint <= 0: return
+        buffer = app.get_buffer(sizehint)
+        buffer = memoryview(data)
+        app.__stream__.appendleft(sizehint)
+
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
@@ -83,11 +90,9 @@ class BlazeioClientProtocol(BufferedProtocol):
 
             while app.__stream__:
                 if isinstance(chunk := app.__stream__.popleft(), int):
-                    chunk = bytearray(app.__buff__memory__[:chunk])
+                    chunk = app.__buff__memory__[:chunk]
 
-                yield chunk
-
-                await app.ensure_reading()
+                yield bytes(chunk)
 
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
@@ -269,14 +274,17 @@ class Session:
         if app.response_headers: return
 
         buff = bytearray()
+
         async for chunk in app.protocol.ayield():
             if not chunk: continue
             buff.extend(chunk)
 
             if (idx := buff.find(header_end)) != -1:
-                headers, buff = buff[:idx], buff[idx + len(header_end):]
-                app.protocol.__stream__.appendleft(buff)
                 break
+        
+        headers, buff = buff[:idx], buff[idx + len(header_end):]
+
+        app.protocol.__stream__.appendleft(buff)
 
         while headers and (idx := headers.find(sepr1)):
             await sleep(0)
@@ -384,6 +392,9 @@ class Session:
 
     async def push(app, *args):
         return await app.protocol.push(*args)
+
+    async def ayield(app, *args):
+        async for chunk in app.protocol.ayield(*args): yield chunk
 
 if __name__ == "__main__":
     pass
