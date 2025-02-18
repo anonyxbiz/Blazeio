@@ -24,10 +24,9 @@ class BlazeioPayloadUtils:
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app.request():
+        async for chunk in app.ayield(*args):
             if chunk:
                 app.current_length += len(chunk)
-    
                 yield chunk
 
             if app.current_length >= app.content_length: break
@@ -71,18 +70,6 @@ class BlazeioPayloadUtils:
 
     async def close(app):
         app.transport.close()
-
-    async def ayield(app, timeout: float = 30.0):
-        idle_time = None
-        async for chunk in app.request():
-            if chunk:
-                yield chunk
-                idle_time = None
-            else:
-                if idle_time is None:
-                    idle_time = perf_counter()
-
-                if perf_counter() - idle_time >= timeout: break
 
 class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
     __slots__ = (
@@ -156,7 +143,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         'on_client_connected',
         '__stream__',
         '__is_buffer_over_high_watermark__',
-        '__exploited__',
+        '__is_at_eof__',
         '__is_alive__',
         'transport',
         'method',
@@ -185,7 +172,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__buff__ = bytearray(1024)
         app.__stream__ = deque()
         app.__is_buffer_over_high_watermark__ = False
-        app.__exploited__ = False
+        app.__is_at_eof__ = False
         app.__is_alive__ = True
         app.method = None
         app.tail = "handle_all_middleware"
@@ -203,9 +190,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__buff__memory__ = memoryview(app.__buff__)
 
         BlazeioPayloadUtils.__init__(app)
-    
-    async def set_chunk_size(app, size: int):
-        app.__buff__ = bytearray(size)
 
     async def buffer_overflow_manager(app):
         if not app.__is_buffer_over_high_watermark__: return
@@ -216,22 +200,47 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     async def prepend(app, chunk):
         app.__stream__.appendleft(chunk)
 
+    async def set_chunk_size(app, sizehint: int):
+        app.__buff__ = bytearray(sizehint)
+
+    async def ensure_reading(app):
+        if not app.transport.is_reading() and not app.__stream__:
+            app.transport.resume_reading()
+
     async def request(app):
         while True:
-            if not app.transport.is_reading() and not app.__stream__: app.transport.resume_reading()
+            await app.ensure_reading()
 
             while app.__stream__:
-                if not isinstance(chunk := app.__stream__.popleft(), (bytes, bytearray)):
+                if isinstance(chunk := app.__stream__.popleft(), int):
                     chunk = bytes(app.__buff__memory__[:chunk])
 
                 yield chunk
-            
+
+                await app.ensure_reading()
+
             if not app.__stream__:
-                if app.transport.is_closing() or app.__exploited__: break
+                if app.transport.is_closing() or app.__is_at_eof__: break
 
             await sleep(app.__stream__sleep)
 
             if not app.__stream__: yield None
+
+    async def ayield(app, timeout: float = 60.0):
+        idle_time = None
+
+        async for chunk in app.request():
+            yield chunk
+
+            if chunk is not None:
+                if idle_time is not None:
+                    idle_time = None
+            else:
+                if idle_time is None:
+                    idle_time = perf_counter()
+                
+                if perf_counter() - idle_time > timeout:
+                    break
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -243,21 +252,16 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__stream__.append(nbytes)
 
     def get_buffer(app, sizehint):
-        try:
-            if sizehint >= len(app.__buff__memory__):
-                app.__buff__ += bytearray(sizehint - len(app.__buff__memory__))
-                return app.__buff__memory__
-            else:
-                return app.__buff__memory__[:sizehint]
+        if sizehint > len(app.__buff__memory__):
+            app.__buff__ = bytearray(sizehint)
 
-        except Exception as e:
-            print("get_buffer Exception: %s" % str(e))
+        return app.__buff__memory__[:sizehint]
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
 
     def eof_received(app):
-        app.__exploited__ = True
+        app.__is_at_eof__ = True
 
     def pause_writing(app):
         app.__is_buffer_over_high_watermark__ = True

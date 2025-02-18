@@ -55,9 +55,9 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__ = bytearray(app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
 
-    async def set_buffer(app, size: int):
-        app.__buff__ = bytearray(size)
-        
+    async def set_buffer(app, sizehint: int):
+        app.__buff__ = bytearray(sizehint)
+
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
@@ -73,16 +73,22 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.transport.pause_reading()
         app.__stream__.append(nbytes)
 
+    async def ensure_reading(app):
+        if not app.transport.is_reading() and not app.__stream__:
+            app.transport.resume_reading()
+
     async def pull(app):
         while True:
-            if not app.transport.is_reading() and not app.__stream__: app.transport.resume_reading()
+            await app.ensure_reading()
 
             while app.__stream__:
-                if not isinstance(chunk := app.__stream__.popleft(), (bytes, bytearray)):
-                    chunk = bytes(app.__buff__memory__[:chunk])
+                if isinstance(chunk := app.__stream__.popleft(), int):
+                    chunk = bytearray(app.__buff__memory__[:chunk])
 
                 yield chunk
-            
+
+                await app.ensure_reading()
+
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
@@ -90,7 +96,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 
             if not app.__stream__: yield None
 
-    def get_buffer(app, sizehint):
+    def get_buffer_old(app, sizehint):
         try:
             if sizehint >= len(app.__buff__):
                 app.__buff__ = bytearray(sizehint)
@@ -101,11 +107,35 @@ class BlazeioClientProtocol(BufferedProtocol):
         except Exception as e:
             print("get_buffer Exception: %s" % str(e))
 
+    def get_buffer(app, sizehint):
+        if sizehint > len(app.__buff__memory__):
+            app.__buff__ = bytearray(sizehint)
+        elif sizehint <= 0:
+            sizehint = len(app.__buff__memory__)
+
+        return app.__buff__memory__[:sizehint]
+
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():
             app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
+
+    async def ayield(app, timeout: float = 60.0):
+        idle_time = None
+
+        async for chunk in app.pull():
+            yield chunk
+
+            if chunk is not None:
+                if idle_time is not None:
+                    idle_time = None
+            else:
+                if idle_time is None:
+                    idle_time = perf_counter()
+                
+                if perf_counter() - idle_time > timeout:
+                    break
 
 ssl_context = create_default_context()
 
@@ -239,7 +269,8 @@ class Session:
         if app.response_headers: return
 
         buff = bytearray()
-        async for chunk in app.ayield():
+        async for chunk in app.protocol.ayield():
+            if not chunk: continue
             buff.extend(chunk)
 
             if (idx := buff.find(header_end)) != -1:
@@ -281,7 +312,7 @@ class Session:
         end, buff = False, bytearray()
         read, size = 0, False
 
-        async for chunk in app.protocol.pull():
+        async for chunk in app.protocol.ayield():
             if chunk:
                 if endsig in chunk or endsig in chunk: end = True
 
@@ -323,7 +354,7 @@ class Session:
             if end: break
 
     async def handle_raw(app):
-        async for chunk in app.protocol.pull():
+        async for chunk in app.protocol.ayield():
             if app.received_len >= app.content_length: break
 
             if not chunk: continue
@@ -353,18 +384,6 @@ class Session:
 
     async def push(app, *args):
         return await app.protocol.push(*args)
-
-    async def ayield(app, timeout: float = 30.0):
-        idle_time = None
-        async for chunk in app.protocol.pull():
-            if chunk:
-                yield chunk
-                idle_time = None
-            else:
-                if idle_time is None:
-                    idle_time = perf_counter()
-
-                if perf_counter() - idle_time >= timeout: break
 
 if __name__ == "__main__":
     pass

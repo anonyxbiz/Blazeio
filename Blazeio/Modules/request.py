@@ -52,6 +52,9 @@ class Request:
 
     URL_DECODE_MAP_ITEMS = URL_DECODE_MAP.items()
     URL_ENCODE_MAP_ITEMS = url_encoding_map.items()
+    
+    form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n'), (b'filename=', b'\r\n')
+
 
     @classmethod
     async def get_cookie(app, r, val: str):
@@ -189,67 +192,34 @@ class Request:
     @classmethod
     async def form_data(app, r):
         data = bytearray()
-        
-        sepr1 = b'Content-Disposition: form-data; '
-        sepr2 = b'------'
-        sepr3 = b'name="'
-        sepr4 = b'"'
-        signal3 = b'\r\n\r\n'
-        filename = b'filename="'
-        file_name_before = b'name="file";'
-        file_name_after = b'name="file"'
-        content_type_before = b'\r\nContent-Type:'
-        content_type_after = b'name="Content-Type"'
-
         json_data = defaultdict(str)
 
         async for chunk in r.pull():
-            if chunk:
-                data.extend(chunk)
+            data.extend(chunk)
 
-            if (idx := data.rfind(signal3)) != -1:
-                await sleep(0)
-                __buff__ = b'' + data[idx + len(signal3):]
+            if (idx := data.rfind(app.form_header_eof[0])) != -1:
+                idx = data.rfind(app.form_signal3)
+                __buff__, data = data[idx + len(app.form_signal3):], data[:idx]
 
-                data = data[:idx]
-
-                if (idx := data.find(filename)) != -1:
-                    data = data[:idx] + data[idx+len(filename):]
-                
-                if (idx := data.find(file_name_before)) != -1:
-                    data = data[:idx] + file_name_after + data[idx + len(file_name_before):]
-
-                if (idx := data.find(content_type_before)) != -1:
-                    data = data[:idx] + content_type_after + data[idx + len(content_type_before):]
-                
-                # await r.prepend(__buff__)
-
-                r.__stream__.appendleft(__buff__)
-
-                r.current_length -= len(__buff__)
                 break
 
-        if data:
-            while (idx := data.find(sepr1)) != -1:
-                await sleep(0)
-                data = data[idx + len(sepr1):]
+        await r.prepend(b'' + __buff__)
 
-                if (idx := data.find(sepr2)) != -1:
-                    form_data, data = data[:idx], data[idx + len(sepr2):]
-                else:
-                    form_data = data
-                
-                for name in form_data.split(sepr3):
-                    if (idx := name.find(sepr4)) != -1:
-                        title = name[:idx].decode("utf-8")
-                        value = name[idx + len(sepr4):].strip()
-                        if value.startswith(b'"'):
-                            value = value[1:]
-                        if value.endswith(b'"'):
-                            value = value[:-1]
+        r.current_length -= len(__buff__)
 
-                        json_data[title] = value.decode("utf-8")
-                        
+        while (idx := data.find(app.form_data_spec[0])) != -1 and (idx2 := data.find(app.form_data_spec[1])) != -1 and (idx3 := data.find(app.form_data_spec[2])) != -1:
+            await sleep(0)
+
+            form_name, form_value = data[idx + len(app.form_data_spec[0]):idx2][1:-1], data[idx2 + len(app.form_data_spec[1]):]
+
+            data, form_value = form_value[form_value.find(app.form_data_spec[2]) + len(app.form_data_spec[2]):], form_value[:form_value.find(app.form_data_spec[2])]
+
+            json_data[form_name.decode("utf-8")] = form_value.decode("utf-8")
+        
+        filename = (filename := data[data.find(app.form_filename[0]) + len(app.form_filename[0]):])[:filename.find(app.form_filename[1])][1:-1]
+
+        json_data["file"] = filename.decode("utf-8")
+
         return dict(json_data)
 
     @classmethod

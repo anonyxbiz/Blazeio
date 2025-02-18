@@ -54,12 +54,17 @@ class Simpleserve:
             raise Abort("Not Modified", 304)
 
     async def prepare_metadata(app):
-        app.file_size = getsize(app.file)
-        app.filename = basename(app.file)
+        if not hasattr(app, "file_size"):
+            app.file_size = getsize(app.file)
+
+        if not hasattr(app, "filename"):
+            app.filename = basename(app.file)
+
         app.file_stats = stat(app.file)
         app.last_modified = app.file_stats.st_mtime
-        
-        app.etag = "BlazeIO--%s--%s" % (app.filename, app.file_size)
+
+        if not hasattr(app, "etag"):
+            app.etag = "BlazeIO--%s--%s" % (app.filename, app.file_size)
 
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
         
