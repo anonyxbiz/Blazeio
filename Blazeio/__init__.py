@@ -198,7 +198,13 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
             await sleep(app.__overflow_sleep)
     
     async def prepend(app, data):
-        app.__stream__.appendleft(data)
+        if (sizehint := len(data)) > len(app.__buff__memory__):
+            app.__buff__ = bytearray(sizehint)
+
+        app.__buff__memory__[:sizehint] = memoryview(data)
+
+        app.transport.pause_reading()
+        app.__stream__.appendleft(sizehint)
 
     async def set_chunk_size(app, sizehint: int):
         app.__buff__ = bytearray(sizehint)
@@ -212,10 +218,11 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
             await app.ensure_reading()
 
             while app.__stream__:
-                if isinstance(chunk := app.__stream__.popleft(), int):
-                    chunk = bytes(app.__buff__memory__[:chunk])
-
+                chunk = bytes(app.__buff__memory__[:app.__stream__.popleft()])
+                
+                await app.ensure_reading()
                 yield chunk
+                
 
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
