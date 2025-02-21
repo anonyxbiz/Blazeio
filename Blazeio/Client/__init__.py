@@ -165,6 +165,8 @@ class Session:
 
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
         parsed_url = {}
+        
+        url = url.replace(r"\/", "/")
 
         if (idx := url.find(scheme_sepr)) != -1:
             parsed_url["hostname"] = url[idx + len(scheme_sepr):]

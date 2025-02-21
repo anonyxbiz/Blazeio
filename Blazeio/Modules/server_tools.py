@@ -128,7 +128,7 @@ class Simpleserve:
     async def pull(app):
         async with async_open(app.file, "rb") as f:
             if app.start: f.seek(app.start)
-            
+
             while (chunk := await f.read(app.CHUNK_SIZE)):
                 yield chunk
 
