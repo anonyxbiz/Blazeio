@@ -56,13 +56,17 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__memory__ = memoryview(app.__buff__)
 
     async def set_buffer(app, sizehint: int):
-        app.__buff__ = bytearray(sizehint)
+        if app.transport.is_reading(): app.transport.pause_reading()
+
+        app.__buff__ = app.__buff__ + bytearray(sizehint)
+
+        app.__buff__memory__ = memoryview(app.__buff__)
 
     async def prepend(app, data):
+        if app.transport.is_reading(): app.transport.pause_reading()
         sizehint = len(data)
-        if sizehint <= 0: return
-        buffer = app.get_buffer(sizehint)
-        buffer = memoryview(data)
+        app.__buff__ = bytearray(data) + app.__buff__ 
+        app.__buff__memory__ = memoryview(app.__buff__)
         app.__stream__.appendleft(sizehint)
 
     def connection_made(app, transport):
@@ -89,10 +93,9 @@ class BlazeioClientProtocol(BufferedProtocol):
             await app.ensure_reading()
 
             while app.__stream__:
-                if isinstance(chunk := app.__stream__.popleft(), int):
-                    chunk = app.__buff__memory__[:chunk]
+                yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
 
-                yield bytes(chunk)
+                await app.ensure_reading()
 
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
@@ -100,17 +103,6 @@ class BlazeioClientProtocol(BufferedProtocol):
             await sleep(app.__stream__sleep)
 
             if not app.__stream__: yield None
-
-    def get_buffer_old(app, sizehint):
-        try:
-            if sizehint >= len(app.__buff__):
-                app.__buff__ = bytearray(sizehint)
-                return app.__buff__memory__[:sizehint]
-            else:
-                return app.__buff__memory__[:len(app.__buff__)]
-
-        except Exception as e:
-            print("get_buffer Exception: %s" % str(e))
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__memory__):
@@ -218,7 +210,7 @@ class Session:
         if not host and not port:
             app.host, app.port, app.path = await app.url_to_host(url)
         else:
-            app.host, app.port, app.path, app.connect_only = host, port, path, connect_only
+            app.host, app.port, app.path = host, port, path
 
         if not app.connect_only:
             app.transport, app.protocol = await loop.create_connection(
@@ -235,7 +227,7 @@ class Session:
                 **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__}
             )
 
-        if app.connect_only: return app
+            return app
 
         if content is not None and not app.headers.get("Content-Length") and app.method not in {"GET", "HEAD", "OPTIONS"}:
             if not isinstance(content, (bytes, bytearray)):
@@ -286,7 +278,7 @@ class Session:
         
         headers, buff = buff[:idx], buff[idx + len(header_end):]
 
-        app.protocol.__stream__.appendleft(buff)
+        await app.protocol.prepend(buff)
 
         while headers and (idx := headers.find(sepr1)):
             await sleep(0)
@@ -397,6 +389,60 @@ class Session:
 
     async def ayield(app, *args):
         async for chunk in app.protocol.ayield(*args): yield chunk
+
+    async def read(app, max=1024):
+        data = bytearray()
+        await app.protocol.set_buffer(max)
+
+        async for chunk in app.pull():
+            data.extend(chunk)
+            if len(data) >= max: break
+
+        return data
+
+    async def read_exactly(app, max=1024):
+        data = bytearray()
+        await app.protocol.set_buffer(max)
+
+        async for chunk in app.pull():
+            data.extend(chunk)
+            if len(data) >= max: break
+        
+        await app.protocol.prepend(data[max:])
+
+        return data[:max]
+
+    async def extract(app, start: (bytes, bytearray), end: (bytes, bytearray)):
+        data = bytearray()
+        ids, ide, = 0, 0
+
+        async for chunk in app.pull():
+            data.extend(chunk)
+
+            if not ids:
+                if (idx := data.find(start)) != -1:
+                    ids = idx
+                    data = data[ids:]
+
+            if ids:
+                if (idx := data.find(end)) != -1:
+                    ide = idx
+                    data = data[:ide + len(end)]
+
+                    return data
+
+    async def aextract(app, start: (bytes, bytearray), end: (bytes, bytearray)):
+        data = bytearray()
+        ids = None
+
+        async for chunk in app.pull():
+            data.extend(chunk)
+
+            while (ids := data.find(start)) != -1 and (ide := data.find(end)) != -1:
+                await sleep(0)
+
+                chunk, data = data[ids:ide + len(end)], data[ide + len(end):]
+                yield chunk
 
 if __name__ == "__main__":
     pass

@@ -71,73 +71,6 @@ class BlazeioPayloadUtils:
     async def close(app):
         app.transport.close()
 
-class BlazeioPayload(asyncProtocol, BlazeioPayloadUtils):
-    __slots__ = (
-        'on_client_connected',
-        '__stream__',
-        '__is_buffer_over_high_watermark__',
-        '__exploited__',
-        '__is_alive__',
-        'transport',
-        'method',
-        'tail',
-        'path',
-        'headers',
-        '__is_prepared__',
-        '__status__',
-        'content_length',
-        'current_length',
-        '__perf_counter__',
-        'ip_host',
-        'ip_port',
-        'identifier',
-        '__cookie__',
-        '__miscellaneous__',
-        '__timeout__'
-    )
-
-    def __init__(app, on_client_connected):
-        app.on_client_connected = on_client_connected
-        app.__stream__ = deque()
-        app.__is_buffer_over_high_watermark__ = False
-        app.__exploited__ = False
-        app.__is_alive__ = True
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.__is_prepared__ = False
-        app.__status__ = 0
-        app.content_length = None
-        app.current_length = 0
-        app.__cookie__ = None
-        app.__miscellaneous__ = None
-        app.__timeout__ = None
-
-        BlazeioPayloadUtils.__init__(app)
-
-    def connection_made(app, transport):
-        transport.pause_reading()
-        app.transport = transport
-        app.ip_host, app.ip_port = app.transport.get_extra_info('peername')
-
-        loop.create_task(app.transporter())
-
-    def data_received(app, chunk):
-        app.__stream__.append(chunk)
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    def eof_received(app):
-        app.__exploited__ = True
-
-    def pause_writing(app):
-        app.__is_buffer_over_high_watermark__ = True
-
-    def resume_writing(app):
-        app.__is_buffer_over_high_watermark__ = False
-
 class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
     __slots__ = (
         'on_client_connected',
@@ -167,9 +100,9 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__buff__memory__',
     )
     
-    def __init__(app, on_client_connected):
+    def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE):
         app.on_client_connected = on_client_connected
-        app.__buff__ = bytearray(1024)
+        app.__buff__ = bytearray(INBOUND_CHUNK_SIZE)
         app.__stream__ = deque()
         app.__is_buffer_over_high_watermark__ = False
         app.__is_at_eof__ = False
@@ -207,11 +140,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__buff__memory__ = memoryview(app.__buff__)
 
         app.__stream__.appendleft(sizehint)
-
-    async def set_chunk_size(app, sizehint: int):
-        app.__buff__ = app.__buff__ + bytearray(sizehint)
-
-        app.__buff__memory__ = memoryview(app.__buff__)
 
     async def ensure_reading(app):
         if not app.transport.is_reading() and not app.__stream__:
@@ -405,11 +333,13 @@ class OOP_RouteDef:
         return to_instantiate
 
 class SrvConfig:
-    HOST, PORT = "0.0.0.0", "80"
+    HOST, PORT = "0.0.0.0", 8000
     __timeout__ = float(60*10)
     __timeout_check_freq__ = 5
     __health_check_freq__ = 5
     __log_requests__ = True
+    INBOUND_CHUNK_SIZE = 1024
+
     def __init__(app): pass
 
 class Monitoring:
@@ -579,14 +509,9 @@ class App(Handler, OOP_RouteDef, Monitoring):
                 kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
 
         await app.configure_server_handler()
-        
-        if (protocol := kwargs.get("protocol")):
-            kwargs.pop("protocol")
-        else:
-            protocol = BlazeioPayloadBuffered
 
         app.server = await loop.create_server(
-            lambda: protocol(app.handle_client),
+            lambda: BlazeioPayloadBuffered(app.handle_client, app.ServerConfig.INBOUND_CHUNK_SIZE),
             HOST,
             PORT,
             **kwargs
