@@ -82,14 +82,27 @@ class Abort(Exception):
         message = app.args[0] if len(app.args) >= 1 else "Something went wrong"
         status = app.args[1] if len(app.args) >= 2 else 403
         headers = app.args[2] if len(app.args) >= 3 else {}
+        
+        headers["Content-Type"] = "text/plain; charset=utf-8"
+        await app.r.prepare(headers, status)
+        await app.r.write(message.encode())
 
-        try:
-            await Prepare.text(headers, status)
+class Eof(Exception):
+    __slots__ = (
+        'args',
+        'r',
+    )
 
-            await app.r.write(message.encode())
+    def __init__(
+        app,
+        *args
+    ):
+        app.args = args
+        app.r = Context.r_sync()
 
-        except Exception as e:
-            await Log.critical(app.r, e)
+    async def text(app):
+        message = app.args[0] if len(app.args) >= 1 else "Something went wrong"
+        await app.r.write(message.encode())
 
 class __Payload__:
     __slots__ = ()

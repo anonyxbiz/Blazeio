@@ -98,6 +98,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__stream__sleep',
         '__overflow_sleep',
         '__buff__memory__',
+        'store',
     )
     
     def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE):
@@ -117,6 +118,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.current_length = 0
         app.__cookie__ = None
         app.__miscellaneous__ = None
+        app.store = None
         app.__timeout__ = None
         app.__stream__sleep = 0
         app.__overflow_sleep = 0
@@ -288,6 +290,7 @@ class Handler:
         except Abort as e:
             await e.text()
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
+        except Eof as e: await e.text()
         except KeyboardInterrupt as e: raise e
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)

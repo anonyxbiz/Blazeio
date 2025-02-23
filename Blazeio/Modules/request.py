@@ -53,7 +53,7 @@ class Request:
     URL_DECODE_MAP_ITEMS = URL_DECODE_MAP.items()
     URL_ENCODE_MAP_ITEMS = url_encoding_map.items()
     
-    form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n'), (b'filename=', b'\r\n')
+    form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n------'), (b'filename=', b'\r\n')
 
 
     @classmethod
@@ -196,16 +196,15 @@ class Request:
 
         async for chunk in r.pull():
             data.extend(chunk)
+            if (ide := data.rfind(app.form_header_eof[0])) != -1:
+                if (ida := data.rfind(app.form_signal3)) != -1:
+                    __buff__, data = data[ida + len(app.form_signal3):], data[:ida]
 
-            if (idx := data.rfind(app.form_header_eof[0])) != -1:
-                idx = data.rfind(app.form_signal3)
-                __buff__, data = data[idx + len(app.form_signal3):], data[:idx]
-
-                break
-
-        await r.prepend(b'' + __buff__)
-
-        r.current_length -= len(__buff__)
+                    await r.prepend(b'' + __buff__)
+                    r.current_length -= len(__buff__)
+                    break
+        
+        # await p(data)
 
         while (idx := data.find(app.form_data_spec[0])) != -1 and (idx2 := data.find(app.form_data_spec[1])) != -1 and (idx3 := data.find(app.form_data_spec[2])) != -1:
             await sleep(0)
@@ -219,7 +218,8 @@ class Request:
         filename = (filename := data[data.find(app.form_filename[0]) + len(app.form_filename[0]):])[:filename.find(app.form_filename[1])][1:-1]
 
         json_data["file"] = filename.decode("utf-8")
-
+        
+        # await p(json_data)
         return dict(json_data)
 
     @classmethod
