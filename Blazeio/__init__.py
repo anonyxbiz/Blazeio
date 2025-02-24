@@ -67,6 +67,12 @@ class BlazeioPayloadUtils:
             app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
+    
+    async def write_chunked(app, data: (bytes, bytearray)):
+        await app.write(b"%X\r\n%s\r\n" % (len(data), data))
+
+    async def write_chunked_eof(app):
+        await app.write(b"0\r\n\r\n")
 
     async def close(app):
         app.transport.close()
