@@ -68,8 +68,16 @@ class BlazeioPayloadUtils:
         else:
             raise Err("Client has disconnected.")
     
-    async def write_chunked(app, data: (bytes, bytearray)):
-        await app.write(b"%X\r\n%s\r\n" % (len(data), data))
+    async def write_chunked(app, data):
+        if isinstance(data, (bytes, bytearray)):
+            await app.write(b"%X\r\n%s\r\n" % (len(data), data))
+        elif isinstance(data, (str, int)):
+            raise Err("Only (bytes, bytearray, Iterable) are accepted")
+        else:
+            async for chunk in data:
+                await app.write(b"%X\r\n%s\r\n" % (len(chunk), chunk))
+
+            await app.write_chunked_eof()
 
     async def write_chunked_eof(app):
         await app.write(b"0\r\n\r\n")

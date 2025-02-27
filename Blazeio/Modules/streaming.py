@@ -111,7 +111,7 @@ class __Payload__:
     def __getattr__(app, name):
         return getattr(current_task().get_coro().cr_frame.f_locals.get("app"), name)
 
-Payload = __Payload__()
+# Payload = __Payload__()
 
 if __name__ == "__main__":
     pass
