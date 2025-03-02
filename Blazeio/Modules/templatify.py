@@ -42,7 +42,7 @@ class TemplateEngine:
                 scope = None
 
                 while var:
-                    await io.sleep(0)
+                    await sleep(0)
                     if not (x := var.pop(0)): break
 
                     if scope is None:
