@@ -31,18 +31,16 @@ class Simpleserve:
         "application/json"
     )
 
-    async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, **kwargs):
-        app.r, app.file, app.CHUNK_SIZE = r, file, CHUNK_SIZE
-        if not exists(app.file): raise Abort("Not Found", 404)
+    async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, headers: dict = {"Accept-Ranges": "bytes"}, cache_control = {"max-age": "3600"}, status = 200, gzip = False):
+        for method, value in locals().items():
+            if method not in app.__slots__: continue
 
-        app.headers = kwargs.get("headers", {
-            "Accept-Ranges": "bytes"
-        })
+            if isinstance(value, dict):
+                value = dict(value)
 
-        app.cache_control = kwargs.get("cache_control", {
-            "max-age": "3600"
-        })
-        app.status = 200
+            setattr(app, method, value)
+
+        if not path.exists(app.file): raise Abort("Not Found", 404)
 
         return await app.prepare_metadata()
 
@@ -55,10 +53,10 @@ class Simpleserve:
 
     async def prepare_metadata(app):
         if not hasattr(app, "file_size"):
-            app.file_size = getsize(app.file)
+            app.file_size = path.getsize(app.file)
 
         if not hasattr(app, "filename"):
-            app.filename = basename(app.file)
+            app.filename = path.basename(app.file)
 
         app.file_stats = stat(app.file)
         app.last_modified = app.file_stats.st_mtime

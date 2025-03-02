@@ -5,6 +5,8 @@ from .Modules.server_tools import *
 from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
+from .Modules.templatify import *
+from .Modules.onrender import *
 
 class BlazeioPayloadUtils:
     __slots__ = ()
@@ -363,7 +365,7 @@ class Monitoring:
     def __init__(app):
         app.terminate = False
         app.Monitoring_thread_loop = app.event_loop
-        app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor,)
+        app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor, daemon = True)
         app.Monitoring_thread.start()
         app.on_exit_middleware(app.Monitoring_thread_join)
 
@@ -567,9 +569,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
 
         except Exception as e: await Log.critical("Blazeio.exit", str(e))
         finally:
-            # await app.server.wait_closed()
             await Log.info("Blazeio.exit", ":: Exited.")
-
             kill(pid, SIGKILL)
 
     def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))
