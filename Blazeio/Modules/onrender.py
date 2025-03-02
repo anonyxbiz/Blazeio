@@ -2,11 +2,9 @@ from ..Dependencies import *
 from ..Client import Session
 
 class RenderFreeTierPatch:
-    __slots__ = ("host", "production", "asleep", "task", )
-
     def __init__(app, production = NotImplemented, host = None, asleep = 60):
         for method, value in locals().items():
-            if method not in app.__slots__: continue
+            if method == app: continue
             setattr(app, method, value)
 
         if any([app.production, app.production == NotImplemented]):
