@@ -14,10 +14,16 @@ class BlazeioPayloadUtils:
 
     def __init__(app): pass
 
-    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = False):
-        if secure: secure = "; Secure"
+    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
+        if secure: secure = "Secure; "
+        else: secure = ""
 
-        app.__cookie__ = "%s=%s; Expires=%s; HttpOnly%s; Path=/" % (name, value, expires, secure)
+        if http_only: http_only = "HttpOnly; "
+        else: http_only = ""
+
+        if not app.__cookie__: app.__cookie__ = bytearray(b"")
+
+        app.__cookie__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
 
     async def pull(app, *args):
         if app.headers is None: raise Err("Request not prepared.")
@@ -41,7 +47,7 @@ class BlazeioPayloadUtils:
             await app.write(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
 
             if app.__cookie__:
-                await app.write(b"Set-Cookie: %s\r\n" % app.__cookie__.encode())
+                await app.write(app.__cookie__)
             
             app.__is_prepared__ = True
             app.__status__ = status

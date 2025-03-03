@@ -58,10 +58,11 @@ class Request:
 
     @classmethod
     async def get_cookie(app, r, val: str):
+        val += "="
         if not val in (cookie := r.headers.get("Cookie", "")):
             return None
 
-        cookie_start, cookie_end = val + "=", ";"
+        cookie_start, cookie_end = val, ";"
 
         if (idx := cookie.find(cookie_start)) != -1:
             cookie = cookie[idx+len(cookie_start):]
