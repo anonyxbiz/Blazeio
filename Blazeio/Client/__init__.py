@@ -384,6 +384,9 @@ class Session:
     async def json(app):
         return loads(await app.aread(decode=True))
 
+    async def text(app):
+        return await app.aread(True)
+
     async def push(app, *args):
         return await app.protocol.push(*args)
 
