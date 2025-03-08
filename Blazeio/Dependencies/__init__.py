@@ -25,6 +25,7 @@ from ujson import dumps, loads, JSONDecodeError
 from html import escape
 
 pid = getpid()
+global_chunk_size = 1024
 
 logger = Logger.with_default_handlers(name='BlazeioLogger')
 

@@ -5,28 +5,6 @@ from collections.abc import Iterable
 
 from ssl import create_default_context, SSLError, Purpose
 
-class Utl:
-    @classmethod
-    async def split_before(app, str_: (bytearray, bytes, str), to_find: (bytearray, bytes, str)):
-        if (idx := str_.find(to_find)) != -1:
-            return str_[:idx]
-        else:
-            return False
-
-    @classmethod
-    async def split_between(app, str_: (bytearray, bytes, str), to_find: (bytearray, bytes, str)):
-        if (idx := str_.find(to_find)) != -1:
-            return (str_[:idx], str_[idx + len(to_find):])
-        else:
-            return False
-
-    @classmethod
-    async def split_after(app, str_: (bytearray, bytes, str), to_find: (bytearray, bytes, str)):
-        if (idx := str_.find(to_find)) != -1:
-            return str_[idx + len(to_find):]
-        else:
-            return False
-
 class BlazeioClientProtocol(BufferedProtocol):
     __slots__ = (
         '__is_at_eof__',
@@ -41,7 +19,7 @@ class BlazeioClientProtocol(BufferedProtocol):
     )
 
     def __init__(app, **kwargs):
-        app.__chunk_size__ = 1024
+        app.__chunk_size__ = global_chunk_size
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
         app.__stream__sleep = 0
@@ -137,7 +115,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 ssl_context = create_default_context()
 
 class Session:
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout")
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload",)
 
     def __init__(app, *args, **kwargs):
         app.args, app.kwargs = args, kwargs
@@ -149,11 +127,6 @@ class Session:
 
     async def __aexit__(app, exc_type, exc_value, traceback):
         app.protocol.transport.close()
-
-        if exc_type:
-            raise exc_type(exc_value)
-
-        return
 
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
         parsed_url = {}
@@ -200,12 +173,15 @@ class Session:
 
         return host, port, path
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, **kwargs):
+    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, json: dict = {}, body = None, **kwargs):
         app.method = method
         app.headers = dict(headers)
         app.proxy = dict(proxy)
+        app.json_payload = dict(json)
         app.connect_only = connect_only
         app.timeout = timeout
+        
+        if body: content = body
 
         if not host and not port:
             app.host, app.port, app.path = await app.url_to_host(url)
@@ -228,6 +204,10 @@ class Session:
             )
 
             return app
+        
+        if app.json_payload:
+            content = dumps(app.json_payload).encode()
+            app.headers["Content-Length"] = len(content)
 
         if content is not None and not app.headers.get("Content-Length") and app.method not in {"GET", "HEAD", "OPTIONS"}:
             if not isinstance(content, (bytes, bytearray)):
@@ -242,7 +222,7 @@ class Session:
 
         payload = bytearray("%s %s HTTP/%s\r\n" % (app.method, app.path, http_version), "utf-8")
 
-        for key, val in app.headers.items(): payload.extend(b"%s: %s\r\n" % (key.encode(), val.encode()))
+        for key, val in app.headers.items(): payload.extend(b"%s: %s\r\n" % (str(key).encode(), str(val).encode()))
 
         payload.extend(b"\r\n")
 
@@ -250,7 +230,10 @@ class Session:
 
         if content is not None:
             if app.headers.get("Content-Length"):
-                async for chunk in content: await app.protocol.push(chunk)
+                if isinstance(content, (bytes, bytearray)):
+                    await app.protocol.push(content)
+                else:
+                    async for chunk in content: await app.protocol.push(chunk)
 
             elif app.headers.get("Transfer-Encoding") == "chunked":
                 async for chunk in content:

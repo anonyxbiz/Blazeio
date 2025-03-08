@@ -123,7 +123,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         'store',
     )
     
-    def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE):
+    def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE=None):
         app.on_client_connected = on_client_connected
         app.__buff__ = bytearray(INBOUND_CHUNK_SIZE)
         app.__stream__ = deque()
@@ -312,7 +312,8 @@ class Handler:
         except Abort as e:
             await e.text()
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
-        except Eof as e: await e.text()
+        except Eof as e:
+            pass
         except KeyboardInterrupt as e: raise e
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
             await Log.critical(r, e)
@@ -363,7 +364,7 @@ class SrvConfig:
     __timeout_check_freq__ = 5
     __health_check_freq__ = 5
     __log_requests__ = True
-    INBOUND_CHUNK_SIZE = 1024
+    INBOUND_CHUNK_SIZE = None
 
     def __init__(app): pass
 
@@ -536,7 +537,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
         await app.configure_server_handler()
 
         app.server = await loop.create_server(
-            lambda: BlazeioPayloadBuffered(app.handle_client, app.ServerConfig.INBOUND_CHUNK_SIZE),
+            lambda: BlazeioPayloadBuffered(app.handle_client, global_chunk_size),
             HOST,
             PORT,
             **kwargs
