@@ -28,7 +28,7 @@ class Prepare:
 
 class Deliver:
     @classmethod
-    async def json(app, r, data: dict, status: int = 200, headers: dict = {}, indent: int = 4):
+    async def json(app, r, data: dict = {}, status: int = 200, headers: dict = {}, indent: int = 4):
         headers = dict(headers)
         await Prepare.json(headers, status)
         await r.write(bytearray(dumps(data, indent=indent), "utf-8"))
@@ -112,6 +112,14 @@ class __Payload__:
         return getattr(current_task().get_coro().cr_frame.f_locals.get("app"), name)
 
 # Payload = __Payload__()
+
+
+class FileIO:
+    @classmethod
+    async def save(app, file_path: str, mode: str = "wb"):
+        r = await Context.r()
+        async with async_open(file_path, mode) as f:
+            async for chunk in r.pull(): await f.write(chunk)
 
 if __name__ == "__main__":
     pass

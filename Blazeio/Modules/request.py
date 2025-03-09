@@ -182,8 +182,7 @@ class Request:
 
     @classmethod
     async def body_or_params(app, r=None):
-        if r is None:
-            r = await Context.r()
+        if r is None: r = await Context.r()
 
         if r.method in ["GET", "OPTIONS", "HEAD"]:
             return await app.get_params(r)
@@ -191,7 +190,8 @@ class Request:
             return await app.get_json(r)
 
     @classmethod
-    async def form_data(app, r):
+    async def form_data(app, r = None):
+        if not r: r = await Context.r()
         data = bytearray()
         json_data = defaultdict(str)
 

@@ -285,7 +285,10 @@ class Session:
             if (idx := header.find(sepr2)) == -1:
                 if not app.status_code:
                     app.status_code = header[header.find(b" "):].decode("utf-8").strip()
-                    app.status_code = int(app.status_code[:app.status_code.find(" ")].strip())
+                    try:
+                        app.status_code = int(app.status_code[:app.status_code.find(" ")].strip())
+                    except Exception as e:
+                        await Log.critical("%s >> %s" % (str(e), app.status_code))
 
                 continue
             
