@@ -537,7 +537,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
         await app.configure_server_handler()
 
         app.server = await loop.create_server(
-            lambda: BlazeioPayloadBuffered(app.handle_client, global_chunk_size),
+            lambda: BlazeioPayloadBuffered(app.handle_client, INBOUND_CHUNK_SIZE),
             HOST,
             PORT,
             **kwargs

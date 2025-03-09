@@ -19,7 +19,8 @@ class BlazeioClientProtocol(BufferedProtocol):
     )
 
     def __init__(app, **kwargs):
-        app.__chunk_size__ = global_chunk_size
+        app.__chunk_size__ = kwargs.get("__chunk_size__", OUTBOUND_CHUNK_SIZE)
+
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
         app.__stream__sleep = 0
@@ -114,6 +115,19 @@ class BlazeioClientProtocol(BufferedProtocol):
 
 ssl_context = create_default_context()
 
+class Gen:
+    __slots__ = ()
+    def __init__(app):
+        pass
+    
+    @classmethod
+    async def file(app, file_path: str, chunk_size: int = 1024):
+        async with async_open(file_path, "rb") as f:
+            while (chunk := await f.read(chunk_size)): yield chunk
+
+    @classmethod
+    async def echo(app, x): yield x
+
 class Session:
     __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload",)
 
@@ -176,11 +190,11 @@ class Session:
     async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, json: dict = {}, body = None, **kwargs):
         app.method = method
         app.headers = dict(headers)
-        app.proxy = dict(proxy)
-        app.json_payload = dict(json)
+        app.proxy = dict(proxy) if proxy else None
+        app.json_payload = dict(json) if json else None
         app.connect_only = connect_only
         app.timeout = timeout
-        
+
         if body: content = body
 
         if not host and not port:
@@ -197,14 +211,14 @@ class Session:
             )
         else:
             app.transport, app.protocol = await loop.create_connection(
-                lambda: BlazeioClientProtocol(**kwargs),
+                lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
                 port=app.port,
                 **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__}
             )
 
             return app
-        
+
         if app.json_payload:
             content = dumps(app.json_payload).encode()
             app.headers["Content-Length"] = len(content)
@@ -257,11 +271,10 @@ class Session:
             buff.extend(chunk)
 
             if (idx := buff.find(header_end)) != -1:
-                break
+                headers, buff = buff[:idx], buff[idx + len(header_end):]
         
-        headers, buff = buff[:idx], buff[idx + len(header_end):]
-
-        await app.protocol.prepend(buff)
+                await app.protocol.prepend(buff)
+                break
 
         while headers and (idx := headers.find(sepr1)):
             await sleep(0)
@@ -276,9 +289,13 @@ class Session:
 
                 continue
             
-            key, value = header[:idx], header[idx + len(sepr2):]
-            
-            app.response_headers[key.decode("utf-8").lower()] = value.decode("utf-8")
+            key, value = header[:idx].decode("utf-8").lower(), header[idx + len(sepr2):].decode("utf-8")
+
+            while key in app.response_headers:
+                await sleep(0)
+                key += "_"
+
+            app.response_headers[key] = value
         
         app.response_headers = dict(app.response_headers)
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
@@ -295,33 +312,26 @@ class Session:
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
-        read, size = 0, False
+        read, size, idx = 0, False, -1
 
         async for chunk in app.protocol.ayield():
-            if chunk:
-                if endsig in chunk or endsig in chunk: end = True
-
             if not chunk: continue
+            if endsig in chunk or endsig in buff: end = True
+
             if not size:
                 buff.extend(chunk)
-                try:
-                    if (idx := buff.find(sepr1)) != -1:
-                        if buff[:idx] != b'':
-                            size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
-                        else:
-                            buff = buff[idx + len(sepr1):]
-                            if (idx := buff.find(sepr1)):
-                                size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
-                            else:
-                                continue
+                if (idx := buff.find(sepr1)) == -1: continue
 
-                        chunk = buff
-                    else:
-                        continue
+                if buff[:idx] != b'':
+                    size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                else:
+                    buff = buff[idx + len(sepr1):]
+                    if (idx := buff.find(sepr1)) == -1: continue
 
-                except Exception as e:
-                    await Log.critical(e)
-                    continue
+                    size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                    chunk = buff
+
+            if not size and not end: continue
 
             read += len(chunk)
 
