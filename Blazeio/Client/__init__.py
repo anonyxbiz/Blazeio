@@ -321,15 +321,19 @@ class Session:
             if not size:
                 buff.extend(chunk)
                 if (idx := buff.find(sepr1)) == -1: continue
-
-                if buff[:idx] != b'':
-                    size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
-                else:
-                    buff = buff[idx + len(sepr1):]
-                    if (idx := buff.find(sepr1)) == -1: continue
-
-                    size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
-                    chunk = buff
+                
+                try:
+                    if buff[:idx] != b'':
+                        size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                    else:
+                        buff = buff[idx + len(sepr1):]
+                        if (idx := buff.find(sepr1)) == -1: continue
+    
+                        size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
+                        chunk = buff
+                except Exception as e:
+                    await Log.critical(e)
+                    continue
 
             if not size and not end: continue
 
