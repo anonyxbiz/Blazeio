@@ -332,7 +332,6 @@ class Session:
                         size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
                         chunk = buff
                 except Exception as e:
-                    await Log.critical(e)
                     continue
 
             if not size and not end: continue
