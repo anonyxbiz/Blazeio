@@ -324,20 +324,21 @@ class Session:
             if not size:
                 buff.extend(chunk)
                 if (idx := buff.find(sepr1)) == -1: continue
-                
                 try:
-                    if buff[:idx] != b'':
-                        size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
-                    else:
-                        buff = buff[idx + len(sepr1):]
-                        if (idx := buff.find(sepr1)) == -1: continue
-    
-                        size, buff = int(buff[:idx], 16), buff[idx + len(sepr1):]
-                        chunk = buff
+                    s = buff[:idx]
+                    size, buff = int(s, 16), buff[idx + len(sepr1):]
+                    chunk = buff
                 except Exception as e:
-                    continue
+                    try:
+                        buff = buff[len(sepr1):]
+                        s = buff[:(idx := buff.find(sepr1))]
+                        size, buff = int(s, 16), buff[idx + len(sepr1):]
+                        chunk = buff
+                    except Exception as e:
+                        await Log.critical(e)
+                        continue
 
-            if not size and not end: continue
+            # if not size and not end: continue
 
             read += len(chunk)
 
@@ -445,6 +446,10 @@ class Session:
 
                 chunk, data = data[ids:ide + len(end)], data[ide + len(end):]
                 yield chunk
+
+    async def save(app, filepath: str, mode: str = "wb"):
+        async with async_open(filepath, mode) as f:
+            async for chunk in app.pull(): await f.write(chunk)
 
 if __name__ == "__main__":
     pass
