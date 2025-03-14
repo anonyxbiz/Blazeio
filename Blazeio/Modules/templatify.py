@@ -20,7 +20,7 @@ class TemplateEngine:
         data = escape(str(dt.now().year))
         yield data.encode()
 
-    async def templatify(app, r, ctx, chunk, metadata):
+    async def templatify(app, r, ctx, chunk, metadata, appctx = None):
         start, end, method, rmethod = b"<!--", b"-->", b"app.", b"r."
 
         while (ida := chunk.find(start)) != -1 and (idb := chunk.find(end)) != -1:
@@ -31,9 +31,10 @@ class TemplateEngine:
 
             if (idx := var.find(method)) != -1:
                 var = var[idx + len(method):].decode("utf-8")
-
-                if hasattr(app, var) and callable(getattr(app, var)):
-                    async for i in getattr(app, var)(r, ctx): yield i
+                
+                appctx = appctx or app
+                if hasattr(appctx, var) and callable(getattr(appctx, var)):
+                    async for i in getattr(appctx, var)(r, ctx): yield i
 
             elif (idx := var.find(rmethod)) != -1:
                 var = var[idx + len(rmethod):].decode("utf-8")
@@ -65,23 +66,23 @@ class TemplateEngine:
 
         yield chunk
 
-    async def handle_all_middleware(app, r):
+    async def handle_all_middleware(app, r, ctx = None, template = None, appctx = None):
         if r.path == "/": r.path = app.homepage
         if not "." in r.path: r.path = "/%s/%s.html" % (app.html_path, r.path)
 
         file = path.join(app.static_path, r.path[1:])
-
-        ctx = Simpleserve()
-
-        if not file.endswith(".html"): return await ctx.push(r, file, app.chunk_size, gzip=False)
-
-        await ctx.initialize(r, file, app.chunk_size, cache_control=app.cache_control)
-
-        for q in ("Content-Length", "Etag", "Cache-Control", "Last-Modified"): ctx.headers.pop(q, None)
+        
+        if not ctx:
+            ctx = Simpleserve()
+            if not file.endswith(".html"): return await ctx.push(r, file, app.chunk_size, gzip=False)
+    
+            await ctx.initialize(r, file, app.chunk_size, cache_control=app.cache_control)
+    
+            for q in ("Content-Length", "Etag", "Cache-Control", "Last-Modified"): ctx.headers.pop(q, None)
 
         template_ctx = Simpleserve()
 
-        await template_ctx.initialize(r, path.join(app.static_path, app.template), app.chunk_size, cache_control=app.cache_control)
+        await template_ctx.initialize(r, path.join(app.static_path, template or app.template), app.chunk_size, cache_control=app.cache_control)
 
         ctx.headers["Transfer-Encoding"] = "chunked"
         await r.prepare(ctx.headers, 200)
@@ -94,8 +95,8 @@ class TemplateEngine:
         }
 
         async for chunk0 in template_ctx.pull():
-            async for chunk1 in app.templatify(r, ctx, chunk0, metadata):
-                async for chunk2 in app.templatify(r, ctx, chunk1, metadata):
+            async for chunk1 in app.templatify(r, ctx, chunk0, metadata, appctx):
+                async for chunk2 in app.templatify(r, ctx, chunk1, metadata, appctx):
                     await r.write_chunked(chunk2)
 
         await r.write_chunked_eof()
