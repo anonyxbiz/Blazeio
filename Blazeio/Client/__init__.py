@@ -294,12 +294,15 @@ class Session:
             
             key, value = header[:idx].decode("utf-8").lower(), header[idx + len(sepr2):].decode("utf-8")
 
-            while key in app.response_headers:
-                await sleep(0)
-                key += "_"
+            if key in app.response_headers:
+                if not isinstance(app.response_headers[key], list):
+                    app.response_headers[key] = [app.response_headers[key]]
+
+                app.response_headers[key].append(value)
+                continue
 
             app.response_headers[key] = value
-        
+
         app.response_headers = dict(app.response_headers)
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
 

@@ -54,9 +54,11 @@ class BlazeioPayloadUtils:
 
         if headers:
             for key, val in headers.items():
-                await app.write(
-                    b"%s: %s\r\n" % (key.encode(), val.encode())
-                )
+                if isinstance(val, list):
+                    for hval in val: await app.write(b"%s: %s\r\n" % (key.encode(), hval.encode()))
+                    continue
+
+                await app.write(b"%s: %s\r\n" % (key.encode(), val.encode()))
 
         await app.write(b"\r\n")
 
