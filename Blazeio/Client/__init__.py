@@ -2,116 +2,10 @@
 from ..Dependencies import *
 from ..Modules.request import *
 from collections.abc import Iterable
+from .protocol import *
+from .tools import *
 
 from ssl import create_default_context, SSLError, Purpose
-
-class BlazeioClientProtocol(BufferedProtocol):
-    __slots__ = (
-        '__is_at_eof__',
-        '__is_alive__',
-        'transport',
-        '__buff__',
-        '__stream__',
-        '__buff_requested__',
-        '__buff__memory__',
-        '__stream__sleep',
-        '__chunk_size__',
-    )
-
-    def __init__(app, **kwargs):
-        app.__chunk_size__ = kwargs.get("__chunk_size__", OUTBOUND_CHUNK_SIZE)
-
-        app.__is_at_eof__ = False
-        app.__buff_requested__ = False
-        app.__stream__sleep = 0
-        
-        if kwargs:
-            for key, val in kwargs.items():
-                if key in app.__slots__:
-                    setattr(app, key, val)
-
-        app.__stream__ = deque()
-        app.__buff__ = bytearray(app.__chunk_size__)
-        app.__buff__memory__ = memoryview(app.__buff__)
-
-    async def set_buffer(app, sizehint: int):
-        if app.transport.is_reading(): app.transport.pause_reading()
-
-        app.__buff__ = app.__buff__ + bytearray(sizehint)
-
-        app.__buff__memory__ = memoryview(app.__buff__)
-
-    async def prepend(app, data):
-        if app.transport.is_reading(): app.transport.pause_reading()
-        sizehint = len(data)
-        app.__buff__ = bytearray(data) + app.__buff__ 
-        app.__buff__memory__ = memoryview(app.__buff__)
-        app.__stream__.appendleft(sizehint)
-
-    def connection_made(app, transport):
-        transport.pause_reading()
-        app.transport = transport
-        app.__is_alive__ = True
-
-    def eof_received(app):
-        app.__is_at_eof__ = True
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    def buffer_updated(app, nbytes):
-        app.transport.pause_reading()
-        app.__stream__.append(nbytes)
-
-    async def ensure_reading(app):
-        if not app.transport.is_reading() and not app.__stream__:
-            app.transport.resume_reading()
-
-    async def pull(app):
-        while True:
-            await app.ensure_reading()
-
-            while app.__stream__:
-                yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
-
-                await app.ensure_reading()
-
-            if not app.__stream__:
-                if app.transport.is_closing() or app.__is_at_eof__: break
-
-            await sleep(app.__stream__sleep)
-
-            if not app.__stream__: yield None
-
-    def get_buffer(app, sizehint):
-        if sizehint > len(app.__buff__memory__):
-            app.__buff__ = bytearray(sizehint)
-        elif sizehint <= 0:
-            sizehint = len(app.__buff__memory__)
-
-        return app.__buff__memory__[:sizehint]
-
-    async def push(app, data: (bytes, bytearray)):
-        if not app.transport.is_closing():
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-
-    async def ayield(app, timeout: float = 60.0):
-        idle_time = None
-
-        async for chunk in app.pull():
-            yield chunk
-
-            if chunk is not None:
-                if idle_time is not None:
-                    idle_time = None
-            else:
-                if idle_time is None:
-                    idle_time = perf_counter()
-                
-                if perf_counter() - idle_time > timeout:
-                    break
 
 ssl_context = create_default_context()
 
@@ -128,8 +22,8 @@ class Gen:
     @classmethod
     async def echo(app, x): yield x
 
-class Session:
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload",)
+class Session(Toolset):
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload", "handler", "decoder", "decode_resp",)
 
     def __init__(app, *args, **kwargs):
         app.args, app.kwargs = args, kwargs
@@ -146,9 +40,12 @@ class Session:
         parsed_url = {}
         
         url = url.replace(r"\/", "/")
-
+        
         if (idx := url.find(scheme_sepr)) != -1:
             parsed_url["hostname"] = url[idx + len(scheme_sepr):]
+            
+            if not host_sepr in parsed_url["hostname"]:
+                parsed_url["hostname"] += host_sepr
 
             if (idx := parsed_url["hostname"].find(host_sepr)) != -1:
                 parsed_url["path"], parsed_url["hostname"] = parsed_url["hostname"][idx:], parsed_url["hostname"][:idx]
@@ -183,17 +80,18 @@ class Session:
             else:
                 port = 80
         
-        # await p("%s--%s--%s--\n%s" % (host, port, path, url))
-
         return host, port, path
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, json: dict = {}, body = None, **kwargs):
+    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, json: dict = {}, body = None, decode_resp = True, **kwargs):
         app.method = method
         app.headers = dict(headers)
         app.proxy = dict(proxy) if proxy else None
         app.json_payload = dict(json) if json else None
         app.connect_only = connect_only
         app.timeout = timeout
+        app.handler = None
+        app.decode_resp = decode_resp
+        app.decoder = None
 
         if body: content = body
 
@@ -305,28 +203,37 @@ class Session:
 
         app.response_headers = dict(app.response_headers)
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
-
-    async def get_handler(app):
+        
         if app.response_headers.get("transfer-encoding"):
-            handler = app.handle_chunked
+            app.handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
-            handler = app.handle_raw
+            app.handler = app.handle_raw
         else:
-            handler = app.protocol.pull
-
-        return handler
+            app.handler = app.protocol.pull
+        
+        if app.decode_resp:
+            if (encoding := app.response_headers.pop("content-encoding", None)):
+                if encoding == "br":
+                    app.decoder = app.brotli
+                elif encoding == "gzip":
+                    app.decoder = app.gzip
+                else:
+                    app.decoder = None
+            else:
+                app.decoder = None
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.protocol.ayield():
+        async for chunk in app.protocol.ayield(app.timeout):
             if not chunk: continue
             if endsig in chunk or endsig in buff: end = True
 
             if not size:
                 buff.extend(chunk)
-                if (idx := buff.find(sepr1)) == -1: continue
+                if (idx := buff.find(sepr1)) == -1:
+                    if not end: continue
 
                 s = buff[:idx]
                 if s == b'':
@@ -335,10 +242,11 @@ class Session:
                         s = buff[:ido]
                         idx = ido
                     else:
-                        continue
-
-                size, buff = int(s, 16), buff[idx + len(sepr1):]
-                chunk = buff
+                        if not end: continue
+       
+                if not end:
+                    size, buff = int(s, 16), buff[idx + len(sepr1):]
+                    chunk = buff
 
             read += len(chunk)
 
@@ -356,7 +264,7 @@ class Session:
             if end: break
 
     async def handle_raw(app):
-        async for chunk in app.protocol.ayield():
+        async for chunk in app.protocol.ayield(app.timeout):
             if app.received_len >= app.content_length: break
 
             if not chunk: continue
@@ -368,12 +276,15 @@ class Session:
         if http and not app.response_headers:
             await app.prepare_http()
         
-        handler = await app.get_handler()
+        if not app.decoder:
+            async for chunk in app.handler():
+                if chunk:
+                    yield chunk
+        else:
+            async for chunk in app.decoder():
+                if chunk:
+                    yield chunk
 
-        async for chunk in handler():
-            if chunk:
-                yield chunk
-    
     async def aread(app, decode=False):
         data = bytearray()
         async for chunk in app.pull():
@@ -392,60 +303,6 @@ class Session:
 
     async def ayield(app, *args):
         async for chunk in app.protocol.ayield(*args): yield chunk
-
-    async def read(app, max=1024):
-        data = bytearray()
-        await app.protocol.set_buffer(max)
-
-        async for chunk in app.pull():
-            data.extend(chunk)
-            if len(data) >= max: break
-
-        return data
-
-    async def read_exactly(app, max=1024):
-        data = bytearray()
-        await app.protocol.set_buffer(max)
-
-        async for chunk in app.pull():
-            data.extend(chunk)
-            if len(data) >= max: break
-        
-        await app.protocol.prepend(data[max:])
-
-        return data[:max]
-
-    async def extract(app, start: (bytes, bytearray), end: (bytes, bytearray)):
-        data = bytearray()
-        ids, ide, = 0, 0
-
-        async for chunk in app.pull():
-            data.extend(chunk)
-
-            if not ids:
-                if (idx := data.find(start)) != -1:
-                    ids = idx
-                    data = data[ids:]
-
-            if ids:
-                if (idx := data.find(end)) != -1:
-                    ide = idx
-                    data = data[:ide + len(end)]
-
-                    return data
-
-    async def aextract(app, start: (bytes, bytearray), end: (bytes, bytearray)):
-        data = bytearray()
-        ids = None
-
-        async for chunk in app.pull():
-            data.extend(chunk)
-
-            while (ids := data.find(start)) != -1 and (ide := data.find(end)) != -1:
-                await sleep(0)
-
-                chunk, data = data[ids:ide + len(end)], data[ide + len(end):]
-                yield chunk
 
     async def save(app, filepath: str, mode: str = "wb"):
         async with async_open(filepath, mode) as f:
