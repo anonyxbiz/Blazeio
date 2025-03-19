@@ -93,7 +93,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         else:
             raise Err("Client has disconnected.")
 
-    async def ayield(app, timeout: float = 60.0):
+    async def ayield(app, timeout: float = 10.0):
         idle_time = None
 
         async for chunk in app.pull():

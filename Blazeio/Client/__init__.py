@@ -222,31 +222,31 @@ class Session(Toolset):
             else:
                 app.decoder = None
 
-    async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
+    async def handle_chunked(app, endsig =  b"0\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
         async for chunk in app.protocol.ayield(app.timeout):
-            if not chunk: continue
+            if not chunk:
+                if end: break
+                continue
+
             if endsig in chunk or endsig in buff: end = True
 
             if not size:
                 buff.extend(chunk)
-                if (idx := buff.find(sepr1)) == -1:
-                    if not end: continue
+                if (idx := buff.find(sepr1)) == -1 and not end: continue
 
-                s = buff[:idx]
-                if s == b'':
+                if not (s := buff[:idx]):
                     buff = buff[len(sepr1):]
                     if (ido := buff.find(sepr1)) != -1:
                         s = buff[:ido]
                         idx = ido
                     else:
                         if not end: continue
-       
-                if not end:
-                    size, buff = int(s, 16), buff[idx + len(sepr1):]
-                    chunk = buff
+
+                size, buff = int(s, 16), buff[idx + len(sepr1):]
+                chunk = buff
 
             read += len(chunk)
 
@@ -291,9 +291,6 @@ class Session(Toolset):
             data.extend(chunk)
 
         return data if not decode else data.decode("utf-8")
-    
-    async def json(app):
-        return loads(await app.aread(decode=True))
 
     async def text(app):
         return await app.aread(True)
