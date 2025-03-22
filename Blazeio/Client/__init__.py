@@ -227,15 +227,13 @@ class Session(Toolset):
         read, size, idx = 0, False, -1
 
         async for chunk in app.protocol.ayield(app.timeout):
-            if not chunk:
-                if end: break
-                continue
+            if not chunk: chunk = b""
+            
+            if endsig in buff or endsig in chunk: end = True
 
-            if endsig in chunk or endsig in buff: end = True
-
-            if not size:
+            if size == False:
                 buff.extend(chunk)
-                if (idx := buff.find(sepr1)) == -1 and not end: continue
+                if (idx := buff.find(sepr1)) == -1: continue
 
                 if not (s := buff[:idx]):
                     buff = buff[len(sepr1):]
@@ -246,7 +244,13 @@ class Session(Toolset):
                         if not end: continue
 
                 size, buff = int(s, 16), buff[idx + len(sepr1):]
-                chunk = buff
+
+                if size == 0: return
+
+                if len(buff) >= size:
+                    chunk = buff
+                else:
+                    chunk, buff = buff[:size], buff[size:]
 
             read += len(chunk)
 
@@ -260,8 +264,9 @@ class Session(Toolset):
 
                 read, size = 0, False
                 yield chunk
-
-            if end: break
+            
+            if end:
+                if not buff: break
 
     async def handle_raw(app):
         async for chunk in app.protocol.ayield(app.timeout):
