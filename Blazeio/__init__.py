@@ -3,6 +3,7 @@ from .Dependencies import *
 from .Modules.streaming import *
 from .Modules.server_tools import *
 from .Modules.request import *
+from .Modules.extratools import *
 from .Modules.reasons import *
 from .Client import *
 from .Modules.templatify import *
