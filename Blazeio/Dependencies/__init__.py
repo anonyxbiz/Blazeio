@@ -24,7 +24,14 @@ from ujson import dumps, loads, JSONDecodeError
 
 from html import escape
 
-pid = getpid()
+from traceback import extract_tb
+
+try:
+    pid = getpid()
+except Exception as e:
+    print(e)
+    pid = None
+
 INBOUND_CHUNK_SIZE = 1024
 OUTBOUND_CHUNK_SIZE = 1024
 
@@ -79,6 +86,7 @@ class Log:
         "[Errno 104] Connection reset by peer",
         "Client has disconnected.",
         "Connection lost",
+        "asyncio/tasks.py",
     )
 
     colors = {

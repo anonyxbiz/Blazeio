@@ -153,6 +153,17 @@ class Request:
                     if not r.__miscellaneous__: r.__miscellaneous__ = deque()
                     r.__miscellaneous__.append(chunk)
 
+        if r.headers:
+            if (content_length := r.headers.get("Content-Length")):
+                r.content_length = int(content_length)
+                r.pull = r.handle_raw
+            elif (transfer_encoding := r.headers.get("Transfer-Encoding")):
+                r.transfer_encoding = transfer_encoding
+                r.pull = r.handle_chunked
+            else:
+                r.content_length = 0
+                r.pull = r.handle_raw
+
         return r
 
     @classmethod

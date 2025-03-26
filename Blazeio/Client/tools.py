@@ -51,5 +51,19 @@ class Toolset:
         if (chunk := decompressor.flush()):
             yield chunk
 
+    async def write_chunked(app, data):
+        if isinstance(data, (bytes, bytearray)):
+            await app.protocol.push(b"%X\r\n%s\r\n" % (len(data), data))
+        elif isinstance(data, (str, int)):
+            raise Err("Only (bytes, bytearray, Iterable) are accepted")
+        else:
+            async for chunk in data:
+                await app.protocol.push(b"%X\r\n%s\r\n" % (len(chunk), chunk))
+
+            await app.write_chunked_eof()
+
+    async def write_chunked_eof(app):
+        await app.protocol.push(b"0\r\n\r\n")
+
 if __name__ == "__main__":
     pass

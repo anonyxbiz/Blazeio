@@ -15,54 +15,6 @@ class BlazeioPayloadUtils:
 
     def __init__(app): pass
 
-    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
-        if secure: secure = "Secure; "
-        else: secure = ""
-
-        if http_only: http_only = "HttpOnly; "
-        else: http_only = ""
-
-        if not app.__cookie__: app.__cookie__ = bytearray(b"")
-
-        app.__cookie__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
-
-    async def pull(app, *args):
-        if app.headers is None: raise Err("Request not prepared.")
-
-        if app.content_length is None: app.content_length = int(app.headers.get("Content-Length", 0))
-
-        if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
-
-        async for chunk in app.ayield(*args):
-            if chunk:
-                app.current_length += len(chunk)
-                yield chunk
-
-            if app.current_length >= app.content_length: break
-
-    async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
-        if not app.__is_prepared__:
-            if not reason:
-                reason = StatusReason.reasons.get(status, "Unknown")
-
-            await app.write(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
-
-            if app.__cookie__:
-                await app.write(app.__cookie__)
-            
-            app.__is_prepared__ = True
-            app.__status__ = status
-
-        if headers:
-            for key, val in headers.items():
-                if isinstance(val, list):
-                    for hval in val: await app.write(b"%s: %s\r\n" % (key.encode(), hval.encode()))
-                    continue
-
-                await app.write(b"%s: %s\r\n" % (key.encode(), val.encode()))
-
-        await app.write(b"\r\n")
-
     async def transporter(app):
         await app.on_client_connected(app)
 
@@ -71,32 +23,10 @@ class BlazeioPayloadUtils:
     async def control(app, duration=0):
         await sleep(duration)
 
-    async def write(app, data: (bytes, bytearray)):
-        await app.buffer_overflow_manager()
-
-        if not app.transport.is_closing():
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-    
-    async def write_chunked(app, data):
-        if isinstance(data, (bytes, bytearray)):
-            await app.write(b"%X\r\n%s\r\n" % (len(data), data))
-        elif isinstance(data, (str, int)):
-            raise Err("Only (bytes, bytearray, Iterable) are accepted")
-        else:
-            async for chunk in data:
-                await app.write(b"%X\r\n%s\r\n" % (len(chunk), chunk))
-
-            await app.write_chunked_eof()
-
-    async def write_chunked_eof(app):
-        await app.write(b"0\r\n\r\n")
-
     async def close(app):
         app.transport.close()
 
-class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
+class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset):
     __slots__ = (
         'on_client_connected',
         '__stream__',
@@ -124,6 +54,9 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         '__overflow_sleep',
         '__buff__memory__',
         'store',
+        'transfer_encoding',
+        'pull',
+        'write',
     )
     
     def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE=None):
@@ -140,6 +73,9 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__is_prepared__ = False
         app.__status__ = 0
         app.content_length = None
+        app.transfer_encoding = None
+        app.pull = None
+        app.write = None
         app.current_length = 0
         app.__cookie__ = None
         app.__miscellaneous__ = None
@@ -149,7 +85,7 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils):
         app.__overflow_sleep = 0
         app.__buff__memory__ = memoryview(app.__buff__)
 
-        BlazeioPayloadUtils.__init__(app)
+        # BlazeioPayloadUtils.__init__(app)
 
     async def buffer_overflow_manager(app):
         if not app.__is_buffer_over_high_watermark__: return
@@ -302,6 +238,17 @@ class Handler:
         if route := app.declared_routes.get(r.path): await route.get("func")(r)
 
         else: raise Abort("Not Found", 404)
+    
+    async def handle_exception(app, r, e, logger):
+        tb = extract_tb(e.__traceback__)
+        filename, lineno, func, text = tb[-1]
+        
+        msg = "Exception occured in %s.\nLine: %s.\nCode Part: `%s`.\n%s" % (filename, lineno, text, func)
+
+        for exc in Log.known_exceptions:
+            if exc in msg: return
+
+        await logger(r, msg)
 
     async def handle_client(app, r):
         try:
@@ -314,12 +261,13 @@ class Handler:
 
         except Abort as e:
             await e.text()
-        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e.message)
+        except (Err, ServerGotInTrouble) as e:
+            await Log.warning(r, e)
         except Eof as e:
             pass
         except KeyboardInterrupt as e: raise e
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
-            await Log.critical(r, e)
+            await app.handle_exception(r, e, Log.critical)
 
         if app.ServerConfig.__log_requests__:
             await Log.debug(r, f"Completed with status {r.__status__} in {perf_counter() - r.__perf_counter__:.4f} seconds")

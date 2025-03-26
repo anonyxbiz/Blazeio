@@ -23,7 +23,7 @@ class Gen:
     async def echo(app, x): yield x
 
 class Session(Toolset):
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload", "handler", "decoder", "decode_resp",)
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload", "handler", "decoder", "decode_resp", "write",)
 
     def __init__(app, *args, **kwargs):
         app.args, app.kwargs = args, kwargs
@@ -92,6 +92,7 @@ class Session(Toolset):
         app.handler = None
         app.decode_resp = decode_resp
         app.decoder = None
+        app.write = None
 
         if body: content = body
 
@@ -107,6 +108,11 @@ class Session(Toolset):
                 port=app.port,
                 ssl=ssl_context if app.port == 443 else None,
             )
+
+            if not app.write:
+                if app.headers.get("Transfer-Encoding"): app.write = app.write_chunked
+                else:
+                    app.write = app.protocol.push
         else:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
@@ -114,6 +120,10 @@ class Session(Toolset):
                 port=app.port,
                 **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__}
             )
+            if not app.write:
+                if app.headers.get("Transfer-Encoding"): app.write = app.write_chunked
+                else:
+                    app.write = app.protocol.push
 
             return app
 
