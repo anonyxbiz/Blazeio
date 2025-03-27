@@ -17,8 +17,8 @@ from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
-from threading import Thread
-from multiprocessing import Process
+from threading import Thread, Event as ThreadEvent
+from multiprocessing import Process, Event as ProcessEvent
 
 from ujson import dumps, loads, JSONDecodeError
 
@@ -30,22 +30,22 @@ from sys import stdout as sys_stdout
 try:
     pid = getpid()
 except Exception as e:
-    print(e)
+    sys_stdout.write("\r%s" % e)
     pid = None
 
 INBOUND_CHUNK_SIZE = 1024
 OUTBOUND_CHUNK_SIZE = 1024
 
 class Default_logger:
-    def __init__(app): pass
-    
-    def log(app, log):
-        if not "\n" in log: log += "\n"
-        sys_stdout.write("\r%s" % log)
-        sys_stdout.flush()
+    def __init__(app, name=""):
+        app.name = name
 
     async def __log__(app, log):
-        await to_thread(app.log, log)
+        if not "\n" in log: log += "\n"
+        sys_stdout.write("\r%s" % log)
+
+    async def flush(app):
+        await to_thread(sys_stdout.flush)
 
     async def info(app, *args): await app.__log__(*args)
 
@@ -57,10 +57,7 @@ class Default_logger:
 
     async def debug(app, *args): await app.__log__(*args)
 
-# from aiologger import Logger
-# logger = Logger.with_default_handlers(name='BlazeioLogger')
-
-logger = Default_logger()
+logger = Default_logger(name='BlazeioLogger')
 
 class Err(Exception):
     __slots__ = (
@@ -220,4 +217,3 @@ routine_executor({
     ('p = Log.info', 'p = None'),
     ('loop.run_until_complete(Log.debug(""))', '')
 })
-

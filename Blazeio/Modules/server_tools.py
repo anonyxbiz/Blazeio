@@ -1,8 +1,6 @@
 from ..Dependencies import *
 from .request import *
 from .streaming import *      
-from gzip import compress, decompress
-from asyncio import to_thread, sleep
 
 class Simpleserve:
     __slots__ = (
