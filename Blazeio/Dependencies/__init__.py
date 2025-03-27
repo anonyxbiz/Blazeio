@@ -20,11 +20,12 @@ from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 from threading import Thread
 from multiprocessing import Process
 
-from aiologger import Logger
 from ujson import dumps, loads, JSONDecodeError
 
 from html import escape
 from traceback import extract_tb
+
+from sys import stdout as sys_stdout
 
 try:
     pid = getpid()
@@ -35,7 +36,31 @@ except Exception as e:
 INBOUND_CHUNK_SIZE = 1024
 OUTBOUND_CHUNK_SIZE = 1024
 
-logger = Logger.with_default_handlers(name='BlazeioLogger')
+class Default_logger:
+    def __init__(app): pass
+    
+    def log(app, log):
+        if not "\n" in log: log += "\n"
+        sys_stdout.write("\r%s" % log)
+        sys_stdout.flush()
+
+    async def __log__(app, log):
+        await to_thread(app.log, log)
+
+    async def info(app, *args): await app.__log__(*args)
+
+    async def error(app, *args): await app.__log__(*args)
+
+    async def warning(app, *args): await app.__log__(*args)
+
+    async def critical(app, *args): await app.__log__(*args)
+
+    async def debug(app, *args): await app.__log__(*args)
+
+# from aiologger import Logger
+# logger = Logger.with_default_handlers(name='BlazeioLogger')
+
+logger = Default_logger()
 
 class Err(Exception):
     __slots__ = (
@@ -191,47 +216,8 @@ class Log:
 
         exit()
 
-class VersionControlla:
-    @classmethod
-    async def control(app, ins, HOME, HOST, PORT, **kwargs):
-        async def runner():
-            process = await create_subprocess_shell(
-                cmd=f'python -m Blazeio --path "{HOME}" --host "{HOST}" --port "{PORT}"',
-                stdout=None,
-                stderr=None,
-            )
-            try:
-                await process.wait()
-            except CancelledError:
-                process.terminate()
-                await process.wait()
-                raise
-
-        while True:
-            size = getsize(HOME)
-            task = loop.create_task(runner())
-
-            while True:
-                if task.done():
-                    break
-                
-                if getsize(HOME) == size:
-                    await sleep(1)
-                else:
-                    await Log.warning(f"version change detected in {HOME}, reloading server...")
-                    break
-            
-            if not task.done():
-                try:
-                    task.cancel()
-                    await task
-                except CancelledError:
-                    pass
-
-            else:
-                break
-
 routine_executor({
     ('p = Log.info', 'p = None'),
     ('loop.run_until_complete(Log.debug(""))', '')
 })
+
