@@ -1,7 +1,5 @@
 from ..Dependencies import *
 from ..Modules.request import *
-from zlib import decompressobj, MAX_WBITS as zlib_MAX_WBITS
-from brotlicffi import Decompressor
 
 class Toolset:
     __slots__ = ()
@@ -64,6 +62,16 @@ class Toolset:
 
     async def write_chunked_eof(app):
         await app.protocol.push(b"0\r\n\r\n")
+
+    async def eof(app):
+        if app.write == app.write_chunked:
+            return await app.write_chunked_eof()
+
+    async def save(app, filepath: str, mode: str = "wb"):
+        async with async_open(filepath, mode) as f:
+            async for chunk in app.pull(): await f.write(chunk)
+    
+    async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)
 
 if __name__ == "__main__":
     pass

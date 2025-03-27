@@ -27,11 +27,12 @@ class Simpleserve:
     compressable = (
         "text/html",
         "text/css",
+        "text/x-python",
         "application/javascript",
         "application/json"
     )
 
-    async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, headers: dict = {"Accept-Ranges": "bytes"}, cache_control = {"max-age": "3600"}, status = 200, gzip = False):
+    async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, headers: dict = {"Accept-Ranges": "bytes"}, cache_control = {"max-age": "3600"}, status = 200, **kwargs):
         for method, value in locals().items():
             if method not in app.__slots__: continue
 
@@ -104,24 +105,17 @@ class Simpleserve:
     async def push(cls, *args, **kwargs):
         app = cls()
         await app.initialize(*args, **kwargs)
-        
-        gzip = False
-        if all(["gzip" in app.r.headers.get("Accept-Encoding", ""), kwargs.get("gzip"), app.content_type in app.compressable]): gzip = True
 
-        if gzip: app.headers["Content-Encoding"] = "gzip"
+        if all([kwargs.get("encode", None), app.content_type in app.compressable]):
+            if (encoding := app.r.headers.get("Accept-encoding")):
+                if "gzip" in encoding:
+                     app.headers["Content-Encoding"] = "gzip"
+                elif "br" in encoding:
+                     app.headers["Content-Encoding"] = "br"
 
         await app.r.prepare(app.headers, app.status)
 
-        if gzip: 
-            if app.CHUNK_SIZE < 1024*1024:
-                app.CHUNK_SIZE = 1024*1024
-
-            async for chunk in app.pull():
-                chunk = await to_thread(compress, chunk)
-                await app.r.write(chunk)
-
-        else:
-            async for chunk in app.pull(): await app.r.write(chunk)
+        async for chunk in app.pull(): await app.r.write(chunk)
 
     async def pull(app):
         async with async_open(app.file, "rb") as f:

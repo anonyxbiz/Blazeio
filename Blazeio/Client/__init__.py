@@ -23,17 +23,23 @@ class Gen:
     async def echo(app, x): yield x
 
 class Session(Toolset):
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "connect_only", "timeout", "json_payload", "handler", "decoder", "decode_resp", "write",)
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "json_payload", "handler", "decoder", "decode_resp", "write",)
 
     def __init__(app, *args, **kwargs):
         app.args, app.kwargs = args, kwargs
-        app.response_headers = defaultdict(str)
-        app.status_code = 0
+        app.protocol, app.transport = None, None
+        for i in app.__class__.__bases__: i.__init__(app)
 
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
 
-    async def __aexit__(app, exc_type, exc_value, traceback):
+    async def conn(app, *args, **kwargs):
+        if args: app.args = args
+        if kwargs: app.kwargs = kwargs
+
+        return await app.create_connection(*app.args, **app.kwargs)
+
+    async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         app.protocol.transport.close()
 
     async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
@@ -87,12 +93,13 @@ class Session(Toolset):
         app.headers = dict(headers)
         app.proxy = dict(proxy) if proxy else None
         app.json_payload = dict(json) if json else None
-        app.connect_only = connect_only
         app.timeout = timeout
         app.handler = None
         app.decode_resp = decode_resp
         app.decoder = None
         app.write = None
+        app.response_headers = defaultdict(str)
+        app.status_code = 0
 
         if body: content = body
 
@@ -101,7 +108,7 @@ class Session(Toolset):
         else:
             app.host, app.port, app.path = host, port, path
 
-        if not app.connect_only:
+        if not app.protocol and not connect_only:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**kwargs),
                 host=app.host,
@@ -113,7 +120,8 @@ class Session(Toolset):
                 if app.headers.get("Transfer-Encoding"): app.write = app.write_chunked
                 else:
                     app.write = app.protocol.push
-        else:
+
+        elif not app.protocol:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
@@ -180,7 +188,7 @@ class Session(Toolset):
 
             if (idx := buff.find(header_end)) != -1:
                 headers, buff = buff[:idx], buff[idx + len(header_end):]
-        
+
                 await app.protocol.prepend(buff)
                 break
 
@@ -315,10 +323,6 @@ class Session(Toolset):
 
     async def ayield(app, *args):
         async for chunk in app.protocol.ayield(*args): yield chunk
-
-    async def save(app, filepath: str, mode: str = "wb"):
-        async with async_open(filepath, mode) as f:
-            async for chunk in app.pull(): await f.write(chunk)
 
 if __name__ == "__main__":
     pass

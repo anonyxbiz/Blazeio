@@ -12,7 +12,8 @@ from mimetypes import guess_type
 from os import stat, kill, getpid, path
 from signal import SIGKILL
 
-from gzip import compress as gzip_compress
+from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
+from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
@@ -23,7 +24,6 @@ from aiologger import Logger
 from ujson import dumps, loads, JSONDecodeError
 
 from html import escape
-
 from traceback import extract_tb
 
 try:

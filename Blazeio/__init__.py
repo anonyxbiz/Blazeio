@@ -13,7 +13,8 @@ class BlazeioPayloadUtils:
     __slots__ = ()
     non_bodied_methods = {"GET", "HEAD", "OPTIONS"}
 
-    def __init__(app): pass
+    def __init__(app):
+        pass
 
     async def transporter(app):
         await app.on_client_connected(app)
@@ -57,6 +58,8 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset
         'transfer_encoding',
         'pull',
         'write',
+        'encoder',
+        'encoder_obj',
     )
     
     def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE=None):
@@ -74,8 +77,6 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset
         app.__status__ = 0
         app.content_length = None
         app.transfer_encoding = None
-        app.pull = None
-        app.write = None
         app.current_length = 0
         app.__cookie__ = None
         app.__miscellaneous__ = None
@@ -85,14 +86,14 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset
         app.__overflow_sleep = 0
         app.__buff__memory__ = memoryview(app.__buff__)
 
-        # BlazeioPayloadUtils.__init__(app)
+        for i in app.__class__.__bases__: i.__init__(app)
 
     async def buffer_overflow_manager(app):
         if not app.__is_buffer_over_high_watermark__: return
 
         while app.__is_buffer_over_high_watermark__:
             await sleep(app.__overflow_sleep)
-    
+
     async def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
 
@@ -243,7 +244,7 @@ class Handler:
         tb = extract_tb(e.__traceback__)
         filename, lineno, func, text = tb[-1]
         
-        msg = "Exception occured in %s.\nLine: %s.\nCode Part: `%s`.\n%s" % (filename, lineno, text, func)
+        msg = "\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s." % (filename, lineno, text, func, str(e))
 
         for exc in Log.known_exceptions:
             if exc in msg: return

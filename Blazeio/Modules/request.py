@@ -6,23 +6,24 @@ class HTTPParser:
     h_s = b'\r\n'
 
     @classmethod
+    async def make(app, r, header):
+        if (sep_idx := header.find(app.header_key_val)) != -1:
+            key = header[:sep_idx]
+            val = header[sep_idx + 2:]
+
+            r.headers[key.decode("utf-8").capitalize()] = val.decode("utf-8")
+
+    @classmethod
     async def header_parser(app, r, data: bytearray):
         r.headers = {}
-
-        async def make(header):
-            if (sep_idx := header.find(app.header_key_val)) != -1:
-                key = header[:sep_idx]
-                val = header[sep_idx + 2:]
-                r.headers[key.decode("utf-8")] = val.decode("utf-8")
-
         while (idx := data.find(app.h_s)):
             if idx == -1:
-                await make(data)
+                await app.make(r, data)
                 break
 
             header, data = data[:idx], data[idx + 2:]
 
-            await make(header)
+            await app.make(r, header)
 
 class Request:
     URL_DECODE_MAP = {
@@ -154,10 +155,10 @@ class Request:
                     r.__miscellaneous__.append(chunk)
 
         if r.headers:
-            if (content_length := r.headers.get("Content-Length")):
+            if (content_length := r.headers.get("Content-length")):
                 r.content_length = int(content_length)
                 r.pull = r.handle_raw
-            elif (transfer_encoding := r.headers.get("Transfer-Encoding")):
+            elif (transfer_encoding := r.headers.get("Transfer-encoding")):
                 r.transfer_encoding = transfer_encoding
                 r.pull = r.handle_chunked
             else:

@@ -7,21 +7,28 @@ from .reasons import *
 class ExtraToolset:
     __slots__ = ()
     def __init__(app):
-        app.write = app.write_raw
+        app.write = app.writer
+        app.encoder = None
 
     async def write_chunked(app, data):
+        if app.encoder: data = await app.encoder(data)
+
         if isinstance(data, (bytes, bytearray)):
-            await app.write_raw(b"%X\r\n%s\r\n" % (len(data), data))
+            await app.writer(b"%X\r\n%s\r\n" % (len(data), data))
         elif isinstance(data, (str, int)):
             raise Err("Only (bytes, bytearray, Iterable) are accepted")
         else:
             async for chunk in data:
-                await app.write_raw(b"%X\r\n%s\r\n" % (len(chunk), chunk))
+                await app.writer(b"%X\r\n%s\r\n" % (len(chunk), chunk))
 
             await app.write_chunked_eof()
 
     async def write_chunked_eof(app):
-        await app.write_raw(b"0\r\n\r\n")
+        await app.writer(b"0\r\n\r\n")
+    
+    async def eof(app):
+        if app.write == app.write_chunked:
+            return await app.write_chunked_eof()
 
     async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
         end, buff = False, bytearray()
@@ -92,41 +99,57 @@ class ExtraToolset:
 
             if app.current_length >= app.content_length: break
 
-    async def prepare(app, headers: dict = {}, status: int = 206, reason = None, protocol: str = "HTTP/1.1"):
-        if not app.write:
-            if headers.get("Transfer-Encoding"): app.write = app.write_chunked
-            else:
-                app.write = app.write_raw
+    async def prepare(app, headers: dict = {}, status: int = 206, reason: (str, bool) = None, protocol: str = "HTTP/1.1"):
+        if headers: headers = {key.capitalize(): val for key, val in headers.items()}
+        if headers.get("Transfer-encoding"): app.write = app.write_chunked
+        else: app.write = app.write_raw
 
         if not app.__is_prepared__:
             if not reason:
                 reason = StatusReason.reasons.get(status, "Unknown")
 
-            await app.write_raw(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
+            await app.writer(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
 
             if app.__cookie__:
-                await app.write_raw(app.__cookie__)
-            
+                await app.writer(app.__cookie__)
+
             app.__is_prepared__ = True
             app.__status__ = status
 
         if headers:
+            if (encoding := headers.get("Content-encoding")):
+                app.encoder = getattr(app, encoding, None)
+
             for key, val in headers.items():
                 if isinstance(val, list):
-                    for hval in val: await app.write_raw(b"%s: %s\r\n" % (key.encode(), hval.encode()))
+                    for hval in val: await app.writer(b"%s: %s\r\n" % (key.encode(), hval.encode()))
                     continue
 
-                await app.write_raw(b"%s: %s\r\n" % (key.encode(), val.encode()))
+                await app.writer(b"%s: %s\r\n" % (key.encode(), val.encode()))
 
-        await app.write_raw(b"\r\n")
+        await app.writer(b"\r\n")
 
     async def write_raw(app, data: (bytes, bytearray)):
+        if app.encoder: data = await app.encoder(data)
+
+        return await app.writer(data)
+
+    async def writer(app, data: (bytes, bytearray)):
         await app.buffer_overflow_manager()
 
         if not app.transport.is_closing():
             app.transport.write(data)
         else:
             raise Err("Client has disconnected.")
+    
+    async def br(app, data: (bytes, bytearray)):
+        return await to_thread(brotlicffi_compress, bytes(data))
+
+    async def gzip(app, data: (bytes, bytearray)):
+        encoder = compressobj(wbits=31)
+        data = encoder.compress(bytes(data))
+        if (_ := encoder.flush()): data += _
+        return data
 
 if __name__ == "__main__":
     pass
