@@ -23,17 +23,24 @@ class Gen:
     async def echo(app, x): yield x
 
 class Session(Toolset):
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "json_payload", "handler", "decoder", "decode_resp", "write",)
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "json", "handler", "decoder", "decode_resp", "write",)
 
     def __init__(app, *args, **kwargs):
+        for key in app.__slots__:
+            setattr(app, key, None)
         app.args, app.kwargs = args, kwargs
-        app.protocol, app.transport = None, None
         for i in app.__class__.__bases__: i.__init__(app)
 
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def conn(app, *args, **kwargs):
+        if args: app.args = args
+        if kwargs: app.kwargs = kwargs
+
+        return await app.create_connection(*app.args, **app.kwargs)
+
+    async def prepare(app, *args, **kwargs):
         if args: app.args = args
         if kwargs: app.kwargs = kwargs
 
@@ -88,22 +95,33 @@ class Session(Toolset):
         
         return host, port, path
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host = 0, port: int = 0, path: str = "", content = None, proxy={}, add_host=True, timeout=10.0, json: dict = {}, body = None, decode_resp = True, **kwargs):
-        app.method = method
-        app.headers = dict(headers)
-        app.proxy = dict(proxy) if proxy else None
-        app.json_payload = dict(json) if json else None
-        app.timeout = timeout
-        app.handler = None
-        app.decode_resp = decode_resp
-        app.decoder = None
-        app.write = None
-        app.response_headers = defaultdict(str)
-        app.status_code = 0
+    async def create_connection(
+        app,
+        url: str = "",
+        method: str = "",
+        headers: dict = {},
+        connect_only: bool = False,
+        host: int = 0,
+        port: int = 0,
+        path: str = "",
+        content = None,
+        proxy={},
+        add_host=True,
+        timeout=10.0,
+        json: dict = {},
+        response_headers: dict = {},
+        body = None,
+        decode_resp = True,
+        **kwargs
+    ):
+        for key, val in locals().items():
+            if not key in app.__slots__: continue
+            if isinstance(val, dict): val = dict(val)
+            setattr(app, key, val)
 
         if body: content = body
 
-        if not host and not port:
+        if any([not host, not port]):
             app.host, app.port, app.path = await app.url_to_host(url)
         else:
             app.host, app.port, app.path = host, port, path
@@ -135,8 +153,8 @@ class Session(Toolset):
             else:
                 app.write = app.protocol.push
 
-        if app.json_payload:
-            content = dumps(app.json_payload).encode()
+        if app.json:
+            content = dumps(app.json).encode()
             app.headers["Content-Length"] = len(content)
 
         if content is not None and not app.headers.get("Content-Length") and app.method not in {"GET", "HEAD", "OPTIONS"}:

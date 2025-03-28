@@ -65,7 +65,7 @@ class Toolset:
 
     async def eof(app):
         if app.write == app.write_chunked:
-            return await app.write_chunked_eof()
+            await app.write_chunked_eof()
 
     async def save(app, filepath: str, mode: str = "wb"):
         async with async_open(filepath, mode) as f:

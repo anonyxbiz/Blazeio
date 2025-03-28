@@ -24,6 +24,7 @@ from ujson import dumps, loads, JSONDecodeError
 
 from html import escape
 from traceback import extract_tb
+from queue import Queue
 
 from sys import stdout as sys_stdout
 
@@ -36,7 +37,26 @@ except Exception as e:
 INBOUND_CHUNK_SIZE = 1024
 OUTBOUND_CHUNK_SIZE = 1024
 
+class DotDict:
+    def __init__(app, dictionary):
+        app._dict = dictionary
+
+    def __getattr__(app, name):
+        if name in app._dict:
+            return app._dict[name]
+
+        raise AttributeError("'DotDict' object has no attribute '%s'" % name)
+
 class Default_logger:
+    colors = DotDict({
+        'info': '\033[32m',
+        'error': '\033[31m',
+        'warning': '\033[33m',
+        'critical': '\033[38;5;1m',
+        'debug': '\033[34m',
+        'reset': '\033[32m'
+    })
+
     def __init__(app, name=""):
         app.name = name
 
@@ -46,9 +66,6 @@ class Default_logger:
 
         if not "\n" in log: log += "\n"
         sys_stdout.write("\r%s" % log)
-
-    async def flush(app):
-        await to_thread(sys_stdout.flush)
 
     async def info(app, *args): await app.__log__(*args)
 
