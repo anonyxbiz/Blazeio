@@ -126,7 +126,8 @@ class BlazeioPayloadBuffered(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset
 
             if not app.__stream__: yield None
 
-    async def ayield(app, timeout: float = 60.0):
+    async def ayield(app, timeout = None):
+        if not timeout: timeout = app.__timeout__ or 60.0
         idle_time = None
 
         async for chunk in app.request():

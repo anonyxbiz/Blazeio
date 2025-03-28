@@ -41,6 +41,9 @@ class Default_logger:
         app.name = name
 
     async def __log__(app, log):
+        if not isinstance(log, str):
+            log = str(log)
+
         if not "\n" in log: log += "\n"
         sys_stdout.write("\r%s" % log)
 

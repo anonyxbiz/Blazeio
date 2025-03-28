@@ -116,11 +116,6 @@ class Session(Toolset):
                 ssl=ssl_context if app.port == 443 else None,
             )
 
-            if not app.write:
-                if app.headers.get("Transfer-Encoding"): app.write = app.write_chunked
-                else:
-                    app.write = app.protocol.push
-
         elif not app.protocol:
             app.transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
@@ -134,6 +129,11 @@ class Session(Toolset):
                     app.write = app.protocol.push
 
             return app
+
+        if not app.write:
+            if app.headers.get("Transfer-Encoding"): app.write = app.write_chunked
+            else:
+                app.write = app.protocol.push
 
         if app.json_payload:
             content = dumps(app.json_payload).encode()
