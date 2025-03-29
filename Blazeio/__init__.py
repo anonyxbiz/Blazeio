@@ -304,7 +304,7 @@ class OOP_RouteDef:
             except ValueError:
                 pass
             except Exception as e:
-                print(e)
+                pass
 
     def instantiate(app, to_instantiate: Callable):
         app.attach(to_instantiate)
