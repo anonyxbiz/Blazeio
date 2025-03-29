@@ -23,7 +23,7 @@ class Gen:
     async def echo(app, x): yield x
 
 class Session(Toolset):
-    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "json", "handler", "decoder", "decode_resp", "write",)
+    __slots__ = ("transport", "protocol", "args", "kwargs", "host", "port", "path", "headers", "buff", "method", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "json_payload", "handler", "decoder", "decode_resp", "write",)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__:
@@ -117,6 +117,10 @@ class Session(Toolset):
         for key, val in locals().items():
             if not key in app.__slots__: continue
             if isinstance(val, dict): val = dict(val)
+            
+            if key == "json":
+                key = "json_payload"
+
             setattr(app, key, val)
 
         if body: content = body
@@ -153,8 +157,8 @@ class Session(Toolset):
             else:
                 app.write = app.protocol.push
 
-        if app.json:
-            content = dumps(app.json).encode()
+        if app.json_payload:
+            content = dumps(app.json_payload).encode()
             app.headers["Content-Length"] = len(content)
 
         if content is not None and not app.headers.get("Content-Length") and app.method not in {"GET", "HEAD", "OPTIONS"}:

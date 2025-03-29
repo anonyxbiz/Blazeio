@@ -470,7 +470,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
         if not certfile or not keyfile: raise Err("certfile and keyfile paths are required.")
         
-        if not exists(certfile) or not exists(keyfile):
+        if not path.exists(certfile) or not path.exists(keyfile):
             from os import system
             system(f'openssl req -x509 -newkey rsa:2048 -keyout {keyfile} -out {certfile} -days 365 -nodes -subj "/CN={HOST}"')
         
