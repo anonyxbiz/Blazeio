@@ -6,3 +6,4 @@ dist
 build
 MANIFEST.in
 .gitignore
+push.py

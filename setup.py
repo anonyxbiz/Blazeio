@@ -14,11 +14,8 @@ else:
     requirements = []
     long_description = ""
 
-if environ.get("local"):
-    version = "0.0.%s" % str(dt.now().timestamp())
-else:
-    version = "2.0.1.3"
-    
+version = "2.0.1.3"
+
 setup(
     name="Blazeio",
     version=version,
