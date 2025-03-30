@@ -36,8 +36,7 @@ class App:
         }) as r:
             await r.prepare_http()
             while r.status_code >= 300 and r.status_code <= 310:
-                url = r.headers.get("location")
-                r.headers = {}
+                url = r.response_headers.get("location")
 
                 await r.conn(url)
                 await r.prepare_http()
