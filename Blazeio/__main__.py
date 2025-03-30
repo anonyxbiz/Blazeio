@@ -11,14 +11,15 @@ parser.add_argument('-save', '--save', type=str, required=False)
 args = parser.parse_args()
 
 class App:
+    redirect_range = {i for i in range(300,310)}
     def __init__(app):
         pass
 
     async def fetch(app, url: str, save: (str, bool) = None):
         if not "://" in url:
             url = "https://%s" % url
-
-        async with Session(url, "GET", {
+        
+        headers = {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
             'accept-encoding': 'gzip, br',
@@ -33,12 +34,15 @@ class App:
             'sec-fetch-site': 'same-origin',
             'user-agent': 'BlazeI/O',
             'connection': 'keep-alive',
-        }) as r:
-            await r.prepare_http()
-            while r.status_code >= 300 and r.status_code <= 310:
-                url = r.response_headers.get("location")
+        }
 
-                await r.conn(url)
+        async with Session(url, "GET", headers) as r:
+            await r.prepare_http()
+            while r.status_code in app.redirect_range:
+                if not (url := r.response_headers.get("location")): break
+
+                await r.conn(url, "GET", headers)
+
                 await r.prepare_http()
 
             if save:
