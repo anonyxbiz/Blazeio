@@ -4,6 +4,8 @@ from .Client import Session
 from .Dependencies import get_event_loop, log, loop
 from os import name
 
+io.OUTBOUND_CHUNK_SIZE = 1024*1024
+
 parser = ArgumentParser(prog="Blazeio", description="Blazeio")
 parser.add_argument('url', type=str)
 parser.add_argument('-save', '--save', type=str, required=False)
