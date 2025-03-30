@@ -14,8 +14,7 @@ args = parser.parse_args()
 
 class App:
     redirect_range = {i for i in range(300,310)}
-    def __init__(app):
-        pass
+    def __init__(app): pass
 
     async def fetch(app, url: str, save: (str, bool) = None):
         if not "://" in url:
