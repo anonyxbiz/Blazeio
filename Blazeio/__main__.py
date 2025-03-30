@@ -1,10 +1,10 @@
 # Blazeio.__main__.py
 from argparse import ArgumentParser
 from .Client import Session
-from .Dependencies import get_event_loop, log, loop
+from .Dependencies import *
 from os import name
 
-io.OUTBOUND_CHUNK_SIZE = 1024*1024
+OUTBOUND_CHUNK_SIZE = 1024*1024
 
 parser = ArgumentParser(prog="Blazeio", description="Blazeio")
 parser.add_argument('url', type=str)
