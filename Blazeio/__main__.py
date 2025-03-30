@@ -6,6 +6,7 @@ from os import name
 
 parser = ArgumentParser(prog="Blazeio", description="Blazeio")
 parser.add_argument('url', type=str)
+parser.add_argument('-save', '--save', type=str, required=False)
 
 args = parser.parse_args()
 
@@ -13,7 +14,7 @@ class App:
     def __init__(app):
         pass
 
-    async def fetch(app, url: str):
+    async def fetch(app, url: str, save: (str, bool) = None):
         if not "://" in url:
             url = "https://%s" % url
 
@@ -33,8 +34,13 @@ class App:
             'user-agent': 'BlazeI/O',
             'connection': 'keep-alive',
         }) as r:
-            async for chunk in r.pull():
-                await log.info(chunk.decode())
+            if save:
+                await r.save(save)
+            else:
+                async for chunk in r.pull():
+                    await log.info(chunk)
+
+            await io.sleep(0)
 
 def main():
     get_event_loop().run_until_complete(App().fetch(**args.__dict__))
