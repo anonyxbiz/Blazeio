@@ -39,6 +39,8 @@ class App:
             else:
                 async for chunk in r.pull():
                     await log.info(chunk)
+            
+            await sleep(0)
 
 def main():
     loop.run_until_complete(App().fetch(**args.__dict__))
