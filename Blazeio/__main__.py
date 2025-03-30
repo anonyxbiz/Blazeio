@@ -51,7 +51,7 @@ class App:
                 await r.save(save)
             else:
                 async for chunk in r.pull():
-                    await log.info(chunk)
+                    await log.info(chunk.decode())
 
 def main():
     loop.run_until_complete(App().fetch(**args.__dict__))
