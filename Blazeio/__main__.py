@@ -1,7 +1,7 @@
 # Blazeio.__main__.py
 from argparse import ArgumentParser
 from .Client import Session
-from .Dependencies import get_event_loop, log, sleep, loop
+from .Dependencies import get_event_loop, log, loop
 from os import name
 
 parser = ArgumentParser(prog="Blazeio", description="Blazeio")
@@ -50,8 +50,6 @@ class App:
             else:
                 async for chunk in r.pull():
                     await log.info(chunk)
-
-            # await sleep(0)
 
 def main():
     loop.run_until_complete(App().fetch(**args.__dict__))
