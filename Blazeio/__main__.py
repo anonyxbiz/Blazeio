@@ -1,7 +1,7 @@
 # Blazeio.__main__.py
 from argparse import ArgumentParser
 from .Client import Session
-from .Dependencies import get_event_loop, log
+from .Dependencies import get_event_loop, log, sleep
 from os import name
 
 parser = ArgumentParser(prog="Blazeio", description="Blazeio")
