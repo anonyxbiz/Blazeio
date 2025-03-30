@@ -34,6 +34,7 @@ class App:
             'user-agent': 'BlazeI/O',
             'connection': 'keep-alive',
         }) as r:
+            await r.prepare_http()
             while r.status_code >= 300 and r.status_code <= 310:
                 url = r.headers.get("location")
                 r.headers = {}

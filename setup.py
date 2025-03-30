@@ -17,7 +17,7 @@ else:
 if environ.get("local"):
     version = "0.0.%s" % str(dt.now().timestamp())
 else:
-    version = "2.0.0.6"
+    version = "2.0.0.7"
     
 setup(
     name="Blazeio",

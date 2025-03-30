@@ -70,7 +70,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if any([exc_type, exc_value, traceback]):
             await Log.critical("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
-            
+
             await sleep(0)
             return False
         
