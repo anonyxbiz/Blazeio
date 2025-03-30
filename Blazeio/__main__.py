@@ -1,7 +1,7 @@
 # Blazeio.__main__.py
 from argparse import ArgumentParser
 from .Client import Session
-from .Dependencies import get_event_loop, log, sleep
+from .Dependencies import get_event_loop, log, sleep, loop
 from os import name
 
 parser = ArgumentParser(prog="Blazeio", description="Blazeio")
@@ -43,7 +43,7 @@ class App:
             await sleep(0)
 
 def main():
-    get_event_loop().run_until_complete(App().fetch(**args.__dict__))
+    loop.run_until_complete(App().fetch(**args.__dict__))
 
 if __name__ == "__main__":
     main()
