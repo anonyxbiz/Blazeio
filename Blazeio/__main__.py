@@ -34,13 +34,20 @@ class App:
             'user-agent': 'BlazeI/O',
             'connection': 'keep-alive',
         }) as r:
+            while r.status_code >= 300 and r.status_code <= 310:
+                url = r.headers.get("location")
+                r.headers = {}
+
+                await r.conn(url)
+                await r.prepare_http()
+
             if save:
                 await r.save(save)
             else:
                 async for chunk in r.pull():
                     await log.info(chunk)
-            
-            await sleep(0)
+
+            # await sleep(0)
 
 def main():
     loop.run_until_complete(App().fetch(**args.__dict__))
