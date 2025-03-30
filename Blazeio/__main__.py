@@ -40,7 +40,7 @@ class App:
                 async for chunk in r.pull():
                     await log.info(chunk)
 
-            await io.sleep(0)
+            await sleep(0)
 
 def main():
     get_event_loop().run_until_complete(App().fetch(**args.__dict__))
