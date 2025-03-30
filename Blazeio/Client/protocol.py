@@ -105,7 +105,7 @@ class BlazeioClientProtocol(BufferedProtocol):
             else:
                 if idle_time is None:
                     idle_time = perf_counter()
-                
+
                 if perf_counter() - idle_time > timeout:
                     break
 

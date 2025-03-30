@@ -10,7 +10,6 @@ from typing import Callable
 
 from mimetypes import guess_type
 from os import stat, kill, getpid, path
-from signal import SIGKILL
 
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
 from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
@@ -23,16 +22,19 @@ from multiprocessing import Process, Event as ProcessEvent
 from ujson import dumps, loads, JSONDecodeError
 
 from html import escape
-from traceback import extract_tb
+from traceback import extract_tb, format_exc
 from queue import Queue
 
 from sys import stdout as sys_stdout
 
-try:
-    pid = getpid()
-except Exception as e:
-    sys_stdout.write("\r%s" % e)
-    pid = None
+from collections.abc import AsyncIterable
+from typing import Optional, Union
+
+from ssl import create_default_context, SSLError, Purpose
+
+from contextlib import asynccontextmanager
+
+from signal import SIGKILL
 
 INBOUND_CHUNK_SIZE = 1024
 OUTBOUND_CHUNK_SIZE = 1024
@@ -59,23 +61,23 @@ class Default_logger:
 
     def __init__(app, name=""):
         app.name = name
+    
+    def __getattr__(app, name):
+        if name in app.colors._dict:
+            async def dynamic_method(*args, **kwargs):
+                return await app.__log__(app.colors.__getattr__(name), *args, **kwargs)
 
-    async def __log__(app, log):
+            setattr(app, name, dynamic_method)
+            return dynamic_method
+
+        raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
+
+    async def __log__(app, color, log):
         if not isinstance(log, str):
             log = str(log)
 
         if not "\n" in log: log += "\n"
-        sys_stdout.write("\r%s" % log)
-
-    async def info(app, *args): await app.__log__(*args)
-
-    async def error(app, *args): await app.__log__(*args)
-
-    async def warning(app, *args): await app.__log__(*args)
-
-    async def critical(app, *args): await app.__log__(*args)
-
-    async def debug(app, *args): await app.__log__(*args)
+        sys_stdout.write("\r%s%s" % (color,log))
 
 logger = Default_logger(name='BlazeioLogger')
 
@@ -123,7 +125,7 @@ def routine_executor(arg):
 
 routine_executor(routines)
 
-class Log:
+class __log__:
     known_exceptions = (
         "[Errno 104] Connection reset by peer",
         "Client has disconnected.",
@@ -131,29 +133,27 @@ class Log:
         "asyncio/tasks.py",
     )
 
-    colors = {
-        'info': '\033[32m',
-        'error': '\033[31m',
-        'warning': '\033[33m',
-        'critical': '\033[38;5;1m',
-        'debug': '\033[34m',
-        'reset': '\033[32m'
-    }
+    def __init__(app): pass
 
-    @classmethod
-    async def __log__(app, r=None, message=None, color=None, logger_=logger.info):
+    def __getattr__(app, name):
+        if name in logger.colors._dict:
+            async def dynamic_method(*args, **kwargs):
+                return await app.__log__(*args, **kwargs, logger_=logger.__getattr__(name))
+            
+            setattr(app, name, dynamic_method)
+            return dynamic_method
+
+        raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
+
+    async def __log__(app, r=None, message=None, color=None, logger_=None):
         try:
-            log_level = logger_.__name__[logger_.__name__.rfind(".") + 1:]
-
-            color = color or app.colors.get(log_level, app.colors['reset'])
-
             if "BlazeioPayload" in str(r):
                 message = str(message).strip()
 
                 if message in app.known_exceptions:
                     return
 
-                message = f"{color}{message}{app.colors['reset']}"
+                # message = f"{color}{message}{app.colors['reset']}"
 
                 await logger_(
                     "%s•%s | [%s:%s] %s" % (
@@ -175,7 +175,7 @@ class Log:
                     return
 
                 msg = message
-                message = f"{color}{message}{app.colors['reset']}"
+                # message = f"{color}{message}{app.colors['reset']}"
 
                 if msg == "":
                     await logger_(message)
@@ -191,49 +191,10 @@ class Log:
         except Exception as e:
             pass
 
-    @classmethod
-    async def info(app, *args): await app.__log__(*args, logger_=logger.info)
 
-    @classmethod
-    async def error(app, *args): await app.__log__(*args, logger_=logger.error)
-
-    @classmethod
-    async def warning(app, *args): await app.__log__(*args, logger_=logger.warning)
-
-    @classmethod
-    async def critical(app, *args): await app.__log__(*args, logger_=logger.critical)
-
-    @classmethod
-    async def debug(app, *args): await app.__log__(*args, logger_=logger.debug)
-
-    @classmethod
-    async def m(app, *args): await app.__log__(*args, logger_=logger.error)
-
-    @classmethod
-    async def bench(app):
-        start_time = dt.now().timestamp()
-
-        async def w(task):
-            for method in dir(app):
-                method = getattr(app, method)
-    
-                if isinstance(method, Callable) and not (name := method.__name__).startswith((sepr := "__")) and not name.endswith(sepr) and method != app.bench and not name in ["type"]:
-    
-                    await method(None, name)
-            
-            await app.info("Task %s completed successfully in %s seconds" % (task, dt.now().timestamp() - start_time))
-
-        tasks = []
-
-        while len(tasks) < 500:
-            task = loop.create_task( w(len(tasks) +1 ) )
-            tasks.append(task)
-
-        await gather(*tasks)
-
-        exit()
+Log = __log__()
 
 routine_executor({
     ('p = Log.info', 'p = None'),
-    ('loop.run_until_complete(Log.debug(""))', '')
+    ('log = logger', 'p = None')
 })
