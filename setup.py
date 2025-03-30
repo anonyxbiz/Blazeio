@@ -17,7 +17,7 @@ else:
 if environ.get("local"):
     version = "0.0.%s" % str(dt.now().timestamp())
 else:
-    version = "2.0.0.1"
+    version = "2.0.0.2"
     
 setup(
     name="Blazeio",
@@ -37,6 +37,10 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    py_modules=['Blazeio'],
     python_requires='>=3.6',
+    entry_points={
+        'console_scripts': [
+            'Blazeio = Blazeio.__main__:main',
+        ],
+    },
 )

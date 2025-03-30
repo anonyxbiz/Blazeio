@@ -1,22 +1,43 @@
+# Blazeio.__main__.py
 from argparse import ArgumentParser
-import importlib.util
-from sys import modules
+from .Client import Session
+from .Dependencies import get_event_loop, log
+from os import name
 
-parser = ArgumentParser(prog="Blazeio", description="Web Framework")
-parser.add_argument('-path', '--path', required=True, help='The path of the file')
-parser.add_argument('-HOST', '--host', required=True, help='Host address to bind')
-parser.add_argument('-PORT', '--port', required=True, help='Port number to bind')
+parser = ArgumentParser(prog="Blazeio", description="Blazeio")
+parser.add_argument('url', type=str)
 
 args = parser.parse_args()
 
-spec = importlib.util.spec_from_file_location("web_module", args.path)
-module = importlib.util.module_from_spec(spec)
-modules["web_module"] = module
+class App:
+    def __init__(app):
+        pass
 
-spec.loader.exec_module(module)
+    async def fetch(app, url: str):
+        if not "://" in url:
+            url = "https://%s" % url
 
-if hasattr(module, "web"):
-    web = module.web
-    web.runner(args.host, int(args.port))
-else:
-    print("Error: 'web' object not found in the specified module.")
+        async with Session.get(url, {
+            'accept': '*/*',
+            'accept-language': 'en-US,en;q=0.9',
+            'accept-encoding': 'gzip, br',
+            'origin': url,
+            'priority': 'u=1, i',
+            'referer': url,
+            'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"%s"' % name.capitalize(),
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'user-agent': 'BlazeI/O',
+            'connection': 'keep-alive',
+        }) as r:
+            async for chunk in r.pull():
+                await log.info(chunk.decode())
+
+def main():
+    get_event_loop().run_until_complete(App().fetch(**args.__dict__))
+
+if __name__ == "__main__":
+    main()
