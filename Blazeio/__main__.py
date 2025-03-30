@@ -17,7 +17,7 @@ class App:
         if not "://" in url:
             url = "https://%s" % url
 
-        async with Session.get(url, {
+        async with Session(url, "GET", {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
             'accept-encoding': 'gzip, br',
