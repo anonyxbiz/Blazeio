@@ -34,7 +34,10 @@ from ssl import create_default_context, SSLError, Purpose
 
 from contextlib import asynccontextmanager
 
-from signal import SIGKILL
+try:from signal import SIGKILL
+except: SIGKILL = None
+
+pid = getpid()
 
 INBOUND_CHUNK_SIZE = 1024
 OUTBOUND_CHUNK_SIZE = 1024
