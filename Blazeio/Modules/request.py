@@ -116,7 +116,7 @@ class Request:
             params = url[idx0 + 1:]
 
         idx = 0
-        
+
         while True:
             await sleep(0)
 
@@ -129,7 +129,7 @@ class Request:
                     value, params = value[:idx], value[idx + 1:]
             
             
-            temp[await app.url_decode(key)] = await app.url_decode(value)
+                temp[await app.url_decode(key)] = await app.url_decode(value)
 
             if idx == -1 or idx_end != -1:
                 break

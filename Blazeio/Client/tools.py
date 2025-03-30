@@ -75,7 +75,8 @@ class Parsers:
     async def prepare_http(app):
         if app.response_headers: return
 
-        buff, headers, = bytearray(), None
+        buff, headers, idx = bytearray(), None, -1
+
         async for chunk in app.protocol.ayield(app.timeout):
             if not chunk: continue
             buff.extend(chunk)
@@ -86,8 +87,7 @@ class Parsers:
                 await app.protocol.prepend(buff)
                 break
         
-        if idx == -1:
-            raise Err("Unable to prepare request.")
+        # if idx == -1: raise Err("Unable to prepare request.")
 
         while headers and (idx := headers.find(app.prepare_http_sepr1)):
             await sleep(0)
