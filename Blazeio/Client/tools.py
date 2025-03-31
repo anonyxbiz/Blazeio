@@ -6,6 +6,8 @@ class Async:
     async def replace(app, data, a, b):
         while (idx := data.find(a)) != -1:
             await sleep(0)
+            if b == data[idx:idx + len(a)]: break
+
             data = data[:idx] + b + data[idx + len(a):]
 
         return data

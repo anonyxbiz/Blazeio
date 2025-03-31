@@ -19,7 +19,10 @@ from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 from threading import Thread, Event as ThreadEvent
 from multiprocessing import Process, Event as ProcessEvent
 
-from ujson import dumps, loads, JSONDecodeError
+try:
+    from ujson import dumps, loads, JSONDecodeError
+except:
+    from json import dumps, loads, JSONDecodeError
 
 from html import escape
 from traceback import extract_tb, format_exc
