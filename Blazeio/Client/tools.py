@@ -1,49 +1,54 @@
 from ..Dependencies import *
 from ..Modules.request import *
 
-class StaticStuff:
-    __slots__ = ()
-    
-    dynamic_attrs = {
-        "headers": "response_headers"
-    }
+class Async:
+    @classmethod
+    async def replace(app, data, a, b):
+        while (idx := data.find(a)) != -1:
+            await sleep(0)
+            data = data[:idx] + b + data[idx + len(a):]
 
-    def __init__(app):
-        pass
+        return data
 
 class Urllib:
     __slots__ = ()
+    scheme_sepr: str = "://"
+    host_sepr: str = "/"
+    param_sepr: str = "?"
+    port_sepr: str = ":"
+
     def __init__(app):
         pass
 
-    async def url_to_host(app, url: str, scheme_sepr: str = "://", host_sepr: str = "/", param_sepr: str = "?", port_sepr: str = ":"):
+    async def url_to_host(app, url: str, params: dict):
         parsed_url = {}
-        
-        url = url.replace(r"\/", "/")
-        
-        if (idx := url.find(scheme_sepr)) != -1:
-            parsed_url["hostname"] = url[idx + len(scheme_sepr):]
-            
-            if not host_sepr in parsed_url["hostname"]:
-                parsed_url["hostname"] += host_sepr
 
-            if (idx := parsed_url["hostname"].find(host_sepr)) != -1:
-                parsed_url["path"], parsed_url["hostname"] = parsed_url["hostname"][idx:], parsed_url["hostname"][:idx]
+        url = await Async.replace(url, r"\/", "/")
 
-            if (idx := parsed_url["hostname"].find(port_sepr)) != -1:
-                parsed_url["port"], parsed_url["hostname"] = int(parsed_url["hostname"][idx + len(port_sepr):]), parsed_url["hostname"][:idx]
+        if (idx := url.find(app.scheme_sepr)) != -1:
+            parsed_url["hostname"] = url[idx + len(app.scheme_sepr):]
 
-            if (idx := parsed_url["path"].find(param_sepr)) != -1:
-                parsed_url["query"], parsed_url["path"] = parsed_url["path"][idx + len(param_sepr):], parsed_url["path"][:idx]
+            if not app.host_sepr in parsed_url["hostname"]: parsed_url["hostname"] += app.host_sepr
+
+        if (idx := parsed_url["hostname"].find(app.host_sepr)) != -1:
+            parsed_url["path"], parsed_url["hostname"] = parsed_url["hostname"][idx:], parsed_url["hostname"][:idx]
+
+        if (idx := parsed_url["hostname"].find(app.port_sepr)) != -1:
+            parsed_url["port"], parsed_url["hostname"] = int(parsed_url["hostname"][idx + len(app.port_sepr):]), parsed_url["hostname"][:idx]
+
+        if (idx := parsed_url["path"].find(app.param_sepr)) != -1:
+            parsed_url["query"], parsed_url["path"] = parsed_url["path"][idx + len(app.param_sepr):], parsed_url["path"][:idx]
 
         host = parsed_url.get("hostname")
         path = parsed_url.get("path")
         port = parsed_url.get("port")
-        
+
         if (query := parsed_url.get("query")):
-            params = await Request.get_params(url="?%s" % query)
+            params.update(await Request.get_params(url="?%s" % query))
+        
+        if params:
             query = "?"
-    
+
             for k,v in params.items():
                 v = await Request.url_encode(v)
     
@@ -60,7 +65,17 @@ class Urllib:
             else:
                 port = 80
         
-        return host, port, path
+        return (host, port, path)
+
+class StaticStuff:
+    __slots__ = ()
+    
+    dynamic_attrs = {
+        "headers": "response_headers"
+    }
+
+    def __init__(app):
+        pass
 
 class Parsers:
     __slots__ = ()
@@ -86,8 +101,6 @@ class Parsers:
 
                 await app.protocol.prepend(buff)
                 break
-        
-        # if idx == -1: raise Err("Unable to prepare request.")
 
         while headers and (idx := headers.find(app.prepare_http_sepr1)):
             await sleep(0)
@@ -193,10 +206,6 @@ class Pushtools:
     __slots__ = ()
     def __init__(app): pass
 
-    def __getattr__(app, name):
-        if (method := getattr(app.protocol, name, None)):
-            return method
-
     async def push(app, *args, **kwargs):
         return await app.protocol.push(*args, **kwargs)
 
@@ -232,13 +241,13 @@ class Pulltools(Parsers):
         pass
 
     def __getattr__(app, name):
-        if (val := StaticStuff.dynamic_attrs.get(name)):
+        if (method := getattr(app.protocol, name, None)):
+            return method
+
+        elif (val := StaticStuff.dynamic_attrs.get(name)):
             return getattr(app, val)
 
         raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
-
-    async def ayield(app, *args):
-        async for chunk in app.protocol.ayield(*args): yield chunk
 
     async def pull(app, http=True):
         if http and not app.response_headers:

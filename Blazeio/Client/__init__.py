@@ -12,7 +12,9 @@ class Gen:
         pass
     
     @classmethod
-    async def file(app, file_path: str, chunk_size: int = 1024):
+    async def file(app, file_path: str, chunk_size: (bool, int) = None):
+        if not chunk_size: chunk_size = OUTBOUND_CHUNK_SIZE
+
         async with async_open(file_path, "rb") as f:
             while (chunk := await f.read(chunk_size)): yield chunk
 
@@ -40,7 +42,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params",)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
@@ -69,7 +71,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             protocol.transport.close()
 
         if any([exc_type, exc_value, traceback]):
-            await Log.critical("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
+            if not "Client has disconnected." in exc_value:
+                await Log.critical("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 
             await sleep(0)
             return False
@@ -91,6 +94,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         timeout: float = 60.0,
         json: dict = {},
         response_headers: dict = {},
+        params: dict = {},
         body: (bool, bytes, bytearray) = None,
         decode_resp: bool = True,
         max_unthreaded_json_loads_size: int = 102400,
@@ -105,10 +109,10 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if body: content = Gen.echo(body)
 
         if any([not host, not port]):
-            app.host, app.port, app.path = await app.url_to_host(url)
+            app.host, app.port, app.path = await app.url_to_host(url, app.params)
         else:
             app.host, app.port, app.path = host, port, path
-        
+
         headers = {a.capitalize(): b for a,b in headers.items()}
 
         if not app.protocol and not connect_only:
@@ -119,7 +123,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 ssl=ssl_context if app.port == 443 else None,
             )
 
-        elif not app.protocol:
+        else:
             transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
