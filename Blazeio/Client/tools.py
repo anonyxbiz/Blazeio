@@ -62,11 +62,11 @@ class Urllib:
             path += query
 
         if not port:
-            if url.startswith("https"):
+            if url.lower().startswith("https"):
                 port = 443
             else:
                 port = 80
-        
+
         return (host, port, path)
 
 class StaticStuff:
@@ -101,7 +101,7 @@ class Parsers:
             if (idx := buff.find(app.prepare_http_header_end)) != -1:
                 headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
 
-                await app.protocol.prepend(buff)
+                if buff: await app.protocol.prepend(buff)
                 break
 
         while headers and (idx := headers.find(app.prepare_http_sepr1)):
@@ -150,12 +150,10 @@ class Parsers:
                 app.decoder = None
 
     async def handle_chunked(app, *args, **kwargs):
-        if not args and not kwargs: kwargs = {"timeout": app.timeout}
-
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.protocol.ayield(*args, **kwargs):
+        async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
             if not chunk: chunk = b""
 
             if app.handle_chunked_endsig in buff or app.handle_chunked_endsig in chunk: end = True
@@ -198,9 +196,7 @@ class Parsers:
                 if not buff: break
 
     async def handle_raw(app, *args, **kwargs):
-        if not args and not kwargs: kwargs = {"timeout": app.timeout}
-
-        async for chunk in app.protocol.ayield(*args, **kwargs):
+        async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
             if app.received_len >= app.content_length: break
 
             if not chunk: continue
@@ -211,9 +207,6 @@ class Parsers:
 class Pushtools:
     __slots__ = ()
     def __init__(app): pass
-
-    async def push(app, *args, **kwargs):
-        return await app.protocol.push(*args, **kwargs)
 
     async def write_chunked(app, data: (tuple[bool, AsyncIterable[bytes | bytearray]])):
         if isinstance(data, (bytes, bytearray)):

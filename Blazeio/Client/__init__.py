@@ -47,7 +47,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
         app.args, app.kwargs = args, kwargs
-        # for i in app.__class__.__bases__: i.__init__(app)
 
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
@@ -74,10 +73,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             if not "Client has disconnected." in exc_value:
                 await Log.critical("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 
-            await sleep(0)
-            return False
-        
         await sleep(0)
+        return False
 
     async def create_connection(
         app,
