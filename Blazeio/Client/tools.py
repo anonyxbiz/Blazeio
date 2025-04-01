@@ -149,11 +149,13 @@ class Parsers:
             else:
                 app.decoder = None
 
-    async def handle_chunked(app):
+    async def handle_chunked(app, *args, **kwargs):
+        if not args and not kwargs: kwargs = {"timeout": app.timeout}
+
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.protocol.ayield(app.timeout):
+        async for chunk in app.protocol.ayield(*args, **kwargs):
             if not chunk: chunk = b""
 
             if app.handle_chunked_endsig in buff or app.handle_chunked_endsig in chunk: end = True
@@ -195,8 +197,10 @@ class Parsers:
             if end:
                 if not buff: break
 
-    async def handle_raw(app):
-        async for chunk in app.protocol.ayield(app.timeout):
+    async def handle_raw(app, *args, **kwargs):
+        if not args and not kwargs: kwargs = {"timeout": app.timeout}
+
+        async for chunk in app.protocol.ayield(*args, **kwargs):
             if app.received_len >= app.content_length: break
 
             if not chunk: continue
@@ -251,12 +255,12 @@ class Pulltools(Parsers):
 
         raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
-    async def pull(app, http=True):
+    async def pull(app, *args, http=True, **kwargs):
         if http and not app.response_headers:
             await app.prepare_http()
-        
+
         if not app.decoder:
-            async for chunk in app.handler():
+            async for chunk in app.handler(*args, **kwargs):
                 if chunk:
                     yield chunk
         else:
@@ -337,6 +341,12 @@ class Pulltools(Parsers):
             func = app.text
 
         return await func()
+
+    async def send_file(app, file_path: str, chunk_size: (bool, int) = None):
+        if not chunk_size: chunk_size = OUTBOUND_CHUNK_SIZE
+
+        async with async_open(file_path, "rb") as f:
+            while (chunk := await f.read(chunk_size)): await app.write(chunk)
 
 if __name__ == "__main__":
     pass
