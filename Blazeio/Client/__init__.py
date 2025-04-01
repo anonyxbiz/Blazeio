@@ -47,7 +47,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
         app.args, app.kwargs = args, kwargs
-        for i in app.__class__.__bases__: i.__init__(app)
+        # for i in app.__class__.__bases__: i.__init__(app)
 
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
@@ -123,7 +123,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 ssl=ssl_context if app.port == 443 else None,
             )
 
-        else:
+        elif not app.protocol and connect_only:
             transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
