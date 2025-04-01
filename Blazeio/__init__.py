@@ -530,7 +530,6 @@ class App(Handler, OOP_RouteDef, Monitoring):
         except Exception as e: await Log.critical("Blazeio.exit", str(e))
         finally:
             await Log.info("Blazeio.exit", ":: Exited.")
-            # kill(pid, SIGKILL)
             main_process.terminate()
 
     def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))

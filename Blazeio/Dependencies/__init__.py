@@ -158,8 +158,6 @@ class __log__:
                 if message in app.known_exceptions:
                     return
 
-                # message = f"{color}{message}{app.colors['reset']}"
-
                 await logger_(
                     "%s•%s | [%s:%s] %s" % (
                         r.identifier,
@@ -180,7 +178,6 @@ class __log__:
                     return
 
                 msg = message
-                # message = f"{color}{message}{app.colors['reset']}"
 
                 if msg == "":
                     await logger_(message)
