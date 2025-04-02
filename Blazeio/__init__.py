@@ -466,20 +466,50 @@ class App(Handler, OOP_RouteDef, Monitoring):
 
         return func
 
+
     def setup_ssl(app, HOST: str, PORT: int, ssl_data: dict):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
-        if not certfile or not keyfile: raise Err("certfile and keyfile paths are required.")
-        
+        if not certfile or not keyfile: 
+            raise Err("certfile and keyfile paths are required.")
+
         if not path.exists(certfile) or not path.exists(keyfile):
             from os import system
             system(f'openssl req -x509 -newkey rsa:2048 -keyout {keyfile} -out {certfile} -days 365 -nodes -subj "/CN={HOST}"')
         
-        from ssl import create_default_context, Purpose 
-        
+        from ssl import (
+            create_default_context, 
+            Purpose, 
+            PROTOCOL_TLS_SERVER,
+            OP_NO_SSLv2,
+            OP_NO_SSLv3,
+            OP_NO_TLSv1,
+            OP_NO_TLSv1_1,
+            OP_NO_COMPRESSION,
+            CERT_NONE
+        )
+
         ssl_context = create_default_context(Purpose.CLIENT_AUTH)
-        ssl_context.load_cert_chain(certfile=certfile, keyfile=keyfile)
-        return ssl_context
+
+        ssl_context.options |= (
+            OP_NO_SSLv2 | 
+            OP_NO_SSLv3 |
+            OP_NO_TLSv1 | 
+            OP_NO_TLSv1_1 |
+            OP_NO_COMPRESSION
+        )
+
+        ssl_context.set_ciphers('ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384')
+        ssl_context.verify_mode = CERT_NONE
         
+        try:
+            ssl_context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        except ssl.SSLError as e:
+            raise Err(f"SSL certificate loading failed: {str(e)}")
+
+        ssl_context.set_ecdh_curve('prime256v1')
+        
+        return ssl_context
+
     async def run(app, HOST: str, PORT: int, **kwargs):
         if not (ssl_data := kwargs.get("ssl", None)):
             pass

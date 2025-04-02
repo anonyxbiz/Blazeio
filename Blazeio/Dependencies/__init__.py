@@ -33,7 +33,7 @@ from sys import stdout as sys_stdout
 from collections.abc import AsyncIterable
 from typing import Optional, Union
 
-from ssl import create_default_context, SSLError, Purpose
+from ssl import create_default_context, SSLError, Purpose, CERT_NONE
 
 from contextlib import asynccontextmanager
 
