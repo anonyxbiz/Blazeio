@@ -43,10 +43,21 @@ class SessionMethodSetter(type):
 
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params",)
+    not_stated = "response_headers"
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
         app.args, app.kwargs = args, kwargs
+
+    def __getattr__(app, name):
+        if (method := getattr(app.protocol, name, None)):
+            pass
+        elif (val := StaticStuff.dynamic_attrs.get(name)):
+            method = getattr(app, val)
+        else:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+
+        return method
 
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
@@ -88,8 +99,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None,
         proxy: dict = {},
         add_host: bool = True,
-        timeout: float = 60.0,
+        timeout: float = 30.0,
         json: dict = {},
+        cookies: dict = {},
         response_headers: dict = {},
         params: dict = {},
         body: (bool, bytes, bytearray) = None,
@@ -97,7 +109,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         max_unthreaded_json_loads_size: int = 102400,
         **kwargs
     ):
-        for key, val in locals().items():
+        async for key, val in Async.ite(locals()):
             if not key in app.__slots__: continue
             if isinstance(val, dict): val = dict(val)
 
@@ -105,12 +117,19 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if body: content = Gen.echo(body)
 
-        if any([not host, not port]):
+        if not host or not port:
             app.host, app.port, app.path = await app.url_to_host(url, app.params)
         else:
             app.host, app.port, app.path = host, port, path
 
-        headers = {a.capitalize(): b for a,b in headers.items()}
+        headers = {key.capitalize(): val async for key, val in Async.ite(headers)}
+
+        if cookies:
+            cookie = ""
+            async for key, val in Async.ite(cookies):
+                cookie += "%s%s=%s" % ("; " if cookie else "", key, val)
+
+            headers["Cookie"] = cookie
 
         if not app.protocol and not connect_only:
             transport, app.protocol = await loop.create_connection(
@@ -152,18 +171,19 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             if not all(h in headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]): headers["Host"] = app.host
 
         http_version = "1.1"
-        payload = bytearray("%s %s HTTP/%s\r\n" % (method, app.path, http_version), "utf-8")
+        payload = bytearray("%s %s HTTP/%s\r\n" % (method.upper(), app.path, http_version), "utf-8")
 
-        for key, val in headers.items(): payload.extend(b"%s: %s\r\n" % (str(key).encode(), str(val).encode()))
+        async for key, val in Async.ite(headers):
+            payload.extend(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
 
         payload.extend(b"\r\n")
 
-        await app.protocol.push(payload)
+        await app.push(payload)
 
         if not app.write:
             if headers.get("Transfer-encoding"): app.write = app.write_chunked
             else:
-                app.write = app.protocol.push
+                app.write = app.push
 
         if content is not None:
             if isinstance(content, (bytes, bytearray)):

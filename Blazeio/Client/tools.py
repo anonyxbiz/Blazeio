@@ -4,13 +4,35 @@ from ..Modules.request import *
 class Async:
     @classmethod
     async def replace(app, data, a, b):
-        while (idx := data.find(a)) != -1:
+        idx_inc = 0
+        while (idx := data[idx_inc:].find(a)) != -1:
             await sleep(0)
-            if b == data[idx:idx + len(a)]: break
-
+            if data[idx:idx + len(a)] == b: break
             data = data[:idx] + b + data[idx + len(a):]
+            idx_inc += idx + len(b)
 
         return data
+
+    @classmethod
+    async def ite(app, data: (dict, list)):
+        if isinstance(data, dict):
+            for key, item in data.items():
+                await sleep(0)
+                yield (key, item)
+
+        elif isinstance(data, list):
+            for item in data:
+                await sleep(0)
+                yield item
+
+    @classmethod
+    async def cont(app, data: list):
+        conted = ""
+        for item in data:
+            await sleep(0)
+            conted += item
+
+        return conted
 
 class Urllib:
     __slots__ = ()
@@ -238,15 +260,6 @@ class Pulltools(Parsers):
     __slots__ = ()
     def __init__(app):
         pass
-
-    def __getattr__(app, name):
-        if (method := getattr(app.protocol, name, None)):
-            return method
-
-        elif (val := StaticStuff.dynamic_attrs.get(name)):
-            return getattr(app, val)
-
-        raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
     async def pull(app, *args, http=True, **kwargs):
         if http and not app.response_headers:
