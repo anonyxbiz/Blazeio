@@ -232,7 +232,7 @@ class DynamicRequestResponse(type):
         else:
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
-class Request(metaclass=DynamicRequestResponse):
+class __Request__(metaclass=DynamicRequestResponse):
     def __init__(app): pass
 
     @classmethod
@@ -240,7 +240,7 @@ class Request(metaclass=DynamicRequestResponse):
         async with Session(*args, **kwargs) as instance:
             return await getattr(instance, response_type)()
 
-Session.request = Request
+Session.request = __Request__
 
 if __name__ == "__main__":
     pass
