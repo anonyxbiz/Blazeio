@@ -1,5 +1,6 @@
 # Blazeio/__init__.py
 from .Dependencies import *
+from .Dependencies.alts import *
 from .Modules.streaming import *
 from .Modules.server_tools import *
 from .Modules.request import *
@@ -19,6 +20,7 @@ class BlazeioPayloadUtils:
     async def transporter(app):
         await app.on_client_connected(app)
 
+        await sleep(0)
         await app.close()
 
     async def control(app, duration=0):

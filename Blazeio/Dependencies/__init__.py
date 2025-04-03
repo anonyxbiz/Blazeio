@@ -1,5 +1,5 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run, create_subprocess_shell, set_event_loop, Event, BufferedProtocol, wait_for, TimeoutError, subprocess
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run, create_subprocess_shell, set_event_loop, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, iscoroutine
 
 from collections import deque, defaultdict, OrderedDict
 
@@ -63,6 +63,12 @@ class Default_logger:
         'debug': '\033[34m',
         'reset': '\033[32m'
     })
+    known_exceptions = (
+        "[Errno 104] Connection reset by peer",
+        "Client has disconnected.",
+        "Connection lost",
+        "asyncio/tasks.py",
+    )
 
     def __init__(app, name=""):
         app.name = name
@@ -78,11 +84,25 @@ class Default_logger:
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
     async def __log__(app, color, log):
+        if color == app.colors.critical:
+            log = await app.__exception_tracker__(log)
+
         if not isinstance(log, str):
             log = str(log)
 
         if not "\n" in log: log += "\n"
         sys_stdout.write("\r%s%s" % (color,log))
+
+    async def __exception_tracker__(app, e):
+        tb = extract_tb(e.__traceback__)
+        filename, lineno, func, text = tb[-1]
+
+        msg = "\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s." % (filename, lineno, text, func, str(e))
+
+        if str(e) in app.known_exceptions:
+            return ""
+
+        return msg
 
 logger = Default_logger(name='BlazeioLogger')
 

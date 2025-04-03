@@ -80,11 +80,12 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if (protocol := getattr(app, "protocol", None)):
             protocol.transport.close()
 
-        if any([exc_type, exc_value, traceback]):
-            if not "Client has disconnected." in exc_value:
+        if exc_type:
+            if not "Client has disconnected." in str(exc_value):
                 await Log.critical("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 
         await sleep(0)
+
         return False
 
     async def create_connection(
@@ -211,9 +212,35 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             await app.__aexit__(*exception)
 
     @classmethod
-    async def fetch(app, *args, **kwargs):
+    async def fetch(app,*args, **kwargs):
         async with app(*args, **kwargs) as instance:
             return await instance.data()
+
+class DynamicRequestResponse(type):
+    response_types = {"text", "json"}
+
+    def __getattr__(app, name):
+        if (response_type := name.lower()) in app.response_types:
+            async def dynamic_method(*args, **kwargs):
+                return await app.requestify(response_type, args, kwargs)
+        else:
+            dynamic_method = None
+
+        if dynamic_method:
+            setattr(app, name, dynamic_method)
+            return dynamic_method
+        else:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+
+class Request(metaclass=DynamicRequestResponse):
+    def __init__(app): pass
+
+    @classmethod
+    async def requestify(app, response_type: str, args, kwargs):
+        async with Session(*args, **kwargs) as instance:
+            return await getattr(instance, response_type)()
+
+Session.request = Request
 
 if __name__ == "__main__":
     pass

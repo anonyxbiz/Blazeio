@@ -339,8 +339,8 @@ class Pulltools(Parsers):
     async def data(app):
         if not app.response_headers: await app.prepare_http()
 
-        content_type = app.response_headers.get("content-type")
-        
+        content_type = app.response_headers.get("content-type", "")
+
         if content_type.lower() == "application/json":
             func = app.json
         else:

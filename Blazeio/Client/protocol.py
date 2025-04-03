@@ -4,7 +4,6 @@ from ..Modules.request import *
 class BlazeioClientProtocol(BufferedProtocol):
     __slots__ = (
         '__is_at_eof__',
-        '__is_alive__',
         'transport',
         '__buff__',
         '__stream__',
@@ -30,6 +29,38 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__ = bytearray(app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
 
+    def __getattr__(app, name):
+        if (method := getattr(app.transport, name, None)):
+            pass
+        elif (val := app.dynamic_attrs.get(name)):
+            method = getattr(app, val)
+        else:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+
+        return method
+
+    def connection_made(app, transport):
+        transport.pause_reading()
+        app.transport = transport
+
+    def eof_received(app):
+        app.__is_at_eof__ = True
+
+    def connection_lost(app, exc):
+        pass
+
+    def buffer_updated(app, nbytes):
+        app.transport.pause_reading()
+        app.__stream__.append(nbytes)
+
+    def get_buffer(app, sizehint):
+        if sizehint > len(app.__buff__memory__):
+            app.__buff__ = bytearray(sizehint)
+        elif sizehint <= 0:
+            sizehint = len(app.__buff__memory__)
+
+        return app.__buff__memory__[:sizehint]
+
     async def set_buffer(app, sizehint: int):
         if app.transport.is_reading(): app.transport.pause_reading()
 
@@ -44,21 +75,6 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__stream__.appendleft(sizehint)
 
-    def connection_made(app, transport):
-        transport.pause_reading()
-        app.transport = transport
-        app.__is_alive__ = True
-
-    def eof_received(app):
-        app.__is_at_eof__ = True
-
-    def connection_lost(app, exc):
-        app.__is_alive__ = False
-
-    def buffer_updated(app, nbytes):
-        app.transport.pause_reading()
-        app.__stream__.append(nbytes)
-
     async def ensure_reading(app):
         if not app.transport.is_reading() and not app.__stream__:
             app.transport.resume_reading()
@@ -70,22 +86,12 @@ class BlazeioClientProtocol(BufferedProtocol):
             while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
 
-                await app.ensure_reading()
-
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
             await sleep(app.__stream__sleep)
 
             if not app.__stream__: yield None
-
-    def get_buffer(app, sizehint):
-        if sizehint > len(app.__buff__memory__):
-            app.__buff__ = bytearray(sizehint)
-        elif sizehint <= 0:
-            sizehint = len(app.__buff__memory__)
-
-        return app.__buff__memory__[:sizehint]
 
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():
