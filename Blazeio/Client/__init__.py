@@ -109,9 +109,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         max_unthreaded_json_loads_size: int = 102400,
         follow_redirects: bool = False,
         auto_set_cookies: bool = False,
-        proxy_host: str = "",
-        proxy_port: int = 0,
-
         **kwargs
     ):
         async for key, val in Async.ite(locals()):

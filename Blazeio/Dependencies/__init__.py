@@ -104,6 +104,12 @@ class Default_logger:
             return ""
 
         return msg
+        
+    async def flush(app, thread=False):
+        if thread:
+            await to_thread(sys_stdout.flush,)
+        else:
+            sys_stdout.flush()
 
 logger = Default_logger(name='BlazeioLogger')
 
