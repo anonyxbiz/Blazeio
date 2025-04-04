@@ -219,15 +219,19 @@ class Parsers:
 
         if app.proxy_port != 443 and app.port == 443:
             retry_count = 0
-            max_retry_count = 3
+            max_retry_count = 2
 
             while retry_count < max_retry_count:
-                try: app.protocol.transport = await loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
+                try: tls_transport = await loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
                 except Exception as e:
                     retry_count += 1
                     if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))
                     await sleep(0)
                     continue
+                
+                if tls_transport:
+                    app.protocol.transport = tls_transport
+
                 break
 
         await app.protocol.push(await app.gen_payload(method, headers, app.path))

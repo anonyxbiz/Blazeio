@@ -222,12 +222,13 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return payload
 
     async def proxy_config(app, headers, proxy):
+        username, password = None, None
         if isinstance(proxy, dict):
             if not (proxy_host := proxy.get("host")) or not (proxy_port := proxy.get("port")):
                 raise Err("Proxy dict must have `host` and `port`.")
 
-                app.proxy_host, app.proxy_port = proxy_host, proxy_port
-    
+            app.proxy_host, app.proxy_port = proxy_host, proxy_port
+
             if (username := proxy.get("username")) and (password := proxy.get("password")):
                 pass
 
@@ -243,8 +244,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         
         app.proxy_port = int(app.proxy_port)
 
-        auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
-        headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
+        if username and password:
+            auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
+            headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
 
     @classmethod
     @asynccontextmanager
