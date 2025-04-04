@@ -4,8 +4,6 @@ from ..Modules.request import *
 from .protocol import *
 from .tools import *
 
-ssl_context = create_default_context()
-
 class Gen:
     __slots__ = ()
     def __init__(app):
@@ -42,7 +40,8 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies",)
+
     not_stated = "response_headers"
 
     def __init__(app, *args, **kwargs):
@@ -108,6 +107,11 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         body: (bool, bytes, bytearray) = None,
         decode_resp: bool = True,
         max_unthreaded_json_loads_size: int = 102400,
+        follow_redirects: bool = False,
+        auto_set_cookies: bool = False,
+        proxy_host: str = "",
+        proxy_port: int = 0,
+
         **kwargs
     ):
         async for key, val in Async.ite(locals()):
@@ -126,18 +130,31 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         headers = {key.capitalize(): val async for key, val in Async.ite(headers)}
 
         if cookies:
+            app.kwargs["cookies"] = cookies
             cookie = ""
             async for key, val in Async.ite(cookies):
                 cookie += "%s%s=%s" % ("; " if cookie else "", key, val)
 
             headers["Cookie"] = cookie
 
+        if app.protocol:
+            proxy = None
+
+        if proxy: await app.proxy_config(headers, proxy)
+        
+        ssl = ssl_context if app.port == 443 else None
+        
+        if app.proxy_port:
+            ssl = ssl_context if app.proxy_port == 443 else None
+
+        remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
+
         if not app.protocol and not connect_only:
             transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**kwargs),
-                host=app.host,
-                port=app.port,
-                ssl=ssl_context if app.port == 443 else None,
+                host=remote_host,
+                port=remote_port,
+                ssl=ssl,
             )
 
         elif not app.protocol and connect_only:
@@ -154,6 +171,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             return app
 
+        if add_host:
+            if not all(h in headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]): headers["Host"] = app.host
+
         if json:
             json = dumps(json).encode()
             content = Gen.echo(json)
@@ -162,24 +182,13 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             if (i := "Transfer-encoding") in headers: headers.pop(i, None)
 
-        if content is not None and all([not headers.get("Content-length"), not headers.get("Transfer-encoding"), method not in {"GET", "HEAD", "OPTIONS"}]):
+        if content is not None and all([not headers.get("Content-length"), not headers.get("Transfer-encoding"), method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
             if not isinstance(content, (bytes, bytearray)):
                 headers["Transfer-encoding"] = "chunked"
             else:
                 headers["Content-length"] = str(len(content))
 
-        if add_host:
-            if not all(h in headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]): headers["Host"] = app.host
-
-        http_version = "1.1"
-        payload = bytearray("%s %s HTTP/%s\r\n" % (method.upper(), app.path, http_version), "utf-8")
-
-        async for key, val in Async.ite(headers):
-            payload.extend(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
-
-        payload.extend(b"\r\n")
-
-        await app.push(payload)
+        await app.protocol.push(await app.gen_payload(method if not proxy else "CONNECT", headers, app.path))
 
         if not app.write:
             if headers.get("Transfer-encoding"): app.write = app.write_chunked
@@ -197,7 +206,34 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             await app.prepare_http()
 
+        if proxy:
+            await app.prepare_connect(method, headers)
+
         return app
+
+    async def gen_payload(app, method: str, headers: dict, path: str, http_version = "1.1"):
+        if method not in ["CONNECT"]:
+            payload = bytearray("%s %s HTTP/%s\r\n" % (method.upper(), path, http_version), "utf-8")
+        else:
+            payload = bytearray("%s %s:%s HTTP/%s\r\n" % (method.upper(), app.host, app.port, http_version), "utf-8")
+
+        async for key, val in Async.ite(headers):
+            payload.extend(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
+
+        payload.extend(b"\r\n")
+
+        return payload
+
+    async def proxy_config(app, headers, proxy):
+        if (username := proxy.get("username")) and (password := proxy.get("password")):
+            auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
+            headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
+
+        if (proxy_host := proxy.get("host")):
+            app.proxy_host = proxy_host
+
+        if (proxy_port := proxy.get("port")):
+            app.proxy_port = int(proxy_port)
 
     @classmethod
     @asynccontextmanager

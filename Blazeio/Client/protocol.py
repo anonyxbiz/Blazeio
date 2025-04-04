@@ -29,16 +29,6 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__ = bytearray(app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
 
-    def __getattr__(app, name):
-        if (method := getattr(app.transport, name, None)):
-            pass
-        elif (val := app.dynamic_attrs.get(name)):
-            method = getattr(app, val)
-        else:
-            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
-
-        return method
-
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport

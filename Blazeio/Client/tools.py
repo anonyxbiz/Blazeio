@@ -1,6 +1,8 @@
 from ..Dependencies import *
 from ..Modules.request import *
 
+ssl_context = create_default_context()
+
 class Async:
     @classmethod
     async def replace(app, data, a, b):
@@ -52,7 +54,11 @@ class Urllib:
         if (idx := url.find(app.scheme_sepr)) != -1:
             parsed_url["hostname"] = url[idx + len(app.scheme_sepr):]
 
-            if not app.host_sepr in parsed_url["hostname"]: parsed_url["hostname"] += app.host_sepr
+            if not app.host_sepr in parsed_url["hostname"]:
+                if (idx := parsed_url["hostname"].find(app.param_sepr)) != -1:
+                    parsed_url["hostname"] = parsed_url["hostname"][:idx] + app.host_sepr + parsed_url["hostname"][idx:]
+                else:
+                    parsed_url["hostname"] += app.host_sepr
 
         if (idx := parsed_url["hostname"].find(app.host_sepr)) != -1:
             parsed_url["path"], parsed_url["hostname"] = parsed_url["hostname"][idx:], parsed_url["hostname"][:idx]
@@ -108,6 +114,7 @@ class Parsers:
     prepare_http_header_end = b"\r\n\r\n"
     handle_chunked_endsig =  b"0\r\n\r\n"
     handle_chunked_sepr1 = b"\r\n"
+    http_redirect_status_range = (i for i in range(300,310))
 
     def __init__(app): pass
 
@@ -152,7 +159,7 @@ class Parsers:
             app.response_headers[key] = value
 
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
-        
+
         if app.response_headers.get("transfer-encoding"):
             app.handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
@@ -170,6 +177,64 @@ class Parsers:
                     app.decoder = None
             else:
                 app.decoder = None
+
+        
+        if app.auto_set_cookies:
+            if (Cookies := app.headers.get("set-cookie")):
+                splitter = "="
+                if not app.kwargs.get("cookies"):
+                    app.kwargs["cookies"] = {}
+
+                for cookie in Cookies:
+                    key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
+
+                    app.kwargs["cookies"][key] = val
+
+        if all([app.follow_redirects, app.status_code in app.http_redirect_status_range, (location := app.headers.get("location", None))]):
+            if len(app.args) == 3:
+                url, method, headers = app.args
+            elif len(app.args) == 2:
+                url, method, headers = app.args, app.kwargs.pop("headers", {})
+            elif len(app.args) == 1:
+                url, method, headers = app.args, app.kwargs.pop("method"), app.kwargs.pop("headers", {})
+            elif len(app.args) == 0:
+                url, method, headers = kwargs.pop("url"), app.kwargs.pop("method"), app.kwargs.pop("headers", {})
+
+            app.args = (location, method, headers,)
+
+            await app.prepare()
+
+            await app.prepare_http()
+
+    async def prepare_connect(app, method, headers):
+        buff, idx = bytearray(), -1
+
+        async for chunk in app.protocol.ayield(app.timeout):
+            if not chunk: continue
+            buff.extend(chunk)
+
+            if (idx := buff.rfind(app.prepare_http_sepr1)) != -1: break
+
+        if (auth_header := "Proxy-Authorization") in headers: headers.pop(auth_header)
+
+        if app.proxy_port != 443 and app.port == 443:
+            retry_count = 0
+            while retry_count < 5:
+                try:
+                    app.protocol.transport = await loop.start_tls(
+                        app.protocol.transport,
+                        app.protocol,
+                        ssl_context,
+                        server_hostname=app.host
+                    )
+                    break
+                except Exception as e:
+                    await log.warning("Ssl Handshake Failed, Retrying...")
+
+                    retry_count += 1
+                    await sleep(0)
+
+        await app.protocol.push(await app.gen_payload(method, headers, app.path))
 
     async def handle_chunked(app, *args, **kwargs):
         end, buff = False, bytearray()

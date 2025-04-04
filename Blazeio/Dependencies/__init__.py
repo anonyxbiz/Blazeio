@@ -38,6 +38,7 @@ from ssl import create_default_context, SSLError, Purpose, CERT_NONE
 from contextlib import asynccontextmanager
 
 from psutil import Process as psutilProcess
+from base64 import b64encode
 
 pid = getpid()
 main_process = psutilProcess(pid)
