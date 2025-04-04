@@ -97,7 +97,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         port: int = 0,
         path: str = "",
         content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None,
-        proxy: dict = {},
+        proxy: (tuple,dict) = {},
         add_host: bool = True,
         timeout: float = 30.0,
         json: dict = {},
@@ -225,15 +225,29 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return payload
 
     async def proxy_config(app, headers, proxy):
-        if (username := proxy.get("username")) and (password := proxy.get("password")):
-            auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
-            headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
+        if isinstance(proxy, dict):
+            if not (proxy_host := proxy.get("host")) or not (proxy_port := proxy.get("port")):
+                raise Err("Proxy dict must have `host` and `port`.")
 
-        if (proxy_host := proxy.get("host")):
-            app.proxy_host = proxy_host
+                app.proxy_host, app.proxy_port = proxy_host, proxy_port
+    
+            if (username := proxy.get("username")) and (password := proxy.get("password")):
+                pass
 
-        if (proxy_port := proxy.get("port")):
-            app.proxy_port = int(proxy_port)
+        elif isinstance(proxy, tuple):
+            if (proxy_len := len(proxy)) not in (2,4):
+                raise Err("Proxy tuple must be either 2 or 4")
+
+            if proxy_len == 2:
+                app.proxy_host, app.proxy_port = proxy
+
+            elif proxy_len == 4:
+                app.proxy_host, app.proxy_port, username, password  = proxy
+        
+        app.proxy_port = int(app.proxy_port)
+
+        auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
+        headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
 
     @classmethod
     @asynccontextmanager
