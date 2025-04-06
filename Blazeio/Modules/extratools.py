@@ -108,7 +108,7 @@ class ExtraToolset:
             if app.current_length >= app.content_length: break
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason: (str, bool) = None, protocol: str = "HTTP/1.1"):
-        headers = {key.capitalize(): val async for key, val in Async.ite(headers)}
+        headers = {key.capitalize(): val for key, val in headers.items()}
 
         if headers.get("Transfer-encoding"): app.write = app.write_chunked
         else: app.write = app.write_raw
@@ -127,7 +127,7 @@ class ExtraToolset:
         if (encoding := headers.get("Content-encoding")):
             app.encoder = getattr(app, encoding, None)
 
-        async for key, val in Async.ite(headers):
+        for key, val in headers.items():
             if isinstance(val, list):
                 for hval in val: await app.writer(b"%s: %s\r\n" % (key.encode(), hval.encode()))
                 continue

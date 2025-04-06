@@ -102,6 +102,8 @@ class Handler:
 
             await app.__main_handler__(r)
 
+            # while r.headers.get("Connection") == "keep-alive": await app.__main_handler__(r)
+
         except Abort as e:
             await e.text()
         except (Err, ServerGotInTrouble) as e:
