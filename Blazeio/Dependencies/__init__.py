@@ -17,7 +17,6 @@ from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
 from threading import Thread, Event as ThreadEvent
-from multiprocessing import Process, Event as ProcessEvent
 
 try:
     from ujson import dumps, loads, JSONDecodeError
@@ -179,7 +178,7 @@ class __log__:
 
     async def __log__(app, r=None, message=None, color=None, logger_=None):
         try:
-            if "BlazeioPayload" in str(r):
+            if "BlazeioServerProtocol" in str(r):
                 message = str(message).strip()
 
                 if message in app.known_exceptions:

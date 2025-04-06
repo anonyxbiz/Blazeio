@@ -3,9 +3,16 @@ from .request import *
 from .streaming import *
 from .server_tools import *
 from .reasons import *
+from ..Client import Async
 
 class ExtraToolset:
     __slots__ = ()
+    prepare_http_sepr1 = b"\r\n"
+    prepare_http_sepr2 = b": "
+    prepare_http_header_end = b"\r\n\r\n"
+    handle_chunked_endsig =  b"0\r\n\r\n"
+    handle_chunked_sepr1 = b"\r\n"
+
     def __init__(app):
         app.write = app.writer
         app.encoder = None
@@ -24,34 +31,35 @@ class ExtraToolset:
             await app.write_chunked_eof()
 
     async def write_chunked_eof(app):
-        await app.writer(b"0\r\n\r\n")
+        await app.writer(app.handle_chunked_endsig)
     
     async def eof(app):
         if app.write == app.write_chunked:
             return await app.write_chunked_eof()
 
-    async def handle_chunked(app, endsig =  b"0\r\n\r\n", sepr1=b"\r\n",):
+    async def handle_chunked(app, *args, **kwargs):
+        if app.headers is None: await app.reprepare()
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.ayield():
+        async for chunk in app.ayield(*args, **kwargs):
             if not chunk: chunk = b""
-            
-            if endsig in buff or endsig in chunk: end = True
+
+            if app.handle_chunked_endsig in buff or app.handle_chunked_endsig in chunk: end = True
 
             if size == False:
                 buff.extend(chunk)
-                if (idx := buff.find(sepr1)) == -1: continue
+                if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
 
                 if not (s := buff[:idx]):
-                    buff = buff[len(sepr1):]
-                    if (ido := buff.find(sepr1)) != -1:
+                    buff = buff[len(app.handle_chunked_sepr1):]
+                    if (ido := buff.find(app.handle_chunked_sepr1)) != -1:
                         s = buff[:ido]
                         idx = ido
                     else:
                         if not end: continue
 
-                size, buff = int(s, 16), buff[idx + len(sepr1):]
+                size, buff = int(s, 16), buff[idx + len(app.handle_chunked_sepr1):]
 
                 if size == 0: return
 
@@ -87,12 +95,12 @@ class ExtraToolset:
 
         app.__cookie__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
 
-    async def handle_raw(app, *args):
-        if app.headers is None: raise Err("Request not prepared.")
+    async def handle_raw(app, *args, **kwargs):
+        if app.headers is None: await app.reprepare()
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app.ayield(*args):
+        async for chunk in app.ayield(*args, **kwargs):
             if chunk:
                 app.current_length += len(chunk)
                 yield chunk
@@ -100,33 +108,32 @@ class ExtraToolset:
             if app.current_length >= app.content_length: break
 
     async def prepare(app, headers: dict = {}, status: int = 206, reason: (str, bool) = None, protocol: str = "HTTP/1.1"):
-        if headers: headers = {key.capitalize(): val for key, val in headers.items()}
+        headers = {key.capitalize(): val async for key, val in Async.ite(headers)}
+
         if headers.get("Transfer-encoding"): app.write = app.write_chunked
         else: app.write = app.write_raw
 
-        if not app.__is_prepared__:
-            if not reason:
-                reason = StatusReason.reasons.get(status, "Unknown")
+        if not reason:
+            reason = StatusReason.reasons.get(status, "Unknown")
 
-            await app.writer(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
+        await app.writer(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
 
-            if app.__cookie__:
-                await app.writer(app.__cookie__)
+        if app.__cookie__:
+            await app.writer(app.__cookie__)
 
-            app.__is_prepared__ = True
-            app.__status__ = status
+        app.__is_prepared__ = True
+        app.__status__ = status
+        
+        if (encoding := headers.get("Content-encoding")):
+            app.encoder = getattr(app, encoding, None)
 
-        if headers:
-            if (encoding := headers.get("Content-encoding")):
-                app.encoder = getattr(app, encoding, None)
+        async for key, val in Async.ite(headers):
+            if isinstance(val, list):
+                for hval in val: await app.writer(b"%s: %s\r\n" % (key.encode(), hval.encode()))
+                continue
 
-            for key, val in headers.items():
-                if isinstance(val, list):
-                    for hval in val: await app.writer(b"%s: %s\r\n" % (key.encode(), hval.encode()))
-                    continue
-
-                await app.writer(b"%s: %s\r\n" % (key.encode(), val.encode()))
-
+            await app.writer(b"%s: %s\r\n" % (key.encode(), val.encode()))
+        
         await app.writer(b"\r\n")
 
     async def write_raw(app, data: (bytes, bytearray)):
@@ -150,6 +157,9 @@ class ExtraToolset:
         data = encoder.compress(bytes(data))
         if (_ := encoder.flush()): data += _
         return data
+    
+    async def reprepare(app):
+        await Request.prepare_http_request(app)
 
 if __name__ == "__main__":
     pass

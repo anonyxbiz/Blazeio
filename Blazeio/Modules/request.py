@@ -56,6 +56,13 @@ class Request:
     
     form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n------'), (b'filename=', b'\r\n')
 
+    __server_config__ = {
+        "__http_request_heading_end_seperator__": b"\r\n\r\n",
+        "__http_request_heading_end_seperator_len__": 4,
+        "__http_request_max_buff_size__": 102400,
+        "__http_request_initial_separatir__": b' ',
+        "__http_request_auto_header_parsing__": True
+    }
 
     @classmethod
     async def get_cookie(app, r, val: str):
@@ -168,7 +175,8 @@ class Request:
         return r
 
     @classmethod
-    async def prepare_http_request(app, r, server):
+    async def prepare_http_request(app, r, server=None):
+        if not server: server = app
         __buff__ = bytearray()
 
         async for chunk in r.request():
