@@ -356,7 +356,10 @@ class App(Handler, OOP_RouteDef, Monitoring):
         
         return ssl_context
 
-    async def run(app, HOST: str, PORT: int, **kwargs):
+    async def run(app, HOST: str = "", PORT: int = 0, **kwargs):
+        HOST = HOST or app.ServerConfig.host
+        PORT = PORT or app.ServerConfig.port
+
         if not (ssl_data := kwargs.get("ssl", None)):
             pass
         else:
@@ -418,15 +421,8 @@ class App(Handler, OOP_RouteDef, Monitoring):
             if not kwargs.get("backlog"):
                 kwargs["backlog"] = 5000
 
-            if "version_control" in kwargs:
-                del kwargs["version_control"]
-                caller_frame = stack()[1]
-                caller_file = caller_frame.filename
-    
-                loop.run_until_complete(VersionControlla.control(caller_file, HOST, PORT, **kwargs))
-            else:
-                loop.run_until_complete(app.run(HOST, PORT, **kwargs))
-            
+            loop.run_until_complete(app.run(HOST, PORT, **kwargs))
+
         except KeyboardInterrupt:
             app.server.close()
             loop.run_until_complete(app.exit())
