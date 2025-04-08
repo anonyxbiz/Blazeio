@@ -40,7 +40,10 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase",)
+    NON_BODIED_HTTP_METHODS = {
+        "GET", "HEAD", "OPTIONS"
+    }
 
     not_stated = "response_headers"
 
@@ -159,7 +162,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
                 port=app.port,
-                **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__}
+                ssl=ssl if not kwargs.get("ssl") else kwargs.get("ssl"),
+                **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__ and a != "ssl"}
             )
             if not app.write:
                 if headers.get("Transfer-encoding"): app.write = app.write_chunked
@@ -192,6 +196,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             else:
                 app.write = app.push
 
+        if proxy:
+            await app.prepare_connect(method, headers)
+
         if content is not None:
             if isinstance(content, (bytes, bytearray)):
                 await app.write(content)
@@ -203,8 +210,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             await app.prepare_http()
 
-        if proxy:
-            await app.prepare_connect(method, headers)
+        elif method in app.NON_BODIED_HTTP_METHODS:
+            await app.prepare_http()
 
         return app
 

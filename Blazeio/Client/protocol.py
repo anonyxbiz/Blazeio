@@ -62,7 +62,7 @@ class BlazeioClientProtocol(BufferedProtocol):
     async def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
         sizehint = len(data)
-        app.__buff__ = bytearray(data) + app.__buff__ 
+        app.__buff__ = bytearray(data) + app.__buff__
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__stream__.appendleft(sizehint)
 

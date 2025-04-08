@@ -120,6 +120,9 @@ class Parsers:
 
     async def prepare_http(app):
         if app.response_headers: return
+        """app.protocol.__stream__.clear()
+        app.protocol.__buff__ = bytearray(app.protocol.__chunk_size__)
+        app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)"""
 
         buff, headers, idx = bytearray(), None, -1
 
@@ -129,9 +132,29 @@ class Parsers:
 
             if (idx := buff.find(app.prepare_http_header_end)) != -1:
                 headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
+                
+                if headers.startswith(app.prepare_http_sepr1):
+                    headers = headers[headers.find(app.prepare_http_sepr1) + len(app.prepare_http_sepr1):]
 
                 if buff: await app.protocol.prepend(buff)
                 break
+
+        if (idx := headers.find(app.prepare_http_sepr1)) != -1:
+            prot_headers = headers[:idx]
+
+            if prot_headers.count(b" ") < 2: return
+            
+            prot_headers_splits = prot_headers.decode().split(" ")
+
+            prot, status_code, app.reason_phrase = prot_headers_splits[0], prot_headers_splits[1], " ".join(prot_headers_splits[2:])
+            
+            if not prot[:5].upper().startswith("HTTP"): return
+
+            app.status_code = int(status_code)
+
+            headers = headers[idx + len(app.prepare_http_sepr1):]
+        else:
+            raise Err("Unknown Server Protocol")
 
         while headers and (idx := headers.find(app.prepare_http_sepr1)):
             await sleep(0)
@@ -139,14 +162,8 @@ class Parsers:
             if idx != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
             else: header, headers = headers, bytearray()
 
-            if (idx := header.find(app.prepare_http_sepr2)) == -1:
-                if not app.status_code:
-                    app.status_code = header[header.find(b" "):].decode().strip()
+            if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
 
-                    app.status_code = int(app.status_code[:app.status_code.find(" ")].strip())
-
-                continue
-            
             key, value = header[:idx].decode().lower(), header[idx + len(app.prepare_http_sepr2):].decode()
 
             if key in app.response_headers:
@@ -327,8 +344,7 @@ class Pulltools(Parsers):
         pass
 
     async def pull(app, *args, http=True, **kwargs):
-        if http and not app.response_headers:
-            await app.prepare_http()
+        if http and not app.response_headers: await app.prepare_http()
 
         if not app.decoder:
             async for chunk in app.handler(*args, **kwargs):
@@ -343,6 +359,14 @@ class Pulltools(Parsers):
         data = bytearray()
         async for chunk in app.pull():
             data.extend(chunk)
+
+        return data if not decode else data.decode()
+
+    async def read_exactly(app, size: int, decode=False):
+        data = bytearray()
+        async for chunk in app.pull():
+            data.extend(chunk)
+            if len(data) >= size: break
 
         return data if not decode else data.decode()
 
