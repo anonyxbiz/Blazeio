@@ -3,6 +3,25 @@ from ..Modules.request import *
 
 ssl_context = create_default_context()
 
+class Rvtools:
+    headers = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language': 'en-US,en;q=0.9',
+        'cache-control': 'no-cache',
+        'pragma': 'no-cache',
+        'sec-ch-ua': '"Not A(Brand";v="8", "Chromium";v="115"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1',
+        'upgrade-insecure-requests': '1',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 11; U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36'
+    }
+
+    def __init__(app): pass
+
 class Async:
     @classmethod
     async def replace(app, data, a, b):
@@ -90,7 +109,7 @@ class Urllib:
             path += query
 
         if not port:
-            if url.lower().startswith("https"):
+            if url[:5].lower().startswith("https"):
                 port = 443
             else:
                 port = 80
@@ -392,7 +411,11 @@ class Pulltools(Parsers):
             data.extend(chunk)
             async for x, data in app.find(data, start, end, cont):
                 yield x
-    
+
+    async def extract(app, *args, **kwargs):
+        async for chunk in app.aextract(*args, **kwargs):
+            return chunk
+
     async def brotli(app):
         decompressor = await to_thread(Decompressor)
         async for chunk in app.handler():

@@ -226,7 +226,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             payload.extend(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
 
         payload.extend(b"\r\n")
-
         return payload
 
     async def proxy_config(app, headers, proxy):

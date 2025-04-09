@@ -42,7 +42,7 @@ from base64 import b64encode
 pid = getpid()
 main_process = psutilProcess(pid)
 
-INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = 1024, 1024
+INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = 1024*100, 1024*100
 
 class DotDict:
     def __init__(app, dictionary):
