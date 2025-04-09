@@ -114,15 +114,13 @@ class Parsers:
     prepare_http_header_end = b"\r\n\r\n"
     handle_chunked_endsig =  b"0\r\n\r\n"
     handle_chunked_sepr1 = b"\r\n"
-    http_redirect_status_range = (i for i in range(300,310))
+    http_redirect_status_range = (300,301,302,304,305,306,307,308,309)
+    http_startswith = b"HTTP"
 
     def __init__(app): pass
 
     async def prepare_http(app):
-        if app.response_headers: return
-        """app.protocol.__stream__.clear()
-        app.protocol.__buff__ = bytearray(app.protocol.__chunk_size__)
-        app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)"""
+        if app.response_headers: return True
 
         buff, headers, idx = bytearray(), None, -1
 
@@ -131,6 +129,10 @@ class Parsers:
             buff.extend(chunk)
 
             if (idx := buff.find(app.prepare_http_header_end)) != -1:
+                if not buff[:5].upper().startswith(app.http_startswith):
+                    if buff: await app.protocol.prepend(buff)
+                    return
+
                 headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
                 
                 if headers.startswith(app.prepare_http_sepr1):
@@ -138,29 +140,27 @@ class Parsers:
 
                 if buff: await app.protocol.prepend(buff)
                 break
+        
+        if idx == -1:
+            if buff: await app.protocol.prepend(buff)
+            return
 
         if (idx := headers.find(app.prepare_http_sepr1)) != -1:
             prot_headers = headers[:idx]
 
-            if prot_headers.count(b" ") < 2: return
-            
             prot_headers_splits = prot_headers.decode().split(" ")
 
-            prot, status_code, app.reason_phrase = prot_headers_splits[0], prot_headers_splits[1], " ".join(prot_headers_splits[2:])
-            
-            if not prot[:5].upper().startswith("HTTP"): return
-
-            app.status_code = int(status_code)
+            prot, app.status_code, app.reason_phrase = prot_headers_splits[0], int(prot_headers_splits[1]), " ".join(prot_headers_splits[2:])
 
             headers = headers[idx + len(app.prepare_http_sepr1):]
         else:
             raise Err("Unknown Server Protocol")
 
-        while headers and (idx := headers.find(app.prepare_http_sepr1)):
+        while headers:
             await sleep(0)
 
-            if idx != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
-            else: header, headers = headers, bytearray()
+            if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
+            else: header, headers = headers, b""
 
             if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
 
@@ -195,9 +195,8 @@ class Parsers:
             else:
                 app.decoder = None
 
-        
         if app.auto_set_cookies:
-            if (Cookies := app.headers.get("set-cookie")):
+            if (Cookies := app.response_headers.get("set-cookie")):
                 splitter = "="
                 if not app.kwargs.get("cookies"):
                     app.kwargs["cookies"] = {}
@@ -207,21 +206,10 @@ class Parsers:
 
                     app.kwargs["cookies"][key] = val
 
-        if all([app.follow_redirects, app.status_code in app.http_redirect_status_range, (location := app.headers.get("location", None))]):
-            if len(app.args) == 3:
-                url, method, headers = app.args
-            elif len(app.args) == 2:
-                url, method, headers = app.args, app.kwargs.pop("headers", {})
-            elif len(app.args) == 1:
-                url, method, headers = app.args, app.kwargs.pop("method"), app.kwargs.pop("headers", {})
-            elif len(app.args) == 0:
-                url, method, headers = kwargs.pop("url"), app.kwargs.pop("method"), app.kwargs.pop("headers", {})
-
-            app.args = (location, method, headers,)
-
-            await app.prepare()
-
-            await app.prepare_http()
+        if all([app.follow_redirects, app.status_code in app.http_redirect_status_range, (location := app.response_headers.get("location", None))]):
+            await app.prepare(location)
+        
+        return True
 
     async def prepare_connect(app, method, headers):
         buff, idx = bytearray(), -1

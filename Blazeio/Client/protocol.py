@@ -67,7 +67,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__stream__.appendleft(sizehint)
 
     async def ensure_reading(app):
-        if not app.transport.is_reading() and not app.__stream__:
+        if not app.transport.is_reading() and not app.__stream__ and not app.transport.is_closing():
             app.transport.resume_reading()
 
     async def pull(app):
@@ -76,6 +76,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 
             while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
+                await app.ensure_reading()
 
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break

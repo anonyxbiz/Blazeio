@@ -72,9 +72,10 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
     async def prepare(app, *args, **kwargs):
         if not app.response_headers: return
+    
+        if args: app.args = (*args, *app.args[len(args):])
 
-        if args: app.args = args
-        if kwargs: app.kwargs = kwargs
+        if kwargs: app.kwargs.update(kwargs)
 
         return await app.create_connection(*app.args, **app.kwargs)
 
@@ -183,7 +184,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             if (i := "Transfer-encoding") in headers: headers.pop(i, None)
 
-        if content is not None and all([not headers.get("Content-length"), not headers.get("Transfer-encoding"), method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
+        if content is not None and all([not headers.get("Content-length"), not headers.get("Transfer-encoding"), method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
             if not isinstance(content, (bytes, bytearray)):
                 headers["Transfer-encoding"] = "chunked"
             else:
@@ -210,7 +211,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             await app.prepare_http()
 
-        elif method in app.NON_BODIED_HTTP_METHODS:
+        elif method.upper() in app.NON_BODIED_HTTP_METHODS:
             await app.prepare_http()
 
         return app
