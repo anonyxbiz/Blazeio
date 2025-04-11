@@ -345,6 +345,7 @@ class Parsers:
 
             if end and not buff: break
             elif end and not buff[2:]: break
+            
 
     async def handle_raw(app, *args, **kwargs):
         async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
