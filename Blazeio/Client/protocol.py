@@ -74,8 +74,8 @@ class BlazeioClientProtocol(BufferedProtocol):
         while True:
             await app.ensure_reading()
             if not app.__stream__:
-                if app.__stream__sleep <= 0.001:
-                    app.__stream__sleep += 0.00001
+                if app.__stream__sleep <= 0.01:
+                    app.__stream__sleep += 0.0001
             else:
                 app.__stream__sleep = 0
 
