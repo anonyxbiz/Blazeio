@@ -193,6 +193,10 @@ class Parsers:
         async for chunk in app.protocol.ayield(app.timeout):
             if not chunk: continue
             buff.extend(chunk)
+            
+            if len(buff) >= len(app.http_startswith):
+                if buff[:len(app.http_startswith)].upper() != app.http_startswith:
+                    return await app.protocol.prepend(buff)
 
             if (idx := buff.find(app.prepare_http_header_end)) != -1:
                 headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
