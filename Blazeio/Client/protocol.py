@@ -73,6 +73,11 @@ class BlazeioClientProtocol(BufferedProtocol):
     async def pull(app):
         while True:
             await app.ensure_reading()
+            if not app.__stream__:
+                if app.__stream__sleep <= 0.1:
+                    app.__stream__sleep += 0.001
+            else:
+                app.__stream__sleep = 0
 
             while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])

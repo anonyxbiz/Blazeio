@@ -55,6 +55,39 @@ class Async:
 
         return conted
 
+class Multipart:
+    __slots__ = ("files", "kwargs", "boundary", "boundary_eof", "headers",)
+
+    def __init__(app, files: str, **kwargs):
+        app.files, app.kwargs = files, kwargs
+        app.boundary = '----WebKitFormBoundary%s' % token_urlsafe(16)
+        app.boundary_eof = '\r\n%s--\r\n\r\n' % app.boundary
+        app.headers = {
+            "Content-Type": "multipart/form-data; boundary=%s" % app.boundary,
+            "Transfer-Encoding": "chunked",
+        }
+
+    async def gen_form(app, file: str):
+        filename = path.basename(file)
+        filetype = guess_type(file)[0]
+
+        for key, val in app.kwargs.items():
+            yield ('%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n' % (app.boundary, str(key), str(val))).encode()
+
+        yield ('%s\r\nContent-Disposition: form-data; name="avatar"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (app.boundary, filename, filetype)).encode()
+
+    async def ayield(app, file: str):
+        async with async_open(file, "rb") as f:
+            while (chunk := await f.read(OUTBOUND_CHUNK_SIZE)): yield chunk
+
+    async def pull(app):
+        for file in app.files:
+            async for chunk in app.gen_form(file): yield chunk
+    
+            async for chunk in app.ayield(file): yield chunk
+
+            yield app.boundary_eof.encode()
+
 class Urllib:
     __slots__ = ()
     scheme_sepr: str = "://"
@@ -137,9 +170,23 @@ class Parsers:
     http_startswith = b"HTTP"
 
     def __init__(app): pass
+    
+    async def clean_transport(app):
+        temp = bytearray()
+        async for chunk in app.protocol.ayield(app.timeout):
+            if not chunk: continue
+            temp.extend(chunk)
+
+            if (idx := temp.find(app.http_startswith)) == -1:
+                temp = temp[-len(app.http_startswith):]
+                continue
+            else:
+                await app.protocol.prepend(temp[idx:])
+                break
 
     async def prepare_http(app):
         if app.response_headers: return True
+        if app.consumption_started: await app.clean_transport()
 
         buff, headers, idx = bytearray(), None, -1
 
@@ -148,14 +195,7 @@ class Parsers:
             buff.extend(chunk)
 
             if (idx := buff.find(app.prepare_http_header_end)) != -1:
-                if not buff[:5].upper().startswith(app.http_startswith):
-                    if buff: await app.protocol.prepend(buff)
-                    return
-
                 headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
-                
-                if headers.startswith(app.prepare_http_sepr1):
-                    headers = headers[headers.find(app.prepare_http_sepr1) + len(app.prepare_http_sepr1):]
 
                 if buff: await app.protocol.prepend(buff)
                 break
@@ -267,23 +307,18 @@ class Parsers:
         async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
             if not chunk: chunk = b""
 
-            if app.handle_chunked_endsig in buff or app.handle_chunked_endsig in chunk: end = True
-
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
 
-                if not (s := buff[:idx]):
-                    buff = buff[len(app.handle_chunked_sepr1):]
-                    if (ido := buff.find(app.handle_chunked_sepr1)) != -1:
-                        s = buff[:ido]
-                        idx = ido
-                    else:
-                        if not end: continue
+                if buff.startswith(app.handle_chunked_sepr1):
+                    buff = buff[buff.find(app.handle_chunked_sepr1) + len(app.handle_chunked_sepr1):]
+
+                if not (s := buff[:idx]): continue
 
                 size, buff = int(s, 16), buff[idx + len(app.handle_chunked_sepr1):]
 
-                if size == 0: return
+                if size == 0: end = True
 
                 if len(buff) >= size:
                     chunk = buff
@@ -300,11 +335,12 @@ class Parsers:
 
                 chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
 
-                read, size = 0, False
                 yield chunk
-            
-            if end:
-                if not buff: break
+
+                read, size = 0, False
+
+            if end and not buff: break
+            elif end and not buff[2:]: break
 
     async def handle_raw(app, *args, **kwargs):
         async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
@@ -351,6 +387,9 @@ class Pulltools(Parsers):
         pass
 
     async def pull(app, *args, http=True, **kwargs):
+        if not app.consumption_started:
+            app.consumption_started = True
+
         if http and not app.response_headers: await app.prepare_http()
 
         if not app.decoder:

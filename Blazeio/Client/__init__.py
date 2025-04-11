@@ -40,7 +40,8 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started",)
+
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS"
     }
@@ -84,11 +85,12 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             protocol.transport.close()
 
         if exc_type:
+            # if exc_type == ValueError: return True
+
             if not "Client has disconnected." in str(exc_value):
-                await Log.critical("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
+                await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 
         await sleep(0)
-
         return False
 
     async def create_connection(
@@ -122,6 +124,11 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             setattr(app, key, val)
 
         if body: content = Gen.echo(body)
+        
+        if (multipart := kwargs.get("multipart")):
+            multipart = Multipart(**multipart)
+            headers.update(multipart.headers)
+            content = multipart.pull()
 
         if not host or not port:
             app.host, app.port, app.path = await app.url_to_host(url, app.params)
@@ -205,6 +212,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 await app.write(content)
             elif isinstance(content, AsyncIterable):
                 async for chunk in content: await app.write(chunk)
+
                 await app.eof()
             else:
                 raise Err("content must be AsyncIterable | bytes | bytearray")
@@ -297,6 +305,7 @@ class __Request__(metaclass=DynamicRequestResponse):
             return await getattr(instance, response_type)()
 
 Session.request = __Request__
+# Session.Multipart = Multipart
 
 if __name__ == "__main__":
     pass

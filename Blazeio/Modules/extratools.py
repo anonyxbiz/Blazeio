@@ -35,7 +35,8 @@ class ExtraToolset:
     
     async def eof(app):
         if app.write == app.write_chunked:
-            return await app.write_chunked_eof()
+            await app.write_chunked_eof()
+            await sleep(0)
 
     async def handle_chunked(app, *args, **kwargs):
         if app.headers is None: await app.reprepare()
@@ -45,23 +46,18 @@ class ExtraToolset:
         async for chunk in app.ayield(*args, **kwargs):
             if not chunk: chunk = b""
 
-            if app.handle_chunked_endsig in buff or app.handle_chunked_endsig in chunk: end = True
-
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
 
-                if not (s := buff[:idx]):
-                    buff = buff[len(app.handle_chunked_sepr1):]
-                    if (ido := buff.find(app.handle_chunked_sepr1)) != -1:
-                        s = buff[:ido]
-                        idx = ido
-                    else:
-                        if not end: continue
+                if buff.startswith(app.handle_chunked_sepr1):
+                    buff = buff[buff.find(app.handle_chunked_sepr1) + len(app.handle_chunked_sepr1):]
+
+                if not (s := buff[:idx]): continue
 
                 size, buff = int(s, 16), buff[idx + len(app.handle_chunked_sepr1):]
 
-                if size == 0: return
+                if size == 0: end = True
 
                 if len(buff) >= size:
                     chunk = buff
@@ -78,11 +74,11 @@ class ExtraToolset:
 
                 chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
 
-                read, size = 0, False
                 yield chunk
-            
-            if end:
-                if not buff: break
+
+                read, size = 0, False
+
+            if not buff and end: break
 
     async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
         if secure: secure = "Secure; "
