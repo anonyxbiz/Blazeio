@@ -44,14 +44,9 @@ class ExtraToolset:
         read, size, idx = 0, False, -1
 
         async for chunk in app.ayield(*args, **kwargs):
-            if not chunk: chunk = b""
-
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
-
-                if buff.startswith(app.handle_chunked_sepr1):
-                    buff = buff[buff.find(app.handle_chunked_sepr1) + len(app.handle_chunked_sepr1):]
 
                 if not (s := buff[:idx]): continue
 
@@ -60,25 +55,30 @@ class ExtraToolset:
                 if size == 0: end = True
 
                 if len(buff) >= size:
-                    chunk = buff
+                    chunk, buff = buff, bytearray()
                 else:
-                    chunk, buff = buff[:size], buff[size:]
+                    chunk, buff = buff[:size], bytearray()
 
             read += len(chunk)
 
-            if read < size:
+            if read <= size:
                 yield chunk
             else:
                 excess_chunk_size = read - size
                 chunk_size = len(chunk) - excess_chunk_size
 
-                chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
+                chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
+
+                if (idx := __buff__.find(app.handle_chunked_endsig)) != -1:
+                    await app.prepend(__buff__)
+                else:
+                    await app.prepend(__buff__)
 
                 yield chunk
 
                 read, size = 0, False
 
-            if not buff and end: break
+            if end: break
 
     async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
         if secure: secure = "Secure; "

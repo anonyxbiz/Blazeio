@@ -9,8 +9,8 @@ class BlazeioClientProtocol(BufferedProtocol):
         '__stream__',
         '__buff_requested__',
         '__buff__memory__',
-        '__stream__sleep',
         '__chunk_size__',
+        '__evt__',
     )
 
     def __init__(app, **kwargs):
@@ -18,8 +18,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
-        app.__stream__sleep = 0
-        
+ 
         if kwargs:
             for key, val in kwargs.items():
                 if key in app.__slots__:
@@ -28,6 +27,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__stream__ = deque()
         app.__buff__ = bytearray(app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
+        app.__evt__ = Event()
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -42,6 +42,7 @@ class BlazeioClientProtocol(BufferedProtocol):
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
         app.__stream__.append(nbytes)
+        app.__evt__.set()
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__memory__):
@@ -65,19 +66,18 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__ = bytearray(data) + app.__buff__
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__stream__.appendleft(sizehint)
+        app.__evt__.set()
 
     async def ensure_reading(app):
         if not app.transport.is_reading() and not app.__stream__ and not app.transport.is_closing():
             app.transport.resume_reading()
+        
+        await app.__evt__.wait()
+        app.__evt__.clear()
 
     async def pull(app):
         while True:
             await app.ensure_reading()
-            """if not app.__stream__:
-                if app.__stream__sleep <= 0.1:
-                    app.__stream__sleep += 0.0001
-            else:
-                app.__stream__sleep = 0"""
 
             while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
@@ -86,10 +86,6 @@ class BlazeioClientProtocol(BufferedProtocol):
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
-            await sleep(app.__stream__sleep)
-
-            if not app.__stream__: yield None
-
     async def push(app, data: (bytes, bytearray)):
         if not app.transport.is_closing():
             app.transport.write(data)
@@ -97,6 +93,10 @@ class BlazeioClientProtocol(BufferedProtocol):
             raise Err("Client has disconnected.")
 
     async def ayield(app, timeout: float = 10.0):
+        async for chunk in app.pull():
+            yield chunk
+
+    async def ayield_(app, timeout: float = 10.0):
         idle_time = None
 
         async for chunk in app.pull():

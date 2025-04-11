@@ -309,14 +309,9 @@ class Parsers:
         read, size, idx = 0, False, -1
 
         async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
-            if not chunk: chunk = b""
-
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
-
-                if buff.startswith(app.handle_chunked_sepr1):
-                    buff = buff[buff.find(app.handle_chunked_sepr1) + len(app.handle_chunked_sepr1):]
 
                 if not (s := buff[:idx]): continue
 
@@ -325,35 +320,39 @@ class Parsers:
                 if size == 0: end = True
 
                 if len(buff) >= size:
-                    chunk = buff
+                    chunk, buff = buff, bytearray()
                 else:
-                    chunk, buff = buff[:size], buff[size:]
+                    chunk, buff = buff[:size], bytearray()
 
             read += len(chunk)
 
-            if read < size:
+            if read <= size:
                 yield chunk
             else:
                 excess_chunk_size = read - size
                 chunk_size = len(chunk) - excess_chunk_size
 
-                chunk, buff = chunk[:chunk_size], bytearray(chunk[chunk_size:])
+                chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
+                
+                if (idx := __buff__.find(app.handle_chunked_endsig)) != -1:
+                    await app.protocol.prepend(__buff__)
+                else:
+                    await app.protocol.prepend(__buff__)
 
                 yield chunk
 
                 read, size = 0, False
 
-            if end and not buff: break
-            elif end and not buff[2:]: break
+            if end: break
 
     async def handle_raw(app, *args, **kwargs):
         async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
-            if app.received_len >= app.content_length: break
-
             if not chunk: continue
             app.received_len += len(chunk)
 
             yield chunk
+
+            if app.received_len >= app.content_length: break
 
 class Pushtools:
     __slots__ = ()
