@@ -104,11 +104,11 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
     async def request(app):
         while True:
             await app.ensure_reading()
-            if not app.__stream__:
+            """if not app.__stream__:
                 if app.__stream__sleep <= 0.1:
                     app.__stream__sleep += 0.0001
             else:
-                app.__stream__sleep = 0
+                app.__stream__sleep = 0"""
 
             while app.__stream__:
                 chunk = bytes(app.__buff__memory__[:app.__stream__.popleft()])
