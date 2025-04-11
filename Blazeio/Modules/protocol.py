@@ -52,7 +52,6 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         'write',
         'encoder',
         'encoder_obj',
-        '__evt__',
     )
     
     def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE=None):
@@ -78,7 +77,6 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         app.__stream__sleep = 0
         app.__overflow_sleep = 0
         app.__buff__memory__ = memoryview(app.__buff__)
-        app.__evt__ = Event()
 
         for i in app.__class__.__bases__: i.__init__(app)
 
@@ -98,18 +96,19 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         app.__buff__memory__ = memoryview(app.__buff__)
 
         app.__stream__.appendleft(sizehint)
-        app.__evt__.set()
 
     async def ensure_reading(app):
         if not app.transport.is_reading() and not app.__stream__:
             app.transport.resume_reading()
-        
-        await app.__evt__.wait()
-        app.__evt__.clear()
 
     async def request(app):
         while True:
             await app.ensure_reading()
+            if not app.__stream__:
+                if app.__stream__sleep <= 0.1:
+                    app.__stream__sleep += 0.0001
+            else:
+                app.__stream__sleep = 0
 
             while app.__stream__:
                 chunk = bytes(app.__buff__memory__[:app.__stream__.popleft()])
@@ -119,6 +118,8 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
 
             if not app.__stream__:
                 if app.transport.is_closing() or app.__is_at_eof__: break
+
+            await sleep(app.__stream__sleep)
 
             if not app.__stream__: yield None
 
@@ -147,7 +148,6 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
         app.__stream__.append(nbytes)
-        app.__evt__.set()
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__memory__):
