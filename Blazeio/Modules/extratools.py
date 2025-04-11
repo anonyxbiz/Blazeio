@@ -62,21 +62,18 @@ class ExtraToolset:
             read += len(chunk)
 
             if read <= size:
-                yield chunk
+                pass
             else:
                 excess_chunk_size = read - size
                 chunk_size = len(chunk) - excess_chunk_size
 
                 chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
-
-                if (idx := __buff__.find(app.handle_chunked_endsig)) != -1:
-                    await app.prepend(__buff__)
-                else:
-                    await app.prepend(__buff__)
-
-                yield chunk
+                
+                await app.prepend(__buff__)
 
                 read, size = 0, False
+            
+            yield chunk
 
             if end: break
 

@@ -53,6 +53,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         'encoder',
         'encoder_obj',
         '__evt__',
+        '__overflow_evt__',
     )
     
     def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE=None):
@@ -79,14 +80,15 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         app.__overflow_sleep = 0
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__evt__ = Event()
+        app.__overflow_evt__ = Event()
 
         for i in app.__class__.__bases__: i.__init__(app)
 
     async def buffer_overflow_manager(app):
         if not app.__is_buffer_over_high_watermark__: return
 
-        while app.__is_buffer_over_high_watermark__:
-            await sleep(app.__overflow_sleep)
+        await app.__overflow_evt__.wait()
+        app.__overflow_evt__.clear()
 
     async def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
@@ -111,33 +113,14 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         while True:
             await app.ensure_reading()
 
-            while app.__stream__:
+            if app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
-                await app.ensure_reading()
-
-            if not app.__stream__:
+            else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
     async def ayield(app, timeout: float = 10.0):
         async for chunk in app.request():
             yield chunk
-
-    async def ayield_(app, timeout = None):
-        if not timeout: timeout = app.__timeout__ or 60.0
-        idle_time = None
-
-        async for chunk in app.request():
-            yield chunk
-
-            if chunk is not None:
-                if idle_time is not None:
-                    idle_time = None
-            else:
-                if idle_time is None:
-                    idle_time = perf_counter()
-
-                if perf_counter() - idle_time > timeout:
-                    break
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -158,15 +141,19 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
 
     def connection_lost(app, exc):
         app.__is_alive__ = False
+        app.__evt__.set()
 
     def eof_received(app):
         app.__is_at_eof__ = True
+        app.__evt__.set()
 
     def pause_writing(app):
         app.__is_buffer_over_high_watermark__ = True
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
+        app.__overflow_evt__.set()
+        
 
 if __name__ == "__main__":
     pass

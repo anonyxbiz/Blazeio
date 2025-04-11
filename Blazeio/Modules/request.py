@@ -180,8 +180,7 @@ class Request:
         __buff__ = bytearray()
 
         async for chunk in r.request():
-            if chunk:
-                __buff__.extend(chunk)
+            __buff__.extend(chunk)
 
             if (idx := __buff__.find(server.__server_config__["__http_request_heading_end_seperator__"])) != -1:
                 __heading__, __buff__ = __buff__[:idx], b'' + __buff__[idx + server.__server_config__["__http_request_heading_end_seperator_len__"]:]

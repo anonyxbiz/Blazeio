@@ -174,7 +174,6 @@ class Parsers:
     async def clean_transport(app):
         temp = bytearray()
         async for chunk in app.protocol.ayield(app.timeout):
-            if not chunk: continue
             temp.extend(chunk)
 
             if (idx := temp.find(app.http_startswith)) == -1:
@@ -191,9 +190,7 @@ class Parsers:
         buff, headers, idx = bytearray(), None, -1
 
         async for chunk in app.protocol.ayield(app.timeout):
-            if not chunk: continue
             buff.extend(chunk)
-            
             if len(buff) >= len(app.http_startswith):
                 if buff[:len(app.http_startswith)].upper() != app.http_startswith:
                     return await app.protocol.prepend(buff)
@@ -278,7 +275,6 @@ class Parsers:
         buff, idx = bytearray(), -1
 
         async for chunk in app.protocol.ayield(app.timeout):
-            if not chunk: continue
             buff.extend(chunk)
 
             if (idx := buff.rfind(app.prepare_http_sepr1)) != -1: break
@@ -327,27 +323,23 @@ class Parsers:
             read += len(chunk)
 
             if read <= size:
-                yield chunk
+                pass
             else:
                 excess_chunk_size = read - size
                 chunk_size = len(chunk) - excess_chunk_size
 
                 chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
                 
-                if (idx := __buff__.find(app.handle_chunked_endsig)) != -1:
-                    await app.protocol.prepend(__buff__)
-                else:
-                    await app.protocol.prepend(__buff__)
-
-                yield chunk
+                await app.protocol.prepend(__buff__)
 
                 read, size = 0, False
+            
+            yield chunk
 
             if end: break
 
     async def handle_raw(app, *args, **kwargs):
         async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
-            if not chunk: continue
             app.received_len += len(chunk)
 
             yield chunk
@@ -403,6 +395,8 @@ class Pulltools(Parsers):
             async for chunk in app.decoder():
                 if chunk:
                     yield chunk
+
+        await sleep(0)
 
     async def aread(app, decode=False):
         data = bytearray()

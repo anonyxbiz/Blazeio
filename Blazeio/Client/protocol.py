@@ -35,9 +35,10 @@ class BlazeioClientProtocol(BufferedProtocol):
 
     def eof_received(app):
         app.__is_at_eof__ = True
+        app.__evt__.set()
 
     def connection_lost(app, exc):
-        pass
+        app.__evt__.set()
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
@@ -71,7 +72,7 @@ class BlazeioClientProtocol(BufferedProtocol):
     async def ensure_reading(app):
         if not app.transport.is_reading() and not app.__stream__ and not app.transport.is_closing():
             app.transport.resume_reading()
-        
+
         await app.__evt__.wait()
         app.__evt__.clear()
 
@@ -79,11 +80,9 @@ class BlazeioClientProtocol(BufferedProtocol):
         while True:
             await app.ensure_reading()
 
-            while app.__stream__:
+            if app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
-                await app.ensure_reading()
-
-            if not app.__stream__:
+            else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
     async def push(app, data: (bytes, bytearray)):
@@ -95,22 +94,6 @@ class BlazeioClientProtocol(BufferedProtocol):
     async def ayield(app, timeout: float = 10.0):
         async for chunk in app.pull():
             yield chunk
-
-    async def ayield_(app, timeout: float = 10.0):
-        idle_time = None
-
-        async for chunk in app.pull():
-            yield chunk
-
-            if chunk is not None:
-                if idle_time is not None:
-                    idle_time = None
-            else:
-                if idle_time is None:
-                    idle_time = perf_counter()
-
-                if perf_counter() - idle_time > timeout:
-                    break
 
 if __name__ == "__main__":
     pass
