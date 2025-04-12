@@ -493,7 +493,8 @@ class Pulltools(Parsers):
     async def save(app, filepath: str, mode: str = "wb"):
         async with async_open(filepath, mode) as f:
             async for chunk in app.pull(): await f.write(bytes(chunk))
-    
+            await sleep(0)
+
     async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)
     
     async def data(app):
@@ -513,6 +514,7 @@ class Pulltools(Parsers):
 
         async with async_open(file_path, "rb") as f:
             while (chunk := await f.read(chunk_size)): await app.write(chunk)
+            await sleep(0)
 
 if __name__ == "__main__":
     pass

@@ -70,11 +70,12 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__evt__.set()
 
     async def ensure_reading(app):
-        if not app.transport.is_reading() and not app.__stream__ and not app.transport.is_closing():
-            app.transport.resume_reading()
+        if not app.transport.is_closing():
+            if not app.__stream__ and not app.transport.is_reading():
+                app.transport.resume_reading()
 
-        await app.__evt__.wait()
-        app.__evt__.clear()
+            await app.__evt__.wait()
+            app.__evt__.clear()
 
     async def pull(app):
         while True:

@@ -80,43 +80,6 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
 
         for i in app.__class__.__bases__: i.__init__(app)
 
-    async def prepend(app, data):
-        if app.transport.is_reading(): app.transport.pause_reading()
-
-        sizehint = len(data)
-
-        app.__buff__ = bytearray(data) + app.__buff__ 
-
-        app.__buff__memory__ = memoryview(app.__buff__)
-
-        app.__stream__.appendleft(sizehint)
-        app.__evt__.set()
-
-    async def ensure_reading(app):
-        if not app.transport.is_reading() and not app.__stream__:
-            app.transport.resume_reading()
-
-        await app.__evt__.wait()
-        app.__evt__.clear()
-
-    async def request(app):
-        while True:
-            await app.ensure_reading()
-
-            while app.__stream__:
-                yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
-            else:
-                if app.transport.is_closing() or app.__is_at_eof__: break
-
-    async def ayield(app, timeout: float = 10.0):
-        async for chunk in app.request():
-            yield chunk
-
-    async def buffer_overflow_manager(app):
-        if not app.__is_buffer_over_high_watermark__: return
-
-        await app.__overflow_evt__.wait()
-
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
@@ -149,6 +112,46 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
         app.__overflow_evt__.set()
+
+    async def prepend(app, data):
+        if app.transport.is_reading(): app.transport.pause_reading()
+
+        sizehint = len(data)
+
+        app.__buff__ = bytearray(data) + app.__buff__ 
+
+        app.__buff__memory__ = memoryview(app.__buff__)
+
+        app.__stream__.appendleft(sizehint)
+        app.__evt__.set()
+
+    async def ensure_reading(app):
+        if not app.transport.is_closing():
+            if not app.__stream__ and not app.transport.is_reading():
+                app.transport.resume_reading()
+
+            await app.__evt__.wait()
+            app.__evt__.clear()
+
+    async def request(app):
+        while True:
+            await app.ensure_reading()
+
+            while app.__stream__:
+                yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
+            else:
+                if app.transport.is_closing() or app.__is_at_eof__: break
+
+    async def ayield(app, timeout: float = 10.0):
+        async for chunk in app.request():
+            yield chunk
+
+    async def buffer_overflow_manager(app):
+        if not app.__is_buffer_over_high_watermark__: return
+
+        await app.__overflow_evt__.wait()
+
+
 
 if __name__ == "__main__":
     pass
