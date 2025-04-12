@@ -408,17 +408,19 @@ class Pulltools(Parsers):
             app.consumption_started = True
 
         if http and not app.response_headers: await app.prepare_http()
+        
+        try:
+            if not app.decoder:
+                async for chunk in app.handler(*args, **kwargs):
+                    if chunk:
+                        yield chunk
+            else:
+                async for chunk in app.decoder():
+                    if chunk:
+                        yield chunk
 
-        if not app.decoder:
-            async for chunk in app.handler(*args, **kwargs):
-                if chunk:
-                    yield chunk
-        else:
-            async for chunk in app.decoder():
-                if chunk:
-                    yield chunk
-
-        await sleep(0)
+        except (GeneratorExit, StopIteration) as e:
+            pass
 
     async def aread(app, decode=False):
         data = bytearray()
