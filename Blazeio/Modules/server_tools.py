@@ -1,6 +1,6 @@
 from ..Dependencies import *
 from .request import *
-from .streaming import *      
+from .streaming import *
 
 class Simpleserve:
     __slots__ = (
@@ -25,29 +25,34 @@ class Simpleserve:
     compressable = (
         "text/html",
         "text/css",
+        "text/javascript",
         "text/x-python",
         "application/javascript",
-        "application/json"
+        "application/json",
     )
+    
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status = 200, **kwargs):
+        if r and file:
+            for method, value in locals().items():
+                if method not in app.__slots__: continue
+    
+                if isinstance(value, dict):
+                    value = dict(value)
+    
+                setattr(app, method, value)
 
-    async def initialize(app, r, file: str, CHUNK_SIZE: int = 1024, headers: dict = {"Accept-Ranges": "bytes"}, cache_control = {"max-age": "3600"}, status = 200, **kwargs):
-        for method, value in locals().items():
-            if method not in app.__slots__: continue
+            if not path.exists(app.file): raise Abort("Not Found", 404)
 
-            if isinstance(value, dict):
-                value = dict(value)
-
-            setattr(app, method, value)
-
-        if not path.exists(app.file): raise Abort("Not Found", 404)
+    async def initialize(app, *args, **kwargs):
+        if args or kwargs: app.__init__(*args, **kwargs)
 
         return await app.prepare_metadata()
 
     async def validate_cache(app):
-        if app.r.headers.get("If-None-Match") == app.etag:
+        if app.r.headers.get("If-none-match") == app.etag:
             raise Abort("Not Modified", 304)
 
-        elif (if_modified_since := app.r.headers.get("If-Modified-Since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
+        elif (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
             raise Abort("Not Modified", 304)
 
     async def prepare_metadata(app):
@@ -79,12 +84,12 @@ class Simpleserve:
         app.headers.update({
             "Content-Type": app.content_type,
             "Content-Disposition": app.content_disposition,
-            "Last-Modified": app.last_modified_str,
+            "Last-modified": app.last_modified_str,
             "Etag": app.etag
         })
-        
+
         if app.cache_control:
-            app.headers["Cache-Control"] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
+            app.headers["Cache-control"] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
 
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
             app.range_ = range_

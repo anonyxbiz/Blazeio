@@ -100,6 +100,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
     def connection_lost(app, exc):
         app.__is_alive__ = False
         app.__evt__.set()
+        app.__overflow_evt__.set()
 
     def eof_received(app):
         app.__is_at_eof__ = True
@@ -107,7 +108,6 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
 
     def pause_writing(app):
         app.__is_buffer_over_high_watermark__ = True
-        app.__overflow_evt__.clear()
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
@@ -150,8 +150,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         if not app.__is_buffer_over_high_watermark__: return
 
         await app.__overflow_evt__.wait()
-
-
+        app.__overflow_evt__.clear()
 
 if __name__ == "__main__":
     pass
