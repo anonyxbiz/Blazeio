@@ -30,13 +30,19 @@ class ExtraToolset:
 
             await app.write_chunked_eof()
 
-    async def write_chunked_eof(app):
+    async def write_chunked_eof(app, data: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None):
+        if data:
+            await app.write(data)
+
         await app.writer(app.handle_chunked_endsig)
     
-    async def eof(app):
+    async def eof(app, *args):
         if app.write == app.write_chunked:
-            await app.write_chunked_eof()
-            await sleep(0)
+            method = app.write_chunked_eof
+        else:
+            method = None
+
+        if method is not None: await method(*args)
 
     async def handle_chunked(app, *args, **kwargs):
         if app.headers is None: await app.reprepare()
@@ -119,6 +125,7 @@ class ExtraToolset:
         
         if (encoding := headers.get("Content-encoding")):
             app.encoder = getattr(app, encoding, None)
+            if not app.encoder: headers.pop("Content-encoding", None)
 
         for key, val in headers.items():
             if isinstance(val, list):

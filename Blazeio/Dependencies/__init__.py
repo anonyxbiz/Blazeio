@@ -86,8 +86,7 @@ class Default_logger:
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
     async def __log__(app, color, log):
-        if color == app.colors.critical:
-            log = await app.__exception_tracker__(log)
+        # if color == app.colors.critical: log = await app.__exception_tracker__(log)
 
         if not isinstance(log, str):
             log = str(log)

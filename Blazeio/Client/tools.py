@@ -26,11 +26,12 @@ class Async:
     @classmethod
     async def replace(app, data, a, b):
         idx_inc = 0
-        while (idx := data[idx_inc:].find(a)) != -1:
+        while a in data[idx_inc:] and (idx := data.find(a)) != -1:
+            idx_inc += idx + len(a)
+
             await sleep(0)
             if data[idx:idx + len(a)] == b: break
             data = data[:idx] + b + data[idx + len(a):]
-            idx_inc += idx + len(b)
 
         return data
 
@@ -87,6 +88,27 @@ class Multipart:
             async for chunk in app.ayield(file): yield chunk
 
             yield app.boundary_eof.encode()
+
+class AsyncHtml:
+    __slots__ = ()
+    def __init__(app): pass
+    
+    @classmethod
+    async def parse_text(app, html, a: str, b: str):
+        items = []
+
+        while (idx := html.find(a)) != -1:
+            await sleep(0)
+            item, html = html[idx + len(a):], html[idx + len(a):]
+
+            if (idy := item.find(b)) != -1:
+                item, html = item[:idy], html[idy + len(b):]
+            
+            if (item := item.strip()):
+                items.append(item)
+
+        return items
+
 
 class Urllib:
     __slots__ = ()

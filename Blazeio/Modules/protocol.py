@@ -43,8 +43,6 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         '__miscellaneous__',
         '__timeout__',
         '__buff__',
-        '__stream__sleep',
-        '__overflow_sleep',
         '__buff__memory__',
         'store',
         'transfer_encoding',
@@ -76,19 +74,11 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         app.__miscellaneous__ = None
         app.store = None
         app.__timeout__ = None
-        app.__stream__sleep = 0
-        app.__overflow_sleep = 0
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__evt__ = Event()
         app.__overflow_evt__ = Event()
 
         for i in app.__class__.__bases__: i.__init__(app)
-
-    async def buffer_overflow_manager(app):
-        if not app.__is_buffer_over_high_watermark__: return
-
-        await app.__overflow_evt__.wait()
-        app.__overflow_evt__.clear()
 
     async def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
@@ -113,7 +103,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         while True:
             await app.ensure_reading()
 
-            if app.__stream__:
+            while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
             else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
@@ -121,6 +111,11 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
     async def ayield(app, timeout: float = 10.0):
         async for chunk in app.request():
             yield chunk
+
+    async def buffer_overflow_manager(app):
+        if not app.__is_buffer_over_high_watermark__: return
+
+        await app.__overflow_evt__.wait()
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -149,11 +144,11 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
 
     def pause_writing(app):
         app.__is_buffer_over_high_watermark__ = True
+        app.__overflow_evt__.clear()
 
     def resume_writing(app):
         app.__is_buffer_over_high_watermark__ = False
         app.__overflow_evt__.set()
-        
 
 if __name__ == "__main__":
     pass

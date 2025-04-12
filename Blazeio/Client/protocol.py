@@ -80,7 +80,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         while True:
             await app.ensure_reading()
 
-            if app.__stream__:
+            while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
             else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
