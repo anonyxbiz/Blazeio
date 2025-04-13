@@ -14,8 +14,7 @@ class ExtraToolset:
     handle_chunked_sepr1 = b"\r\n"
 
     def __init__(app):
-        app.write = app.writer
-        app.encoder = None
+        pass
 
     async def write_chunked(app, data):
         if app.encoder: data = await app.encoder(data)
@@ -106,35 +105,36 @@ class ExtraToolset:
 
             if app.current_length >= app.content_length: break
 
-    async def prepare(app, headers: dict = {}, status: int = 206, reason: (str, bool) = None, protocol: str = "HTTP/1.1"):
-        headers = {key.capitalize(): val for key, val in headers.items()}
+    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = ""):
+        await app.writer(b'HTTP/1.1 %s %s\r\nServer: Blazeio\r\n' % (str(status).encode(), StatusReason.reasons.get(status, "Unknown").encode()))
 
-        if headers.get("Transfer-encoding"): app.write = app.write_chunked
-        else: app.write = app.write_raw
-
-        if not reason:
-            reason = StatusReason.reasons.get(status, "Unknown")
-
-        await app.writer(b"%s %s %s\r\nServer: Blazeio\r\n" % (protocol.encode(), str(status).encode(), reason.encode()))
-
-        if app.__cookie__:
-            await app.writer(app.__cookie__)
+        if app.__cookie__: await app.writer(app.__cookie__)
 
         app.__is_prepared__ = True
         app.__status__ = status
-        
-        if (encoding := headers.get("Content-encoding")):
-            app.encoder = getattr(app, encoding, None)
-            if not app.encoder: headers.pop("Content-encoding", None)
 
         for key, val in headers.items():
+            if not hasattr(app, "encoder"):
+                if key.capitalize() == "Content-encoding":
+                    app.encoder = getattr(app, val, None)
+
+            if not hasattr(app, "write"):
+                if key.capitalize() == "Transfer-encoding":
+                    app.write = app.write_chunked
+
+                elif key.capitalize() == "Content-length":
+                    app.write = app.write_raw
+
             if isinstance(val, list):
-                for hval in val: await app.writer(b"%s: %s\r\n" % (key.encode(), hval.encode()))
+                for hval in val: await app.writer(b"%s: %s\r\n" % (str(key).encode(), str(hval).encode()))
                 continue
 
-            await app.writer(b"%s: %s\r\n" % (key.encode(), val.encode()))
-        
+            await app.writer(b"%s: %s\r\n" % (str(key).encode(), str(val).encode()))
+
         await app.writer(b"\r\n")
+
+        if not hasattr(app, "write"): app.write = app.write_raw
+        if not hasattr(app, "encoder"): app.encoder = None
 
     async def write_raw(app, data: (bytes, bytearray)):
         if app.encoder: data = await app.encoder(data)
