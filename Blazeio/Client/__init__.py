@@ -84,9 +84,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if (protocol := getattr(app, "protocol", None)):
             protocol.transport.close()
 
-        if exc_type:
-            # if exc_type == ValueError: return True
-
+        if exc_type or exc_value or traceback:
             if not "Client has disconnected." in str(exc_value):
                 await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 

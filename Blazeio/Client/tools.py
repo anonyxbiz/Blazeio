@@ -39,19 +39,19 @@ class Async:
     async def ite(app, data: (dict, list)):
         if isinstance(data, dict):
             for key, item in data.items():
-                await sleep(0)
+                # await sleep(0)
                 yield (key, item)
 
         elif isinstance(data, list):
             for item in data:
-                await sleep(0)
+                # await sleep(0)
                 yield item
 
     @classmethod
     async def cont(app, data: list):
         conted = ""
         for item in data:
-            await sleep(0)
+            # await sleep(0)
             conted += item
 
         return conted
