@@ -145,8 +145,10 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             headers["Cookie"] = cookie
 
-        if app.protocol:
-            proxy = None
+        if app.protocol and app.protocol.transport.is_closing():
+            app.protocol = None
+
+        if app.protocol: proxy = None
 
         if proxy: await app.proxy_config(headers, proxy)
         

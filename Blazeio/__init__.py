@@ -102,8 +102,6 @@ class Handler:
 
             await app.__main_handler__(r)
 
-            # while r.headers.get("Connection") == "keep-alive": await app.__main_handler__(r)
-
         except Abort as e:
             await e.text()
         except (Err, ServerGotInTrouble) as e:
@@ -159,7 +157,7 @@ class SrvConfig:
     __timeout__ = float(60*10)
     __timeout_check_freq__ = 5
     __health_check_freq__ = 5
-    __log_requests__ = True
+    __log_requests__ = False
     INBOUND_CHUNK_SIZE = None
 
     def __init__(app): pass
@@ -376,7 +374,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
         )
 
         async with app.server:
-            await Log.info("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s" % ("http" if not ssl_data else "https", HOST, PORT))
+            await Log.info("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s, Request Logging is %s.\n" % ("http" if not ssl_data else "https", HOST, PORT, "enabled" if app.ServerConfig.__log_requests__ else "disabled"))
             await app.server.serve_forever()
 
     async def cancelloop(app, loop):
