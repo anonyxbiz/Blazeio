@@ -43,7 +43,7 @@ class SessionMethodSetter(type):
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor",)
 
-    __should_be_reset__ = ("path", "buff", "content_length", "received_len", "response_headers", "status_code", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "follow_redirects", "auto_set_cookies", "reason_phrase", "decompressor",)
+    __should_be_reset__ = ("decompressor",)
 
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS"
@@ -95,7 +95,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             if not "Client has disconnected." in str(exc_value):
                 await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 
-        await sleep(0)
         return False
 
     async def create_connection(
@@ -151,7 +150,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             async for key, val in normalized_cookies.items():
                 cookie += "%s%s=%s" % ("; " if cookie else "", key, val)
 
-            normalized_headers["Cookie"] = cookie
+            headers["Cookie"] = cookie
 
         if app.protocol and app.protocol.transport.is_closing(): app.protocol = None
 
@@ -183,33 +182,33 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             )
 
             if not app.write:
-                if await normalized_headers.find_key("Transfer-encoding"): app.write = app.write_chunked
+                if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
                 else:
                     app.write = app.protocol.push
 
             return app
 
         if add_host:
-            if not all([await normalized_headers.find_key(h) for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]): normalized_headers["Host"] = app.host
+            if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]): headers["Host"] = app.host
 
         if json:
             json = dumps(json).encode()
             content = Gen.echo(json)
 
-            normalized_headers["Content-length"] = len(json)
+            headers["Content-length"] = len(json)
 
             normalized_headers.pop("Transfer-encoding")
 
-        if content is not None and all([not await normalized_headers.find_key("Content-length"), not await normalized_headers.find_key("Transfer-encoding"), method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
+        if content is not None and all([not "Content-length" in normalized_headers, not "Transfer-encoding" in normalized_headers, method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
             if not isinstance(content, (bytes, bytearray)):
-                normalized_headers["Transfer-encoding"] = "chunked"
+                headers["Transfer-encoding"] = "chunked"
             else:
-                normalized_headers["Content-length"] = str(len(content))
+                headers["Content-length"] = str(len(content))
 
-        await app.protocol.push(await app.gen_payload(method if not proxy else "CONNECT", normalized_headers, app.path))
+        await app.protocol.push(await app.gen_payload(method if not proxy else "CONNECT", headers, app.path))
 
         if not app.write:
-            if await normalized_headers.find_key("Transfer-encoding"): app.write = app.write_chunked
+            if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
             else:
                 app.write = app.push
 
@@ -239,7 +238,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         else:
             payload = bytearray("%s %s:%s HTTP/%s\r\n" % (method.upper(), app.host, app.port, http_version), "utf-8")
 
-        async for key, val in headers.items():
+        for key, val in headers.items():
             payload.extend(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
 
         payload.extend(b"\r\n")

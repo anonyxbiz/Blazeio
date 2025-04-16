@@ -50,18 +50,5 @@ class DictView:
     def __setitem__(app, key, value):
         app._dict[key] = value
 
-    async def find_key(app, key, default=None):
-        for k in app._dict:
-            if k.lower() == key.lower():
-                return k
-            await sleep(0)
-
-        return default
-
-    async def items(app):
-        for k in app._dict:
-            yield (k, app._dict[k])
-            await sleep(0)
-
 if __name__ == "__main__":
     pass
