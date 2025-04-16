@@ -152,5 +152,13 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         await app.__overflow_evt__.wait()
         app.__overflow_evt__.clear()
 
+    async def writer(app, data: (bytes, bytearray)):
+        await app.buffer_overflow_manager()
+
+        if not app.transport.is_closing():
+            app.transport.write(data)
+        else:
+            raise Err("Client has disconnected.")
+
 if __name__ == "__main__":
     pass

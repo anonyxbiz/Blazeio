@@ -141,14 +141,6 @@ class ExtraToolset:
 
         return await app.writer(data)
 
-    async def writer(app, data: (bytes, bytearray)):
-        await app.buffer_overflow_manager()
-
-        if not app.transport.is_closing():
-            app.transport.write(data)
-        else:
-            raise Err("Client has disconnected.")
-    
     async def br(app, data: (bytes, bytearray)):
         return await to_thread(brotlicffi_compress, bytes(data))
 

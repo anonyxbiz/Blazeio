@@ -88,8 +88,11 @@ class Handler:
 
         for exc in Log.known_exceptions:
             if exc in msg: return
-
-        await logger(r, msg)
+        
+        if "Log" in str(logger):
+            await logger(r, msg)
+        else:
+            await logger(msg)
 
     async def handle_client(app, r):
         try:
@@ -110,7 +113,7 @@ class Handler:
             pass
         except KeyboardInterrupt as e: raise e
         except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
-            await app.handle_exception(r, e, Log.critical)
+            await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
 
         if app.ServerConfig.__log_requests__:
             await Log.debug(r, f"Completed with status {r.__status__} in {perf_counter() - r.__perf_counter__:.4f} seconds")

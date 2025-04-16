@@ -11,6 +11,8 @@ class BlazeioClientProtocol(BufferedProtocol):
         '__buff__memory__',
         '__chunk_size__',
         '__evt__',
+        '__is_buffer_over_high_watermark__',
+        '__overflow_evt__',
     )
 
     def __init__(app, **kwargs):
@@ -27,7 +29,9 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__stream__ = deque()
         app.__buff__ = bytearray(app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
+        app.__is_buffer_over_high_watermark__ = False
         app.__evt__ = Event()
+        app.__overflow_evt__ = Event()
 
     def connection_made(app, transport):
         transport.pause_reading()
@@ -53,6 +57,19 @@ class BlazeioClientProtocol(BufferedProtocol):
             sizehint = len(app.__buff__memory__)
 
         return app.__buff__memory__[:sizehint]
+
+    def pause_writing(app):
+        app.__is_buffer_over_high_watermark__ = True
+
+    def resume_writing(app):
+        app.__is_buffer_over_high_watermark__ = False
+        app.__overflow_evt__.set()
+
+    async def buffer_overflow_manager(app):
+        if not app.__is_buffer_over_high_watermark__: return
+
+        await app.__overflow_evt__.wait()
+        app.__overflow_evt__.clear()
 
     async def set_buffer(app, sizehint: int):
         if app.transport.is_reading(): app.transport.pause_reading()
@@ -87,6 +104,8 @@ class BlazeioClientProtocol(BufferedProtocol):
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
     async def push(app, data: (bytes, bytearray)):
+        await app.buffer_overflow_manager()
+
         if not app.transport.is_closing():
             app.transport.write(data)
         else:

@@ -39,19 +39,19 @@ class Async:
     async def ite(app, data: (dict, list)):
         if isinstance(data, dict):
             for key, item in data.items():
-                # await sleep(0)
+                await sleep(0)
                 yield (key, item)
 
         elif isinstance(data, list):
             for item in data:
-                # await sleep(0)
+                await sleep(0)
                 yield item
 
     @classmethod
     async def cont(app, data: list):
         conted = ""
         for item in data:
-            # await sleep(0)
+            await sleep(0)
             conted += item
 
         return conted
@@ -477,17 +477,19 @@ class Pulltools(Parsers):
             return chunk
 
     async def brotli(app):
-        decompressor = await to_thread(Decompressor)
+        if not app.decompressor:
+            app.decompressor = await to_thread(Decompressor)
         async for chunk in app.handler():
-            yield await to_thread(decompressor.decompress, bytes(chunk))
+            yield await to_thread(app.decompressor.decompress, bytes(chunk))
 
     async def gzip(app):
-        decompressor = decompressobj(16 + zlib_MAX_WBITS)
+        if not app.decompressor:
+            app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
 
         async for chunk in app.handler():
-            yield decompressor.decompress(bytes(chunk))
+            yield app.decompressor.decompress(bytes(chunk))
 
-        if (chunk := decompressor.flush()):
+        if (chunk := app.decompressor.flush()):
             yield chunk
 
     async def save(app, filepath: str, mode: str = "wb"):
@@ -515,6 +517,9 @@ class Pulltools(Parsers):
         async with async_open(file_path, "rb") as f:
             while (chunk := await f.read(chunk_size)): await app.write(chunk)
             await sleep(0)
+    
+    async def drain_pipe(app):
+        async for chunk in app.pull(): pass
 
 if __name__ == "__main__":
     pass
