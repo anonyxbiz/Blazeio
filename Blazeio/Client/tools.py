@@ -519,7 +519,7 @@ class Pulltools(Parsers):
             await sleep(0)
     
     async def drain_pipe(app):
-        async for chunk in app.pull(): pass
+        async for chunk in app.pull(): break
 
 if __name__ == "__main__":
     pass
