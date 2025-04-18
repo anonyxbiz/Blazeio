@@ -199,22 +199,26 @@ class Parsers:
             temp.extend(chunk)
 
             if (idx := temp.find(app.http_startswith)) == -1:
-                temp = temp[-len(app.http_startswith):]
+                # temp = temp[-len(app.http_startswith):]
+                if len(temp) >= app.max_unthreaded_json_loads_size: break
                 continue
             else:
-                await app.protocol.prepend(temp[idx:])
+                temp = temp[idx:]
                 break
+
+        return await app.protocol.prepend(temp)
 
     async def prepare_http(app):
         if app.response_headers: return True
-        if app.consumption_started: await app.clean_transport()
-
         buff, headers, idx = bytearray(), None, -1
+
+        if app.consumption_started: await app.clean_transport()
 
         async for chunk in app.protocol.ayield(app.timeout):
             buff.extend(chunk)
             if len(buff) >= len(app.http_startswith):
                 if buff[:len(app.http_startswith)].upper() != app.http_startswith:
+                    if debug_mode: raise Err(buff)
                     return await app.protocol.prepend(buff)
 
             if (idx := buff.find(app.prepare_http_header_end)) != -1:
@@ -222,7 +226,7 @@ class Parsers:
 
                 if buff: await app.protocol.prepend(buff)
                 break
-        
+
         if idx == -1:
             if buff: await app.protocol.prepend(buff)
             return
@@ -263,8 +267,6 @@ class Parsers:
             app.handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
             app.handler = app.handle_raw
-        else:
-            app.handler = app.protocol.pull
 
         if app.decode_resp:
             if (encoding := app.response_headers.pop("content-encoding", None)):
@@ -408,7 +410,7 @@ class Pulltools(Parsers):
             app.consumption_started = True
 
         if http and not app.response_headers: await app.prepare_http()
-        
+
         try:
             if not app.decoder:
                 async for chunk in app.handler(*args, **kwargs):
@@ -519,7 +521,7 @@ class Pulltools(Parsers):
             await sleep(0)
     
     async def drain_pipe(app):
-        async for chunk in app.pull(): break
+        async for chunk in app.pull(): pass
 
 if __name__ == "__main__":
     pass

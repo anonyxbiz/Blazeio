@@ -92,8 +92,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             protocol.transport.close()
 
         if exc_type or exc_value or traceback:
-            if not "Client has disconnected." in str(exc_value):
+            if all([not i in str(exc_value) and not i in str(exc_type) for i in ["KeyboardInterrupt","Client has disconnected."]]):
                 await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
+                raise exc_type(exc_value)
 
         return False
 
@@ -152,7 +153,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             headers["Cookie"] = cookie
 
-        if app.protocol and app.protocol.transport.is_closing(): app.protocol = None
+        if app.protocol and app.protocol.transport.is_closing():
+            if dev: raise Err("Protocol closed.")
+            app.protocol = None
 
         if app.protocol: proxy = None
 

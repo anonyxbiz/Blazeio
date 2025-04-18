@@ -80,15 +80,17 @@ class Handler:
 
         else: raise Abort("Not Found", 404)
     
-    async def handle_exception(app, r, e, logger):
+    async def handle_exception(app, r, e, logger, format_only=False):
         tb = extract_tb(e.__traceback__)
         filename, lineno, func, text = tb[-1]
         
         msg = "\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s." % (filename, lineno, text, func, str(e))
+        
+        if format_only: return msg
 
         for exc in Log.known_exceptions:
             if exc in msg: return
-        
+
         if "Log" in str(logger):
             await logger(r, msg)
         else:

@@ -9,7 +9,7 @@ from inspect import signature as sig, stack
 from typing import Callable
 
 from mimetypes import guess_type
-from os import stat, kill, getpid, path
+from os import stat, kill, getpid, path, environ
 
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
 from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
@@ -40,6 +40,8 @@ from psutil import Process as psutilProcess
 from base64 import b64encode
 
 from secrets import token_urlsafe
+
+debug_mode = environ.get("BlazeioDev", None)
 
 pid = getpid()
 main_process = psutilProcess(pid)
