@@ -71,12 +71,18 @@ class BlazeioClientProtocol(BufferedProtocol):
         await app.__overflow_evt__.wait()
         app.__overflow_evt__.clear()
 
-    async def set_buffer(app, sizehint: int):
+    async def set_buffer(app, sizehint: int = 0):
         if app.transport.is_reading(): app.transport.pause_reading()
 
-        app.__buff__ = app.__buff__ + bytearray(sizehint)
+        app.__is_at_eof__ = False
+        app.__buff_requested__ = False
 
+        app.__stream__ = deque()
+        app.__buff__ = bytearray(sizehint or app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
+        app.__is_buffer_over_high_watermark__ = False
+        app.__evt__ = Event()
+        app.__overflow_evt__ = Event()
 
     async def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()

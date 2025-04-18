@@ -22,25 +22,19 @@ class __Coro__:
 Coro = __Coro__()
 
 class DictView:
-    __slots__ = ("_dict",)
+    __slots__ = ("_dict", "_capitalized",)
 
     def __init__(app, _dict: dict):
         app._dict = _dict
+        app._capitalized = {i.capitalize(): i for i in app._dict}
 
     def __contains__(app, key):
-        key = key.lower()
-        for i in app._dict:
-            if i.lower() == key:
-                return True
+        if key in app._capitalized:
+            return True
         return False
 
     def pop(app, key, default=None):
-        key = key.lower()
-        for i in app._dict:
-            if i.lower() == key:
-                return app._dict.pop(i, default)
-
-        return default
+        return app._dict.pop(app._capitalized.get(key), default)
 
 if __name__ == "__main__":
     pass

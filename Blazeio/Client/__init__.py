@@ -69,18 +69,17 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def conn(app, *args, **kwargs):
-        if args: app.args = args
-        if kwargs: app.kwargs = kwargs
+        if args: app.args = (*args, *app.args[len(args):])
+        if kwargs: app.kwargs.update(kwargs)
 
         for key in app.__should_be_reset__: setattr(app, key, None)
 
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def prepare(app, *args, **kwargs):
-        if not app.response_headers: return
+        if not app.response_headers: return await sleep(0)
 
         if args: app.args = (*args, *app.args[len(args):])
-
         if kwargs: app.kwargs.update(kwargs)
 
         for key in app.__should_be_reset__: setattr(app, key, None)
@@ -94,7 +93,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if exc_type or exc_value or traceback:
             if all([not i in str(exc_value) and not i in str(exc_type) for i in ["KeyboardInterrupt","Client has disconnected."]]):
                 await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
-                raise exc_type(exc_value)
 
         return False
 
@@ -153,9 +151,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             headers["Cookie"] = cookie
 
-        if app.protocol and app.protocol.transport.is_closing():
-            if dev: raise Err("Protocol closed.")
-            app.protocol = None
+        if app.protocol and app.protocol.transport.is_closing(): app.protocol = None
 
         if app.protocol: proxy = None
 
@@ -199,8 +195,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             content = Gen.echo(json)
 
             headers["Content-length"] = len(json)
-
-            normalized_headers.pop("Transfer-encoding")
+            if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
         if content is not None and all([not "Content-length" in normalized_headers, not "Transfer-encoding" in normalized_headers, method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
             if not isinstance(content, (bytes, bytearray)):
