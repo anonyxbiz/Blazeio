@@ -21,7 +21,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
-        app.__continous__ = True
+        app.__continous__ = 1
  
         if kwargs:
             for key in kwargs:

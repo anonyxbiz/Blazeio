@@ -142,7 +142,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         else:
             app.host, app.port, app.path = host, port, path
 
-        normalized_headers = DictView(headers)
+        normalized_headers = {a.capitalize() for a in headers}
 
         if cookies:
             app.kwargs["cookies"] = cookies
@@ -201,9 +201,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             content = Gen.echo(json)
 
             headers["Content-length"] = len(json)
-            if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
+            # if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
-        if content is not None and all([not "Content-length" in normalized_headers, not "Transfer-encoding" in normalized_headers, method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
+        if content is not None and all([not "Content-length" in headers, not "Transfer-encoding" in headers, method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
             if not isinstance(content, (bytes, bytearray)):
                 headers["Transfer-encoding"] = "chunked"
             else:
