@@ -77,6 +77,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def prepare(app, *args, **kwargs):
+        if app.protocol:
+            app.protocol.__stream__.clear()
+
         if not app.response_headers: return await sleep(0)
 
         if args: app.args = (*args, *app.args[len(args):])
@@ -151,7 +154,10 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             headers["Cookie"] = cookie
 
-        if app.protocol and app.protocol.transport.is_closing(): app.protocol = None
+        if app.protocol and app.protocol.transport.is_closing():
+            if debug_mode: await Log.warning("protocol transport is_closing")
+
+            app.protocol = None
 
         if app.protocol: proxy = None
 
@@ -202,8 +208,12 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 headers["Transfer-encoding"] = "chunked"
             else:
                 headers["Content-length"] = str(len(content))
+        
+        if kwargs.get("metrics_logs"): connect_start = perf_counter()
 
         await app.protocol.push(await app.gen_payload(method if not proxy else "CONNECT", headers, app.path))
+        
+        if kwargs.get("metrics_logs"): await Log.debug("Sent request in [%s] s." % str(perf_counter() - connect_start))
 
         if not app.write:
             if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
@@ -212,6 +222,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if proxy:
             await app.prepare_connect(method, headers)
+
+        if kwargs.get("metrics_logs"): prep_start = perf_counter()
 
         if content is not None:
             if isinstance(content, (bytes, bytearray)):
@@ -227,6 +239,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         elif method.upper() in app.NON_BODIED_HTTP_METHODS:
             await app.prepare_http()
+
+        if kwargs.get("metrics_logs"): await Log.critical("Prepared response in [%s] s." % str(perf_counter() - prep_start))
 
         return app
 

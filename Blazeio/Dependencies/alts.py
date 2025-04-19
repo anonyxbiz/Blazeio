@@ -36,5 +36,27 @@ class DictView:
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 
+async def await_for(aw, timeout, _raise=False):
+    aw = ensure_future(aw) if not isinstance(aw, asyncio_Future) else aw
+
+    try:
+        done, pending = await asyncio_wait(
+            {aw},
+            timeout=timeout,
+            return_when=asyncio_FIRST_COMPLETED
+        )
+
+        if not done:
+            aw.cancel()
+            raise TimeoutError()
+        return await next(iter(done))
+    except TimeoutError:
+        if _raise: raise
+        await sleep(0)
+    except CancelledError:
+        aw.cancel()
+        if _raise: raise
+        await sleep(0)
+
 if __name__ == "__main__":
     pass

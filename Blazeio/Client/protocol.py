@@ -13,6 +13,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         '__evt__',
         '__is_buffer_over_high_watermark__',
         '__overflow_evt__',
+        '__continous__'
     )
 
     def __init__(app, **kwargs):
@@ -20,11 +21,12 @@ class BlazeioClientProtocol(BufferedProtocol):
 
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
+        app.__continous__ = True
  
         if kwargs:
-            for key, val in kwargs.items():
+            for key in kwargs:
                 if key in app.__slots__:
-                    setattr(app, key, val)
+                    setattr(app, key, kwargs[key])
 
         app.__stream__ = deque()
         app.__buff__ = bytearray(app.__chunk_size__)
@@ -34,7 +36,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__overflow_evt__ = Event()
 
     def connection_made(app, transport):
-        transport.pause_reading()
+        if not app.__continous__: transport.pause_reading()
         app.transport = transport
 
     def eof_received(app):
@@ -43,11 +45,23 @@ class BlazeioClientProtocol(BufferedProtocol):
 
     def connection_lost(app, exc):
         app.__evt__.set()
+        app.__overflow_evt__.set()
 
-    def buffer_updated(app, nbytes):
+    def buffer_updated_paused(app, nbytes):
         app.transport.pause_reading()
         app.__stream__.append(nbytes)
         app.__evt__.set()
+
+    def buffer_updated_continous(app, nbytes):
+        app.transport.pause_reading()
+        app.__stream__.append(app.__buff__memory__[:nbytes])
+        app.__evt__.set()
+
+    def buffer_updated(app, *args):
+        if not app.__continous__:
+            app.buffer_updated_paused(*args)
+        else:
+            app.buffer_updated_continous(*args)
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__memory__):
@@ -76,20 +90,23 @@ class BlazeioClientProtocol(BufferedProtocol):
 
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
-
-        app.__stream__ = deque()
+        app.__stream__.clear()
         app.__buff__ = bytearray(sizehint or app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__is_buffer_over_high_watermark__ = False
         app.__evt__ = Event()
         app.__overflow_evt__ = Event()
-
     async def prepend(app, data):
-        if app.transport.is_reading(): app.transport.pause_reading()
-        sizehint = len(data)
-        app.__buff__ = bytearray(data) + app.__buff__
-        app.__buff__memory__ = memoryview(app.__buff__)
-        app.__stream__.appendleft(sizehint)
+        app.transport.pause_reading()
+
+        if not app.__continous__:
+            sizehint = len(data)
+            app.__buff__ = bytearray(data) + app.__buff__
+            app.__buff__memory__ = memoryview(app.__buff__)
+            app.__stream__.appendleft(sizehint)
+        else:
+            app.__stream__.appendleft(data)
+
         app.__evt__.set()
 
     async def ensure_reading(app):
@@ -100,14 +117,33 @@ class BlazeioClientProtocol(BufferedProtocol):
             await app.__evt__.wait()
             app.__evt__.clear()
 
-    async def pull(app):
+    async def pull_paused(app):
         while True:
             await app.ensure_reading()
-
             while app.__stream__:
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
+                app.transport.resume_reading()
             else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
+
+    async def pull_continous(app):
+        while True:
+            await app.ensure_reading()
+            while app.__stream__:
+                yield bytes(app.__stream__.popleft())
+                app.transport.resume_reading()
+            else:
+                if app.transport.is_closing() or app.__is_at_eof__:
+                    await Log.warning(app.__stream__)
+                    break
+
+    async def pull(app):
+        if not app.__continous__:
+            puller = app.pull_paused()
+        else:
+            puller = app.pull_continous()
+
+        async for i in puller: yield i
 
     async def push(app, data: (bytes, bytearray)):
         await app.buffer_overflow_manager()

@@ -192,43 +192,31 @@ class Parsers:
     http_startswith = b"HTTP"
 
     def __init__(app): pass
-    
-    async def clean_transport(app):
-        temp = bytearray()
-        async for chunk in app.protocol.ayield(app.timeout):
-            temp.extend(chunk)
-
-            if (idx := temp.find(app.http_startswith)) == -1:
-                # temp = temp[-len(app.http_startswith):]
-                if len(temp) >= app.max_unthreaded_json_loads_size: break
-                continue
-            else:
-                temp = temp[idx:]
-                break
-
-        return await app.protocol.prepend(temp)
 
     async def prepare_http(app):
         if app.response_headers: return True
-        buff, headers, idx = bytearray(), None, -1
+        buff, headers, idx, valid = bytearray(), None, -1, False
 
-        if app.consumption_started: await app.clean_transport()
-
-        async for chunk in app.protocol.ayield(app.timeout):
+        async for chunk in app.protocol.pull():
             buff.extend(chunk)
-            if len(buff) >= len(app.http_startswith):
-                if buff[:len(app.http_startswith)].upper() != app.http_startswith:
-                    if debug_mode: raise Err(buff)
-                    return await app.protocol.prepend(buff)
+            if not valid:
+                if len(buff) < 4: continue
+                if (ido := buff.find(app.http_startswith)) != -1:
+                    buff = buff[ido:]
+                    valid = True
+                else:
+                    buff = buff[len(buff)-4:]
+                    continue
 
-            if (idx := buff.find(app.prepare_http_header_end)) != -1:
-                headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
+            if (idx := buff.find(app.prepare_http_header_end)) == -1: continue
 
-                if buff: await app.protocol.prepend(buff)
-                break
+            headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
+            break
+
+        if buff: await app.protocol.prepend(buff)
 
         if idx == -1:
-            if buff: await app.protocol.prepend(buff)
+            if debug_mode: await Log.warning(buff)
             return
 
         if (idx := headers.find(app.prepare_http_sepr1)) != -1:
@@ -402,27 +390,19 @@ class Pushtools:
 
 class Pulltools(Parsers):
     __slots__ = ()
-    def __init__(app):
-        pass
+    def __init__(app): pass
 
     async def pull(app, *args, http=True, **kwargs):
-        if not app.consumption_started:
-            app.consumption_started = True
-
-        if http and not app.response_headers: await app.prepare_http()
+        if http: await app.prepare_http()
 
         try:
             if not app.decoder:
-                async for chunk in app.handler(*args, **kwargs):
-                    if chunk:
-                        yield chunk
+                async for chunk in app.handler(*args, **kwargs): yield chunk
             else:
-                async for chunk in app.decoder():
-                    if chunk:
-                        yield chunk
+                async for chunk in app.decoder(): yield chunk
 
-        except (GeneratorExit, StopIteration) as e:
-            pass
+        except GeneratorExit as e: pass
+        except StopIteration as e: pass
 
     async def aread(app, decode=False):
         data = bytearray()
