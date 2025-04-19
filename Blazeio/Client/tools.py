@@ -25,6 +25,8 @@ class Rvtools:
 class Async:
     @classmethod
     async def replace(app, data, a, b):
+        if not a in data: return data
+
         idx_inc = 0
         while a in data[idx_inc:] and (idx := data.find(a)) != -1:
             idx_inc += idx + len(a)

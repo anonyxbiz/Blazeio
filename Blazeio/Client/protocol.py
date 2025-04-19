@@ -21,7 +21,7 @@ class BlazeioClientProtocol(BufferedProtocol):
 
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
-        app.__continous__ = 1
+        app.__continous__ = 0
  
         if kwargs:
             for key in kwargs:
@@ -96,6 +96,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__is_buffer_over_high_watermark__ = False
         app.__evt__ = Event()
         app.__overflow_evt__ = Event()
+
     async def prepend(app, data):
         app.transport.pause_reading()
 
@@ -124,7 +125,7 @@ class BlazeioClientProtocol(BufferedProtocol):
                 yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
                 app.transport.resume_reading()
             else:
-                if app.transport.is_closing() or app.__is_at_eof__: break
+                if app.transport.is_closing(): break
 
     async def pull_continous(app):
         while True:
@@ -133,9 +134,7 @@ class BlazeioClientProtocol(BufferedProtocol):
                 yield bytes(app.__stream__.popleft())
                 app.transport.resume_reading()
             else:
-                if app.transport.is_closing() or app.__is_at_eof__:
-                    await Log.warning(app.__stream__)
-                    break
+                if app.transport.is_closing(): break
 
     async def pull(app):
         if not app.__continous__:

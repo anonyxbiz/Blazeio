@@ -33,6 +33,10 @@ class DictView:
             return True
         return False
 
+    def __setitem__(app, key, value):
+        if key in app._capitalized: app._dict.pop(app._capitalized[key])
+        app._dict[key] = value
+
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 

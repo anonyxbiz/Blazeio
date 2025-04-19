@@ -41,7 +41,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "cache",)
 
     __should_be_reset__ = ("decompressor",)
 
@@ -130,19 +130,52 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             elif isinstance(val, list): val = list(val)
             setattr(app, key, val)
 
-        if body: content = Gen.echo(body)
-        
+        if app.protocol and app.protocol.transport.is_closing():
+            if debug_mode: await Log.warning("protocol transport is_closing")
+            app.protocol = None
+
+        if app.protocol: proxy = None
+
+        if not app.cache: app.cache = {}
+
+        if len(app.cache) > 2:
+            cache = {}
+            for i in app.cache:
+                cache[i] = app.cache[i]
+                if len(cache) >= 2: break
+
+            app.cache = cache
+
         if (multipart := kwargs.get("multipart")):
             multipart = Multipart(**multipart)
             headers.update(multipart.headers)
             content = multipart.pull()
 
-        if not host or not port:
-            app.host, app.port, app.path = await app.url_to_host(url, app.params)
-        else:
-            app.host, app.port, app.path = host, port, path
+        signature = str([url, method, headers])
 
-        normalized_headers = {a.capitalize() for a in headers}
+        if not app.cache.get(signature): app.cache[signature] = {}
+
+        if not (_ := app.cache[signature].get("method")):
+            method = method.upper()
+            app.cache[signature]["method"] = method
+        else:
+            method = _
+
+        if not (_ := app.cache[signature].get("url_to_host")):
+            if not host or not port:
+                app.host, app.port, app.path = await app.url_to_host(url, app.params)
+            else:
+                app.host, app.port, app.path = host, port, path
+
+            app.cache[signature]["url_to_host"] = (app.host, app.port, app.path,)
+        else:
+            app.host, app.port, app.path = _
+
+        if not (_ := app.cache[signature].get("normalized_headers")):
+            normalized_headers = DictView(headers)
+            app.cache[signature]["normalized_headers"] = normalized_headers
+        else:
+            normalized_headers = _
 
         if cookies:
             app.kwargs["cookies"] = cookies
@@ -154,16 +187,32 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             headers["Cookie"] = cookie
 
-        if app.protocol and app.protocol.transport.is_closing():
-            if debug_mode: await Log.warning("protocol transport is_closing")
+        if add_host:
+            if (_ := app.cache[signature].get("add_host", NotImplemented)) is NotImplemented:
+                if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]):
+                    normalized_headers["Host"] = app.host
+                    app.cache[signature]["add_host"] = app.host
+                else:
+                    app.cache[signature]["add_host"] = None
+            else:
+                if _ is not None: headers["Host"] = _
 
-            app.protocol = None
+        if json:
+            json = dumps(json).encode()
+            content = Gen.echo(json)
+            normalized_headers["Content-length"] = len(json)
+        elif body:
+            normalized_headers["Content-length"] = len(body)
+            normalized_headers.pop("Transfer-encoding", None)
 
-        if app.protocol: proxy = None
+        if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
+            if not isinstance(content, (bytes, bytearray)):
+                normalized_headers["Transfer-encoding"] = "chunked"
+            else:
+                normalized_headers["Content-length"] = str(len(content))
 
         if proxy: await app.proxy_config(headers, proxy)
         ssl = ssl_context if app.port == 443 else None
-        
         if app.proxy_port:
             ssl = ssl_context if app.proxy_port == 443 else None
 
@@ -176,7 +225,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 port=remote_port,
                 ssl=ssl,
             )
-
         elif not app.protocol and connect_only:
             transport, app.protocol = await loop.create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
@@ -186,34 +234,19 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__ and a != "ssl"}
             )
 
-            if not app.write:
-                if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
-                else:
-                    app.write = app.protocol.push
-
             return app
 
-        if add_host:
-            if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]): headers["Host"] = app.host
+        if not (_ := app.cache[signature].get("payload")):
+            payload = await app.gen_payload(method if not proxy else "CONNECT", headers, app.path)
 
-        if json:
-            json = dumps(json).encode()
-            content = Gen.echo(json)
-
-            headers["Content-length"] = len(json)
-            # if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
-
-        if content is not None and all([not "Content-length" in headers, not "Transfer-encoding" in headers, method.upper() not in {"GET", "HEAD", "OPTIONS", "CONNECT"}]):
-            if not isinstance(content, (bytes, bytearray)):
-                headers["Transfer-encoding"] = "chunked"
-            else:
-                headers["Content-length"] = str(len(content))
+            app.cache[signature]["payload"] = payload
+        else:
+            payload = _
         
-        if kwargs.get("metrics_logs"): connect_start = perf_counter()
+        if body:
+            payload = payload + body
 
-        await app.protocol.push(await app.gen_payload(method if not proxy else "CONNECT", headers, app.path))
-        
-        if kwargs.get("metrics_logs"): await Log.debug("Sent request in [%s] s." % str(perf_counter() - connect_start))
+        await app.protocol.push(payload)
 
         if not app.write:
             if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
@@ -222,8 +255,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if proxy:
             await app.prepare_connect(method, headers)
-
-        if kwargs.get("metrics_logs"): prep_start = perf_counter()
 
         if content is not None:
             if isinstance(content, (bytes, bytearray)):
@@ -237,10 +268,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             await app.prepare_http()
 
-        elif method.upper() in app.NON_BODIED_HTTP_METHODS:
+        elif (method in app.NON_BODIED_HTTP_METHODS) or body:
             await app.prepare_http()
-
-        if kwargs.get("metrics_logs"): await Log.critical("Prepared response in [%s] s." % str(perf_counter() - prep_start))
 
         return app
 

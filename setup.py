@@ -14,7 +14,7 @@ else:
     requirements = []
     long_description = ""
 
-version = "2.0.6.9"
+version = "2.0.7.0"
 
 setup(
     name="Blazeio",
