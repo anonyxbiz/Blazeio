@@ -136,13 +136,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if not app.cache: app.cache = {}
 
-        if len(app.cache) > 2:
-            cache = {}
-            for i in app.cache:
-                cache[i] = app.cache[i]
-                if len(cache) >= 2: break
-
-            app.cache = cache
+        if len(app.cache) > 2: app.cache = {}
 
         if (multipart := kwargs.get("multipart")):
             multipart = Multipart(**multipart)
@@ -217,14 +211,14 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
 
         if not app.protocol and not connect_only:
-            transport, app.protocol = await loop.create_connection(
+            transport, app.protocol = await get_event_loop().create_connection(
                 lambda: BlazeioClientProtocol(**kwargs),
                 host=remote_host,
                 port=remote_port,
                 ssl=ssl,
             )
         elif not app.protocol and connect_only:
-            transport, app.protocol = await loop.create_connection(
+            transport, app.protocol = await get_event_loop().create_connection(
                 lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
                 port=app.port,

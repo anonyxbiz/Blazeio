@@ -69,7 +69,7 @@ class Simpleserve:
             app.etag = "BlazeIO--%s--%s" % (app.filename, app.file_size)
 
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
-        
+
         if await app.validate_cache():
             return True
 

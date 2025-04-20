@@ -301,7 +301,7 @@ class Parsers:
             max_retry_count = 2
 
             while retry_count < max_retry_count:
-                try: tls_transport = await loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
+                try: tls_transport = await get_event_loop().start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
                 except Exception as e:
                     retry_count += 1
                     if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))

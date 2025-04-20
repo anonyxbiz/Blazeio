@@ -62,7 +62,6 @@ async def await_for(aw, timeout, _raise=False):
         if _raise: raise
         await sleep(0)
 
-
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "_thread", "loop",)
 
@@ -72,6 +71,7 @@ class Asynchronizer:
         app.idle_event.clear()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
+        app.ready()
 
     async def job(app, func, *args, **kwargs):
         job = {
@@ -93,6 +93,9 @@ class Asynchronizer:
 
         return job["result"]
 
+    async def create_task(app, coro):
+        return await wrap_future(run_coroutine_threadsafe(coro, app.loop))
+
     async def worker(app):
         while True:
             job = await app.jobs.get()
@@ -106,6 +109,10 @@ class Asynchronizer:
 
     async def flush(app):
         return await wrap_future(run_coroutine_threadsafe(app.idle_event.wait(), app.loop))
+
+    def ready(app):
+        while not hasattr(app, "loop"):
+            timedotsleep(0)
 
     async def test(app):
         results = [str(result) for result in await gather(*[loop.create_task(app.job(dt.now,)) for i in range(10)])]
