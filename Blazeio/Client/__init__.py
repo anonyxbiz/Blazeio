@@ -44,11 +44,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "cache",)
 
     __should_be_reset__ = ("decompressor",)
-
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS"
     }
-
     not_stated = "response_headers"
 
     def __init__(app, *args, **kwargs):
@@ -275,7 +273,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
     async def gen_payload(app, method: str, headers: dict, path: str, http_version = "1.1"):
         if method not in ["CONNECT"]:
-            payload = bytearray("%s %s HTTP/%s\r\n" % (method.upper(), path, http_version), "utf-8")
+            payload = bytearray("%s %s HTTP/%s\r\n" % (method, path, http_version), "utf-8")
         else:
             payload = bytearray("%s %s:%s HTTP/%s\r\n" % (method.upper(), app.host, app.port, http_version), "utf-8")
 

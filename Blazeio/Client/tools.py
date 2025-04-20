@@ -281,6 +281,7 @@ class Parsers:
                     app.kwargs["cookies"][key] = val
 
         if all([app.follow_redirects, app.status_code in app.http_redirect_status_range, (location := app.response_headers.get("location", None))]):
+            app.cache = {}
             await app.prepare(location)
         
         return True
@@ -425,14 +426,7 @@ class Pulltools(Parsers):
         return await app.aread(True)
 
     async def json(app):
-        data = await app.aread(True)
-
-        if len(data) >= app.max_unthreaded_json_loads_size:
-            json = await to_thread(loads, data)
-        else:
-            json = loads(data)
-
-        return json
+        return loads(await app.aread(True))
 
     async def find(app, *args):
         data, start, end, cont = args

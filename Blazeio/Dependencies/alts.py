@@ -62,5 +62,60 @@ async def await_for(aw, timeout, _raise=False):
         if _raise: raise
         await sleep(0)
 
+
+class Asynchronizer:
+    __slots__ = ("jobs", "idle_event", "_thread", "loop",)
+
+    def __init__(app, maxsize=0):
+        app.jobs = asyncQueue(maxsize=maxsize)
+        app.idle_event = Event()
+        app.idle_event.clear()
+        app._thread = Thread(target=app.start, daemon=True)
+        app._thread.start()
+
+    async def job(app, func, *args, **kwargs):
+        job = {
+            "func": func,
+            "args": args,
+            "kwargs": kwargs,
+            "exception": None,
+            "result": NotImplemented,
+            "event": (event := Event())
+        }
+
+        event.clear()
+
+        app.loop.call_soon_threadsafe(app.jobs.put_nowait, job)
+
+        await wrap_future(run_coroutine_threadsafe(event.wait(), app.loop))
+
+        if job["exception"]: raise job["exception"]
+
+        return job["result"]
+
+    async def worker(app):
+        while True:
+            job = await app.jobs.get()
+            try: job["result"] = job["func"](*job["args"], **job["kwargs"])
+            except Exception as e: job["exception"] = e
+
+            job["event"].set()
+
+            if app.jobs.empty(): app.idle_event.set()
+            else: app.idle_event.clear()
+
+    async def flush(app):
+        return await wrap_future(run_coroutine_threadsafe(app.idle_event.wait(), app.loop))
+
+    async def test(app):
+        results = [str(result) for result in await gather(*[loop.create_task(app.job(dt.now,)) for i in range(10)])]
+
+        await log.debug(results)
+
+    def start(app):
+        app.loop = new_event_loop()
+        # loop.create_task(app.test())
+        app.loop.run_until_complete(app.worker())
+
 if __name__ == "__main__":
     pass
