@@ -9,6 +9,10 @@ class Context:
     def r_sync(app):
         return current_task().get_coro().cr_frame.f_locals.get("app")
 
+    @classmethod
+    async def from_task(app, task):
+        return task.get_coro().cr_frame.f_locals.get("app")
+
 class Prepare:
     @classmethod
     async def text(app, headers: dict={}, status:int = 206, content_type: str = "text/plain; charset=utf-8"):
@@ -82,8 +86,9 @@ class Abort(Exception):
         message = app.args[0] if len(app.args) >= 1 else "Something went wrong"
         status = app.args[1] if len(app.args) >= 2 else 403
         headers = app.args[2] if len(app.args) >= 3 else {}
-        
+
         headers["Content-Type"] = "text/plain; charset=utf-8"
+
         await app.r.prepare(headers, status)
         await app.r.write(message.encode())
 

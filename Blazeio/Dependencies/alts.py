@@ -1,4 +1,5 @@
 from ..Dependencies import *
+from ..Modules.streaming import Context, Abort
 
 async def agather(*coros):
     return await gather(*[loop.create_task(coro) if iscoroutine(coro) else coro for coro in coros])
@@ -40,38 +41,18 @@ class DictView:
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 
-async def await_for(aw, timeout, _raise=False):
-    aw = ensure_future(aw) if not isinstance(aw, asyncio_Future) else aw
-
-    try:
-        done, pending = await asyncio_wait(
-            {aw},
-            timeout=timeout,
-            return_when=asyncio_FIRST_COMPLETED
-        )
-
-        if not done:
-            aw.cancel()
-            raise TimeoutError()
-        return await next(iter(done))
-    except TimeoutError:
-        if _raise: raise
-        await sleep(0)
-    except CancelledError:
-        aw.cancel()
-        if _raise: raise
-        await sleep(0)
-
 class Asynchronizer:
-    __slots__ = ("jobs", "idle_event", "_thread", "loop",)
+    __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop",)
 
     def __init__(app, maxsize=0):
         app.jobs = asyncQueue(maxsize=maxsize)
         app.idle_event = Event()
         app.idle_event.clear()
+        app.start_event = Event()
+        app.start_event.clear()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
-        app.ready()
+        loop.run_until_complete(app.ready())
 
     async def job(app, func, *args, **kwargs):
         job = {
@@ -80,7 +61,10 @@ class Asynchronizer:
             "kwargs": kwargs,
             "exception": None,
             "result": NotImplemented,
-            "event": (event := Event())
+            "event": (event := Event()),
+            "loop": get_event_loop(),
+            "current_task": current_task(),
+            "awaitable": kwargs.pop("__awaitable__", False)
         }
 
         event.clear()
@@ -89,7 +73,10 @@ class Asynchronizer:
 
         await wrap_future(run_coroutine_threadsafe(event.wait(), app.loop))
 
-        if job["exception"]: raise job["exception"]
+        if job["exception"]:
+            if isinstance(job["exception"], Abort): job["exception"].r = await Context.from_task(job["current_task"])
+
+            raise job["exception"]
 
         return job["result"]
 
@@ -98,11 +85,23 @@ class Asynchronizer:
 
     async def worker(app):
         while True:
-            job = await app.jobs.get()
-            try: job["result"] = job["func"](*job["args"], **job["kwargs"])
-            except Exception as e: job["exception"] = e
+            _ = await app.jobs.get()
 
-            job["event"].set()
+            while _ or not app.jobs.empty():
+                if _:
+                    job, _ = _, None
+                else:
+                    job = app.jobs.get_nowait()
+
+                try:
+                    if not job.get("awaitable"):
+                        job["result"] = job["func"](*job["args"], **job["kwargs"])
+                    else:
+                        job["result"] = await job["func"](*job["args"], **job["kwargs"])
+
+                except Exception as e: job["exception"] = e
+                finally:
+                    job["event"].set()
 
             if app.jobs.empty(): app.idle_event.set()
             else: app.idle_event.clear()
@@ -110,17 +109,20 @@ class Asynchronizer:
     async def flush(app):
         return await wrap_future(run_coroutine_threadsafe(app.idle_event.wait(), app.loop))
 
-    def ready(app):
-        while not hasattr(app, "loop"):
-            timedotsleep(0)
+    async def ready(app):
+        await app.start_event.wait()
 
-    async def test(app):
-        results = [str(result) for result in await gather(*[loop.create_task(app.job(dt.now,)) for i in range(10)])]
+    async def test(app, i=None, *args, **kwargs):
+        if not i:
+            await wrap_future(run_coroutine_threadsafe(app.ready(), loop))
+            return await gather(*[loop.create_task(app.test(i+1, dt.now,)) for i in range(20)])
 
-        await log.debug(results)
+        await log.debug("[%s]: %s" % (i, str(await app.job(*args, **kwargs))))
 
     def start(app):
         app.loop = new_event_loop()
+        loop.call_soon_threadsafe(app.start_event.set,)
+
         # loop.create_task(app.test())
         app.loop.run_until_complete(app.worker())
 
