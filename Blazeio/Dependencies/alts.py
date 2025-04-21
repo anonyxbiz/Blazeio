@@ -42,10 +42,10 @@ class DictView:
         return app._dict.pop(app._capitalized.get(key), default)
 
 class Asynchronizer:
-    __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop",)
-
-    def __init__(app, maxsize=0):
+    __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
+    def __init__(app, maxsize=0, perform_test=False):
         app.jobs = asyncQueue(maxsize=maxsize)
+        app.perform_test = perform_test
         app.idle_event = Event()
         app.idle_event.clear()
         app.start_event = Event()
@@ -64,7 +64,7 @@ class Asynchronizer:
             "event": (event := Event()),
             "loop": get_event_loop(),
             "current_task": current_task(),
-            "awaitable": kwargs.pop("__awaitable__", False)
+            "awaitable": True if str(type(func)) == "<class 'method'>" else False
         }
 
         event.clear()
@@ -80,28 +80,32 @@ class Asynchronizer:
 
         return job["result"]
 
-    async def create_task(app, coro):
-        return await wrap_future(run_coroutine_threadsafe(coro, app.loop))
+    async def async_tasker(app, job):
+        try:
+            job["result"] = await job["func"](*job["args"], **job["kwargs"])
+        except Exception as e: job["exception"] = e
+        finally:
+            job["event"].set()
 
     async def worker(app):
         while True:
             _ = await app.jobs.get()
+            tasks = []
 
             while _ or not app.jobs.empty():
                 if _:
                     job, _ = _, None
                 else:
                     job = app.jobs.get_nowait()
+                
+                if not job.get("awaitable"):
+                    try: job["result"] = job["func"](*job["args"], **job["kwargs"])
+                    except Exception as e: job["exception"] = e
+                    finally: job["event"].set()
+                else:
+                    tasks.append(app.loop.create_task(app.async_tasker(job)))
 
-                try:
-                    if not job.get("awaitable"):
-                        job["result"] = job["func"](*job["args"], **job["kwargs"])
-                    else:
-                        job["result"] = await job["func"](*job["args"], **job["kwargs"])
-
-                except Exception as e: job["exception"] = e
-                finally:
-                    job["event"].set()
+            if tasks: await gather(*tasks)
 
             if app.jobs.empty(): app.idle_event.set()
             else: app.idle_event.clear()
@@ -111,19 +115,28 @@ class Asynchronizer:
 
     async def ready(app):
         await app.start_event.wait()
+    
+    async def test_async(app):
+        await sleep(0)
+        return "Slept"
 
     async def test(app, i=None, *args, **kwargs):
-        if not i:
+        if i is None:
             await wrap_future(run_coroutine_threadsafe(app.ready(), loop))
-            return await gather(*[loop.create_task(app.test(i+1, dt.now,)) for i in range(20)])
+            await gather(*[loop.create_task(app.test(i+1, dt.now,)) for i in range(20)])
 
-        await log.debug("[%s]: %s" % (i, str(await app.job(*args, **kwargs))))
+            await gather(*[loop.create_task(app.test(i+1, app.test_async,)) for i in range(20)])
+            return
+
+        result = await app.job(*args, **kwargs)
+
+        await log.debug("[%s]: %s" % (i, str(result)))
 
     def start(app):
         app.loop = new_event_loop()
         loop.call_soon_threadsafe(app.start_event.set,)
 
-        # loop.create_task(app.test())
+        if app.perform_test: loop.create_task(app.test())
         app.loop.run_until_complete(app.worker())
 
 if __name__ == "__main__":
