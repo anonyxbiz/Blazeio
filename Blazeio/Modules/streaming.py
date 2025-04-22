@@ -32,16 +32,17 @@ class Prepare:
 
 class Deliver:
     @classmethod
-    async def json(app, r, data: dict = {}, status: int = 200, headers: dict = {}, indent: int = 4):
+    async def json(app, r, data: dict = {}, status: int = 200, headers: dict = {}, indent: int = 4, content_type: str = "application/json; charset=utf-8"):
         headers = dict(headers)
-        await Prepare.json(headers, status)
+        headers["Content-Type"] = content_type
+        await r.prepare(headers, status)
         await r.write(bytearray(dumps(data, indent=indent), "utf-8"))
 
     @classmethod
-    async def text(app, r, data, status=200, headers={}):
+    async def text(app, r, data, status=200, headers={}, content_type: str = "text/plain; charset=utf-8"):
         headers = dict(headers)
-        
-        await Prepare.text(headers, status)
+        headers["Content-Type"] = content_type
+        await r.prepare(headers, status)
         await r.write(bytearray(data, "utf-8"))
 
     @classmethod
@@ -121,8 +122,8 @@ class __Payload__:
 
 class FileIO:
     @classmethod
-    async def save(app, file_path: str, mode: str = "wb"):
-        r = await Context.r()
+    async def save(app, file_path: str, mode: str = "wb", r=None):
+        if not r: r = await Context.r()
         async with async_open(file_path, mode) as f:
             async for chunk in r.pull(): await f.write(chunk)
 

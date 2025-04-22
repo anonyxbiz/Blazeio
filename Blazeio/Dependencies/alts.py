@@ -53,6 +53,8 @@ class Asynchronizer:
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
         loop.run_until_complete(app.ready())
+    
+    def is_async(app, func): return True if str(type(func)) == "<class 'method'>" else False
 
     async def job(app, func, *args, **kwargs):
         job = {
@@ -64,7 +66,7 @@ class Asynchronizer:
             "event": (event := Event()),
             "loop": get_event_loop(),
             "current_task": current_task(),
-            "awaitable": True if str(type(func)) == "<class 'method'>" else False
+            "awaitable": app.is_async(func)
         }
 
         event.clear()
@@ -90,8 +92,6 @@ class Asynchronizer:
     async def worker(app):
         while True:
             _ = await app.jobs.get()
-            tasks = []
-
             while _ or not app.jobs.empty():
                 if _:
                     job, _ = _, None
@@ -103,9 +103,7 @@ class Asynchronizer:
                     except Exception as e: job["exception"] = e
                     finally: job["event"].set()
                 else:
-                    tasks.append(app.loop.create_task(app.async_tasker(job)))
-
-            if tasks: await gather(*tasks)
+                    app.loop.create_task(app.async_tasker(job))
 
             if app.jobs.empty(): app.idle_event.set()
             else: app.idle_event.clear()
@@ -120,17 +118,26 @@ class Asynchronizer:
         await sleep(0)
         return "Slept"
 
-    async def test(app, i=None, *args, **kwargs):
+    async def test(app, i=None, call_type=None, *args, **kwargs):
+        calls = 50
         if i is None:
             await wrap_future(run_coroutine_threadsafe(app.ready(), loop))
-            await gather(*[loop.create_task(app.test(i+1, dt.now,)) for i in range(20)])
 
-            await gather(*[loop.create_task(app.test(i+1, app.test_async,)) for i in range(20)])
+            await log.debug(dumps(await gather(*[loop.create_task(app.test(i+1, "Asynchronized", dt.now,)) for i in range(calls)]), indent=4))
+
+            await log.debug(dumps(await gather(*[loop.create_task(app.test(i+calls+1, "Direct", dt.now,)) for i in range(calls)]), indent=4))
+
             return
 
-        result = await app.job(*args, **kwargs)
+        if i < calls:
+            result = await app.job(*args, **kwargs)
+        else:
+            if app.is_async(args[0]):
+                result = await args[0](*args[1:], **kwargs)
+            else:
+                result = args[0](*args[1:], **kwargs)
 
-        await log.debug("[%s]: %s" % (i, str(result)))
+        return "(%s)[%s]: %s" % (call_type, i, str(result))
 
     def start(app):
         app.loop = new_event_loop()
