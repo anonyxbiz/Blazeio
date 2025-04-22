@@ -134,16 +134,14 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if app.protocol: proxy = None
 
-        if not app.cache: app.cache = {}
-
-        if len(app.cache) > 2: app.cache = {}
+        if not app.cache or len(app.cache) > 2: app.cache = {}
 
         if (multipart := kwargs.get("multipart")):
             multipart = Multipart(**multipart)
             headers.update(multipart.headers)
             content = multipart.pull()
 
-        signature = str([url, method, headers])
+        signature = id((url, method, len(headers)))
 
         if not app.cache.get(signature): app.cache[signature] = {}
 
@@ -234,7 +232,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             app.cache[signature]["payload"] = payload
         else:
             payload = _
-        
+
         if body:
             payload = payload + body
 

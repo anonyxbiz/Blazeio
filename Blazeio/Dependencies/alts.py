@@ -43,7 +43,7 @@ class DictView:
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
-    def __init__(app, maxsize=0, perform_test=False):
+    def __init__(app, maxsize=0, perform_test=False, await_ready=True):
         app.jobs = asyncQueue(maxsize=maxsize)
         app.perform_test = perform_test
         app.idle_event = Event()
@@ -52,7 +52,7 @@ class Asynchronizer:
         app.start_event.clear()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
-        loop.run_until_complete(app.ready())
+        if await_ready: loop.run_until_complete(app.ready())
     
     def is_async(app, func): return True if str(type(func)) == "<class 'method'>" else False
 
