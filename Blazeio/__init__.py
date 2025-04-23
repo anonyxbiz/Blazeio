@@ -158,82 +158,15 @@ class OOP_RouteDef:
         return to_instantiate
 
 class SrvConfig:
-    HOST, PORT = "0.0.0.0", 8000
-    __timeout__ = float(60*10)
-    __timeout_check_freq__ = 5
-    __health_check_freq__ = 5
-    __log_requests__ = False
-    INBOUND_CHUNK_SIZE = None
+    HOST: str =  "0.0.0.0"
+    PORT: int = 8000
+    __timeout__: float = float(60*10)
+    __timeout_check_freq__: int = 5
+    __health_check_freq__: int = 5
+    __log_requests__: bool = False
+    INBOUND_CHUNK_SIZE: (None, int) = None
 
     def __init__(app): pass
-
-class Monitoring:
-    def __init__(app):
-        app.terminate = False
-        app.Monitoring_thread_loop = app.event_loop
-        app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor, daemon = True)
-        app.Monitoring_thread.start()
-        app.on_exit_middleware(app.Monitoring_thread_join)
-
-    def Monitoring_thread_join(app):
-        app.terminate = True
-        app.Monitoring_thread.join()
-
-    def Monitoring_thread_monitor(app):
-        app.Monitoring_thread_loop.create_task(app.__monitor_loop__())
-
-    async def __monitor_loop__(app):
-        while not app.terminate:
-            await sleep(app.ServerConfig.__timeout_check_freq__)
-            await app.check()
-
-    async def enforce_health(app, task, Payload):
-        if not Payload.__is_alive__ or Payload.transport.is_closing():
-            await app.cancel(Payload, task, "BlazeioHealth:: Task [%s] diconnected." % task.get_name())
-            return True
-
-    async def cancel(app, Payload, task, msg: str = ""):
-        try:
-            task.cancel()
-            # await task
-        except CancelledError: pass
-        except KeyboardInterrupt as e: raise e
-        except Exception as e: await Log.critical("Blazeio", str(e))
-
-        if msg != "": await Log.warning(Payload, msg)
-
-    async def inspect_task(app, task):
-        coro = task.get_coro()
-        args = coro.cr_frame
-        if args is None: return
-        else: args = args.f_locals
-
-        Payload = args.get("app")
-
-        if not "Blazeio" in str(Payload): return
-
-        if not hasattr(Payload, "__perf_counter__"): return
-        
-        if await app.enforce_health(task, Payload): return
-        
-        duration = perf_counter() - getattr(Payload, "__perf_counter__")
-
-        timeout = Payload.__timeout__ or app.ServerConfig.__timeout__
-
-        condition = duration >= timeout
-
-        if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
-
-    async def check(app):
-        for task in all_tasks(loop=loop):
-            if task is not current_task():
-                try:
-                    await app.inspect_task(task)
-                except AttributeError:
-                    pass
-                except KeyboardInterrupt as e: raise e
-                except Exception as e:
-                    await Log.critical(e)
 
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
@@ -242,7 +175,7 @@ class OnExit:
     
     def run(app): app.func(*app.args, **app.kwargs)
 
-class App(Handler, OOP_RouteDef, Monitoring):
+class App(Handler, OOP_RouteDef):
     event_loop = loop
     REQUEST_COUNT = 0
     declared_routes = OrderedDict()
@@ -259,7 +192,7 @@ class App(Handler, OOP_RouteDef, Monitoring):
     
     def __init__(app, *args, **kwargs):
         for i in app.__class__.__bases__: i.__init__(app)
-
+        
         for key, val in dict(kwargs).items():
             if key in app.__server_config__:
                 app.__server_config__[key] = val
@@ -267,6 +200,13 @@ class App(Handler, OOP_RouteDef, Monitoring):
         
         if kwargs:
             app.ServerConfig.__dict__.update(**kwargs)
+
+        ReMonitor.event_loop = app.event_loop
+        ReMonitor.ServerConfig = app.ServerConfig
+
+        ReMonitor.Monitoring_thread = Thread(target=ReMonitor.Monitoring_thread_monitor, args=(app,), daemon = True)
+
+        ReMonitor.Monitoring_thread.start()
 
     @classmethod
     async def init(app, *args, **kwargs):

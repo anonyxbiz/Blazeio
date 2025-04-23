@@ -228,7 +228,6 @@ class __log__:
         except Exception as e:
             pass
 
-
 logger = Default_logger(name='BlazeioLogger')
 
 Log = __log__()
@@ -237,3 +236,130 @@ routine_executor({
     ('p = Log.info', 'p = None'),
     ('log = logger', 'p = None')
 })
+
+class Enqueue:
+    __slots__ = ("queue", "event",)
+    def __init__(app, **k):
+        for a in k:
+            if a in app.__slots__:
+                setattr(app, a, k[a])
+
+        app.queue = deque()
+        app.event = Event()
+        app.event.clear()
+
+    async def get(app):
+        while True:
+            await app.event.wait()
+            app.event.clear()
+            while app.queue: yield app.queue.popleft()
+
+    def put_nowait(app, item):
+        if get_event_loop() == loop:
+            app.queue.append(item)
+            app.event.set()
+        else:
+            loop.call_soon_threadsafe(app.queue.append, item)
+            loop.call_soon_threadsafe(app.event.set,)
+
+class __ReMonitor__:
+    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "client_queue",)
+
+    def __init__(app):
+        app.terminate = False
+        app.client_queue = Enqueue()
+
+    def Monitoring_thread_join(app):
+        app.terminate = True
+
+    def Monitoring_thread_monitor(app, parent=None):
+        app.Monitoring_thread_loop = new_event_loop()
+        parent.on_exit_middleware(app.Monitoring_thread_join)
+
+        app.Monitoring_thread_loop.run_until_complete(app.__monitor_loop__())
+
+    async def __monitor_loop__(app):
+        run_coroutine_threadsafe(app.check_client_protocol(None), app.event_loop)
+
+        while not app.terminate:
+            await wrap_future(run_coroutine_threadsafe(app.check_server_protocol(), app.event_loop))
+            await sleep(app.ServerConfig.__timeout_check_freq__)
+
+    async def check_client_protocol(app, Payload=None):
+        if not Payload:
+            while True:
+                len_ = len(app.client_queue.queue)
+                count = 0
+                async for Payload in app.client_queue.get():
+                    count += 1
+                    await app.check_client_protocol(Payload)
+                    if count >= len_: break
+                await sleep(app.ServerConfig.__timeout_check_freq__)
+            return
+
+        duration = float(perf_counter() - getattr(Payload, "__perf_counter__"))
+
+        timeout = float(Payload.__timeout__ or app.ServerConfig.__timeout__)
+
+        condition = duration >= timeout
+
+        if Payload.transport.is_closing(): Payload.__evt__.set()
+
+        elif condition:
+            await Log.critical("BlazeioTimeout:: Task [%s:%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (Payload.transport.get_extra_info("peername"), str(timeout), str(duration)))
+            Payload.transport.close()
+            Payload.__evt__.set()
+        else:
+            app.client_queue.put_nowait(Payload)
+
+    async def enforce_health(app, Payload, task):
+        if Payload.transport.is_closing():
+            await app.cancel(Payload, task, "BlazeioHealth:: Task [%s] diconnected." % task.get_name())
+            return True
+
+    async def cancel(app, Payload, task, msg: str = ""):
+        try: task.cancel()
+        except CancelledError: pass
+        except KeyboardInterrupt as e: raise e
+        except Exception as e: await Log.warning("Blazeio", str(e))
+
+        if msg != "": await Log.warning(Payload, msg)
+
+    async def inspect_task(app, task):
+        coro = task.get_coro()
+        args = coro.cr_frame
+        if args is None: return
+        else: args = args.f_locals
+
+        if not (Payload := args.get("app")): return
+
+        if not "BlazeioServerProtocol" in str(Payload): return
+
+        if not hasattr(Payload, "__slots__"): return
+
+        if not hasattr(Payload, "__perf_counter__"):
+            if not "__perf_counter__" in Payload.__slots__: return
+            Payload.__perf_counter__ = perf_counter()
+
+        if await app.enforce_health(Payload, task): return
+
+        duration = float(perf_counter() - getattr(Payload, "__perf_counter__"))
+
+        timeout = float(Payload.__timeout__ or app.ServerConfig.__timeout__)
+
+        condition = duration >= timeout
+
+        if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
+
+    async def check_server_protocol(app):
+        for task in all_tasks(loop=app.event_loop):
+            if task is not current_task():
+                try:
+                    await app.inspect_task(task)
+                except AttributeError:
+                    pass
+                except KeyboardInterrupt as e: raise e
+                except Exception as e:
+                    await Log.critical(e)
+
+ReMonitor = __ReMonitor__()

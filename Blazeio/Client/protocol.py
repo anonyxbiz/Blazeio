@@ -13,7 +13,9 @@ class BlazeioClientProtocol(BufferedProtocol):
         '__evt__',
         '__is_buffer_over_high_watermark__',
         '__overflow_evt__',
-        '__continous__'
+        '__continous__',
+        '__perf_counter__',
+        '__timeout__'
     )
 
     def __init__(app, **kwargs):
@@ -22,7 +24,9 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__is_at_eof__ = False
         app.__buff_requested__ = False
         app.__continous__ = 0
- 
+        app.__perf_counter__ = perf_counter()
+        app.__timeout__ = 60.0
+
         if kwargs:
             for key in kwargs:
                 if key in app.__slots__:
@@ -38,6 +42,7 @@ class BlazeioClientProtocol(BufferedProtocol):
     def connection_made(app, transport):
         if not app.__continous__: transport.pause_reading()
         app.transport = transport
+        ReMonitor.client_queue.put_nowait(app)
 
     def eof_received(app):
         app.__is_at_eof__ = True

@@ -77,6 +77,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     async def prepare(app, *args, **kwargs):
         if app.protocol:
             app.protocol.__stream__.clear()
+            app.protocol.__timeout__ = app.timeout
+            app.protocol.__perf_counter__ = perf_counter()
 
         if not app.response_headers: return await sleep(0)
 
@@ -134,14 +136,14 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if app.protocol: proxy = None
 
-        if not app.cache or len(app.cache) > 2: app.cache = {}
+        if not app.cache or len(app.cache) >= 2: app.cache = {}
 
         if (multipart := kwargs.get("multipart")):
             multipart = Multipart(**multipart)
             headers.update(multipart.headers)
             content = multipart.pull()
 
-        signature = id((url, method, len(headers)))
+        signature = str([url, method, len(headers)])
 
         if not app.cache.get(signature): app.cache[signature] = {}
 
@@ -193,7 +195,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             normalized_headers["Content-length"] = len(json)
         elif body:
             normalized_headers["Content-length"] = len(body)
-            normalized_headers.pop("Transfer-encoding", None)
 
         if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
             if not isinstance(content, (bytes, bytearray)):

@@ -125,7 +125,7 @@ class Urllib:
     async def url_to_host(app, url: str, params: dict):
         parsed_url = {}
 
-        url = await Async.replace(url, r"\/", "/")
+        url = url.replace(r"\/", "/")
 
         if (idx := url.find(app.scheme_sepr)) != -1:
             parsed_url["hostname"] = url[idx + len(app.scheme_sepr):]
