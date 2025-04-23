@@ -310,7 +310,7 @@ class __ReMonitor__:
             Payload.transport.close()
             Payload.__evt__.set()
         else:
-            app.client_queue.put_nowait(Payload)
+            pass#app.client_queue.put_nowait(Payload)
 
     async def enforce_health(app, Payload, task):
         if Payload.transport.is_closing():
