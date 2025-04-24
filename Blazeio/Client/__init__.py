@@ -174,7 +174,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             cookie = ""
             normalized_cookies = DictView(cookies)
 
-            async for key, val in normalized_cookies.items():
+            for key, val in normalized_cookies.items():
                 cookie += "%s%s=%s" % ("; " if cookie else "", key, val)
 
             headers["Cookie"] = cookie

@@ -49,14 +49,30 @@ main_process = psutilProcess(pid)
 INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = 1024*100, 1024*100
 
 class DotDict:
-    def __init__(app, dictionary):
+    __slots__ = ("_dict",)
+    def __init__(app, dictionary: dict):
         app._dict = dictionary
 
     def __getattr__(app, name):
         if name in app._dict:
             return app._dict[name]
+        else:
+            return getattr(app._dict, name)
 
-        raise AttributeError("'DotDict' object has no attribute '%s'" % name)
+    def __contains__(app, key):
+        if key in app._dict:
+            return True
+        return False
+
+    def __setitem__(app, key, value):
+        app._dict[key] = value
+
+    async def token_urlsafe(app, *args, **kwargs):
+        while (token := token_urlsafe(*args, **kwargs)) in app._dict:
+            await sleep(0.0001)
+
+        app._dict[token] = None
+        return token
 
 class Default_logger:
     colors = DotDict({

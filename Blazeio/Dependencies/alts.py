@@ -40,6 +40,9 @@ class DictView:
 
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
+    
+    def __getattr__(app, name):
+        return getattr(app._dict, name)
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)

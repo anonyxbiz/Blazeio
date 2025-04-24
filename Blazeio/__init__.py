@@ -175,6 +175,68 @@ class OnExit:
     
     def run(app): app.func(*app.args, **app.kwargs)
 
+class Middlewarez:
+    __slots__ = ("web", "middlewares",)
+    def __init__(app, web, middlewares={}):
+        __locals__ = locals()
+        for i in app.__slots__:
+            if i in __locals__:
+                setattr(app, i, __locals__.get(i))
+
+    def __getattr__(app, name):
+        func = getattr(app.web, name)
+        return func
+
+class Add_Route:
+    __slots__ = ("web", "middlewarez",)
+    methods = ("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "ALL",)
+
+    def __init__(app, web):
+        __locals__ = locals()
+        for i in app.__slots__:
+            if i in __locals__:
+                setattr(app, i, __locals__.get(i))
+
+        app.middlewarez = Middlewarez(app)
+
+    def __getattr__(app, name):
+        if not name.upper() in app.methods:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+
+        def method_route(*args, **kwargs):
+            return app.add_route(*args, **kwargs, method=name.upper())
+
+        return method_route
+
+    def add_route(app, path: str = "", method: str = ""):
+        async def before_func(r):
+            if method != "ALL" and r.method != method:
+                raise Abort("Method not allowed", 405)
+            
+            if app.middlewarez.middlewares.get(method):
+                for middleware in app.middlewarez.middlewares.get(method):
+                    await middleware["func"](r)
+
+        def decor(func: Callable):
+            async def wrapped_func(r, *args, **kwargs):
+                if path: await before_func(r)
+                return await func(r, *args, **kwargs)
+
+            if path: app.web.add_route(wrapped_func, path)
+            else:
+                if method == "ALL":
+                    for i in app.methods:
+                        if not app.middlewarez.middlewares.get(i): app.middlewarez.middlewares[i] = []
+                        app.middlewarez.middlewares[i].append({"func": wrapped_func, "method": method})
+                else:
+                    if not app.middlewarez.middlewares.get(method): app.middlewarez.middlewares[method] = []
+
+                    app.middlewarez.middlewares[method].append({"func": wrapped_func, "method": method})
+
+            return wrapped_func
+
+        return decor
+
 class App(Handler, OOP_RouteDef):
     event_loop = loop
     REQUEST_COUNT = 0
@@ -189,7 +251,7 @@ class App(Handler, OOP_RouteDef):
         "__http_request_initial_separatir__": b' ',
         "__http_request_auto_header_parsing__": True,
     }
-    
+
     def __init__(app, *args, **kwargs):
         for i in app.__class__.__bases__: i.__init__(app)
         
@@ -208,6 +270,12 @@ class App(Handler, OOP_RouteDef):
 
         ReMonitor.Monitoring_thread.start()
 
+    def __getattr__(app, name):
+        if name == "route":
+            app.route = Add_Route(app)
+
+        return getattr(app, name)
+
     @classmethod
     async def init(app, *args, **kwargs):
         app = app(*args, **kwargs)
@@ -225,7 +293,7 @@ class App(Handler, OOP_RouteDef):
             else None\
         ) for k, v in dict(sig(func).parameters).items()}
 
-        if route_name == "": route_name = str(func.__name__)
+        if not route_name: route_name = str(func.__name__)
 
         if not route_name.endswith("_middleware"):
             if (route := params.get("route")) is None:
@@ -251,10 +319,9 @@ class App(Handler, OOP_RouteDef):
             component = "middleware"
             color = "\033[34m"
 
-        loop.run_until_complete(Log.info("Added %s => %s." % (component, route_name), None, color))
+        loop.create_task(Log.info("Added %s => %s." % (component, route_name), None, color))
 
         return func
-
 
     def setup_ssl(app, HOST: str, PORT: int, ssl_data: dict):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
