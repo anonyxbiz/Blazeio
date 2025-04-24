@@ -137,7 +137,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if app.protocol: proxy = None
 
         if not app.cache or len(app.cache) >= 2: app.cache = {}
-
         if (multipart := kwargs.get("multipart")):
             multipart = Multipart(**multipart)
             headers.update(multipart.headers)
@@ -191,8 +190,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if json:
             json = dumps(json).encode()
-            content = Gen.echo(json)
-            normalized_headers["Content-length"] = len(json)
+            body = json
+            normalized_headers["Content-length"] = len(body)
+            normalized_headers['Content-type'] = 'application/json'
         elif body:
             normalized_headers["Content-length"] = len(body)
 
