@@ -40,9 +40,6 @@ class DictView:
 
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
-    
-    def __getattr__(app, name):
-        return getattr(app._dict, name)
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
@@ -148,6 +145,50 @@ class Asynchronizer:
 
         if app.perform_test: loop.create_task(app.test())
         app.loop.run_until_complete(app.worker())
+
+class TaskPool:
+    __slots__ = ("taskpool", "task_add_event", "task_under_flow", "loop", "maxtasks", "listener_task",)
+    def __init__(app, maxtasks: int = 100):
+        app.maxtasks, app.taskpool = maxtasks, []
+
+        app.task_add_event = Event()
+        app.task_add_event.clear()
+        app.task_under_flow = Event()
+        app.task_under_flow.set()
+        app.loop = get_event_loop()
+
+        app.listener_task = app.loop.create_task(app.listener())
+
+    async def close(app):
+        app.listener_task.cancel()
+
+        await io.gather(*app.taskpool)
+
+    async def listener(app):
+        while True:
+            await app.task_add_event.wait()
+            app.task_add_event.clear()
+
+            if len(app.taskpool) >= app.maxtasks:
+                app.task_under_flow.clear()
+                await io.gather(*app.taskpool)
+                app.task_under_flow.set()
+            else:
+                app.task_under_flow.set()
+
+    def done_callback(app, task):
+        if task in app.taskpool: app.taskpool.remove(task)
+
+    async def create_task(app, *args, **kwargs):
+        await app.task_under_flow.wait()
+
+        task = get_event_loop().create_task(*args, **kwargs)
+
+        app.taskpool.append(task)
+        task.add_done_callback(app.done_callback)
+
+        app.task_add_event.set()
+        return task
 
 if __name__ == "__main__":
     pass

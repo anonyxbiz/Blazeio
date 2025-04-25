@@ -74,8 +74,56 @@ class DotDict:
         app._dict[token] = None
         return token
 
+class Enqueue:
+    __slots__ = ("queue", "event", "maxsize", "queueunderflow",)
+    def __init__(app, maxsize: int = 1000):
+        app.maxsize = maxsize
+        app.queue: deque = deque()
+        app.event: Event = Event()
+        app.event.clear()
+        app.queueunderflow: Event = Event()
+        app.queueunderflow.set()
+        get_event_loop().create_task(app.check_overflow())
+
+    async def check_overflow(app):
+        while True:
+            await app.event.wait()
+            if app.maxsize and len(app.queue) >= app.maxsize:
+                app.queueunderflow.clear()
+            else:
+                app.queueunderflow.set()
+
+    async def get(app):
+        while True:
+            await app.event.wait()
+            await app.check_overflow()
+
+            while app.queue: yield app.queue.popleft()
+
+    async def get_one(app, pop=True):
+        if not app.queue:
+            await app.event.wait()
+            app.event.clear()
+
+        if pop: return app.queue.popleft()
+        else: await sleep(0)
+
+    async def put(app, item):
+        await app.queueunderflow.wait()
+        app.queue.append(item)
+        app.event.set()
+        app.event.clear()
+
+    def put_nowait(app, item):
+        app.queue.append(item)
+        app.event.set()
+        app.event.clear()
+
+    def empty(app):
+        return len(app.queue) <= 0
+
 class Default_logger:
-    colors = DotDict({
+    colors: DotDict = DotDict({
         'info': '\033[32m',
         'error': '\033[31m',
         'warning': '\033[33m',
@@ -84,18 +132,12 @@ class Default_logger:
         'reset': '\033[32m'
     })
 
-    known_exceptions = (
-        "[Errno 104] Connection reset by peer",
-        "Client has disconnected.",
-        "Connection lost",
-        "asyncio/tasks.py",
-    )
+    known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
 
-    def __init__(app, name=""):
-        app.name = name
-        app.logs = asyncQueue(maxsize=0)
-        app.log_idle_event = Event()
-        app.log_idle_event.set()
+    def __init__(app, name: str = "", maxsize: int = 1000, max_unflushed_logs: int = 100):
+        app.name: str = name
+        app.maxsize: int = maxsize
+        app.max_unflushed_logs: int = max_unflushed_logs
 
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
@@ -118,20 +160,40 @@ class Default_logger:
         sys_stdout.write("\r%s%s" % (color,log))
 
     async def __log__(app, *args, **kwargs):
-        app.loop.call_soon_threadsafe(app.logs.put_nowait, (args, kwargs))
+        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs)), app.loop))
+    
+    async def loop_setup(app):
+        app.logs = Enqueue(maxsize=app.maxsize)
+        app.log_idle_event = Event()
+        app.log_idle_event.set()
+        app.loop.create_task(app.flush_dog())
 
     async def log_worker(app):
-        while True:
-            args, kwargs = await app.logs.get()
-            await app.__log_actual__(*args, **kwargs)
+        await app.loop_setup()
 
-            if app.logs.empty():
+        while True:
+            await app.logs.get_one(pop=False)
+            while app.logs.queue:
+                args, kwargs = app.logs.queue.popleft()
+                await app.__log_actual__(*args, **kwargs)
+
+            if not app.logs.queue:
                 app.log_idle_event.set()
             else:
                 app.log_idle_event.clear()
-    
+
     async def flush(app):
         return await wrap_future(run_coroutine_threadsafe(app.log_idle_event.wait(), app.loop))
+    
+    async def flush_dog(app):
+        unflushed_logs: int = 0
+        while True:
+            await app.logs.event.wait()
+            unflushed_logs += 1
+
+            if unflushed_logs >= app.max_unflushed_logs:
+                unflushed_logs = 0
+                sys_stdout.flush()
 
     def start(app):
         app.loop = new_event_loop()
@@ -253,31 +315,6 @@ routine_executor({
     ('log = logger', 'p = None')
 })
 
-class Enqueue:
-    __slots__ = ("queue", "event",)
-    def __init__(app, **k):
-        for a in k:
-            if a in app.__slots__:
-                setattr(app, a, k[a])
-
-        app.queue = deque()
-        app.event = Event()
-        app.event.clear()
-
-    async def get(app):
-        while True:
-            await app.event.wait()
-            app.event.clear()
-            while app.queue: yield app.queue.popleft()
-
-    def put_nowait(app, item):
-        if get_event_loop() == loop:
-            app.queue.append(item)
-            app.event.set()
-        else:
-            loop.call_soon_threadsafe(app.queue.append, item)
-            loop.call_soon_threadsafe(app.event.set,)
-
 class __ReMonitor__:
     __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "client_queue",)
 
@@ -295,7 +332,7 @@ class __ReMonitor__:
         app.Monitoring_thread_loop.run_until_complete(app.__monitor_loop__())
 
     async def __monitor_loop__(app):
-        run_coroutine_threadsafe(app.check_client_protocol(None), app.event_loop)
+        # run_coroutine_threadsafe(app.check_client_protocol(None), app.event_loop)
 
         while not app.terminate:
             await wrap_future(run_coroutine_threadsafe(app.check_server_protocol(), app.event_loop))

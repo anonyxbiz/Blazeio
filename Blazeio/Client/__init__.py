@@ -75,10 +75,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def prepare(app, *args, **kwargs):
-        if app.protocol:
-            app.protocol.__stream__.clear()
-            app.protocol.__timeout__ = app.timeout
-            app.protocol.__perf_counter__ = perf_counter()
+        #if app.protocol: app.protocol.__stream__.clear()
 
         if not app.response_headers: return await sleep(0)
 
@@ -94,7 +91,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             protocol.transport.close()
 
         if exc_type or exc_value or traceback:
-            if all([not i in str(exc_value) and not i in str(exc_type) for i in ["KeyboardInterrupt","Client has disconnected."]]):
+            if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
                 await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
 
         return False
@@ -129,44 +126,24 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             if isinstance(val, dict): val = dict(val)
             elif isinstance(val, list): val = list(val)
             setattr(app, key, val)
-
+        
+        headers = dict(headers)
         if app.protocol and app.protocol.transport.is_closing():
             if debug_mode: await Log.warning("protocol transport is_closing")
             app.protocol = None
 
         if app.protocol: proxy = None
 
-        if not app.cache or len(app.cache) >= 2: app.cache = {}
         if (multipart := kwargs.get("multipart")):
             multipart = Multipart(**multipart)
             headers.update(multipart.headers)
             content = multipart.pull()
 
-        signature = str([url, method, len(headers)])
+        method = method.upper()
 
-        if not app.cache.get(signature): app.cache[signature] = {}
+        app.host, app.port, app.path = await app.url_to_host(url, app.params)
 
-        if not (_ := app.cache[signature].get("method")):
-            method = method.upper()
-            app.cache[signature]["method"] = method
-        else:
-            method = _
-
-        if not (_ := app.cache[signature].get("url_to_host")):
-            if not host or not port:
-                app.host, app.port, app.path = await app.url_to_host(url, app.params)
-            else:
-                app.host, app.port, app.path = host, port, path
-
-            app.cache[signature]["url_to_host"] = (app.host, app.port, app.path,)
-        else:
-            app.host, app.port, app.path = _
-
-        if not (_ := app.cache[signature].get("normalized_headers")):
-            normalized_headers = DictView(headers)
-            app.cache[signature]["normalized_headers"] = normalized_headers
-        else:
-            normalized_headers = _
+        normalized_headers = DictView(headers)
 
         if cookies:
             app.kwargs["cookies"] = cookies
@@ -179,22 +156,17 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             headers["Cookie"] = cookie
 
         if add_host:
-            if (_ := app.cache[signature].get("add_host", NotImplemented)) is NotImplemented:
-                if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]):
-                    normalized_headers["Host"] = app.host
-                    app.cache[signature]["add_host"] = app.host
-                else:
-                    app.cache[signature]["add_host"] = None
-            else:
-                if _ is not None: headers["Host"] = _
+            if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]):
+                normalized_headers["Host"] = app.host
 
         if json:
-            json = dumps(json).encode()
-            body = json
+            body = dumps(json).encode()
+            if not 'Content-type' in normalized_headers:
+                normalized_headers["Content-type"] = "application/json"
+
+        if body:
             normalized_headers["Content-length"] = len(body)
-            normalized_headers['Content-type'] = 'application/json'
-        elif body:
-            normalized_headers["Content-length"] = len(body)
+            normalized_headers.pop("Transfer-encoding")
 
         if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
             if not isinstance(content, (bytes, bytearray)):
@@ -227,12 +199,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             return app
 
-        if not (_ := app.cache[signature].get("payload")):
-            payload = await app.gen_payload(method if not proxy else "CONNECT", headers, app.path)
-
-            app.cache[signature]["payload"] = payload
-        else:
-            payload = _
+        payload = await app.gen_payload(method if not proxy else "CONNECT", headers, app.path)
 
         if body:
             payload = payload + body
