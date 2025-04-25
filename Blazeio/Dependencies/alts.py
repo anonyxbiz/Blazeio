@@ -147,48 +147,72 @@ class Asynchronizer:
         app.loop.run_until_complete(app.worker())
 
 class TaskPool:
-    __slots__ = ("taskpool", "task_add_event", "task_under_flow", "loop", "maxtasks", "listener_task",)
-    def __init__(app, maxtasks: int = 100):
-        app.maxtasks, app.taskpool = maxtasks, []
+    __slots__ = ("taskpool", "task_activity", "task_under_flow", "loop", "maxtasks", "listener_task", "timeout")
+    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None):
+        app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.task_add_event = Event()
-        app.task_add_event.clear()
-        app.task_under_flow = Event()
-        app.task_under_flow.set()
+        app.task_activity = Event()
+        app.task_activity.clear()
+        app.task_under_flow = Condition()
+
         app.loop = get_event_loop()
 
         app.listener_task = app.loop.create_task(app.listener())
 
     async def close(app):
+        if app.taskpool: await gather(*app.taskpool, return_exceptions=True)
+
         app.listener_task.cancel()
 
-        await gather(*app.taskpool)
+        try: await app.listener_task
+        except CancelledError: pass
+
+    async def gather(app):
+        return await gather(*app.taskpool, return_exceptions=True)
 
     async def listener(app):
         while True:
-            await app.task_add_event.wait()
-            app.task_add_event.clear()
+            if len(app.taskpool) <= app.maxtasks:
+                available = app.maxtasks - len(app.taskpool)
+                async with app.task_under_flow: app.task_under_flow.notify(available)
 
-            if len(app.taskpool) >= app.maxtasks:
-                app.task_under_flow.clear()
-                await gather(*app.taskpool)
-                app.task_under_flow.set()
-            else:
-                app.task_under_flow.set()
+            await app.task_activity.wait()
+            app.task_activity.clear()
 
     def done_callback(app, task):
+        app.task_activity.set()
+
+        if task.__taskpool_timer_handle__ and not task.__taskpool_timer_handle__.cancelled():
+            task.__taskpool_timer_handle__.cancel()
+
         if task in app.taskpool: app.taskpool.remove(task)
 
     async def create_task(app, *args, **kwargs):
-        await app.task_under_flow.wait()
+        async with app.task_under_flow: await app.task_under_flow.wait()
 
         task = get_event_loop().create_task(*args, **kwargs)
-
         app.taskpool.append(task)
-        task.add_done_callback(app.done_callback)
 
-        app.task_add_event.set()
+        if app.timeout:
+            task.__taskpool_timer_handle__ = get_event_loop().call_later(app.timeout, task.cancel)
+        else:
+            task.__taskpool_timer_handle__ = app.timeout
+
+        task.add_done_callback(app.done_callback)
+        app.task_activity.set()
+
         return task
+
+class TaskPoolManager:
+    __slots__ = ("pool")
+    def __init__(app, *args, **kwargs):
+        app.pool = TaskPool(*args, **kwargs)
+
+    async def __aenter__(app):
+        return app.pool
+
+    async def __aexit__(app, exc_type, exc_value, tb):
+        await app.pool.close()
 
 if __name__ == "__main__":
     pass
