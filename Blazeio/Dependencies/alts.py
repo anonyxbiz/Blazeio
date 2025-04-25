@@ -162,7 +162,7 @@ class TaskPool:
     async def close(app):
         app.listener_task.cancel()
 
-        await io.gather(*app.taskpool)
+        await gather(*app.taskpool)
 
     async def listener(app):
         while True:
@@ -171,7 +171,7 @@ class TaskPool:
 
             if len(app.taskpool) >= app.maxtasks:
                 app.task_under_flow.clear()
-                await io.gather(*app.taskpool)
+                await gather(*app.taskpool)
                 app.task_under_flow.set()
             else:
                 app.task_under_flow.set()
