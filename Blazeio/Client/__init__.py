@@ -75,7 +75,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def prepare(app, *args, **kwargs):
-        #if app.protocol: app.protocol.__stream__.clear()
+        if app.protocol: app.protocol.__stream__.clear()
 
         if not app.response_headers: return await sleep(0)
 
