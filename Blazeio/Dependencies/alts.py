@@ -180,12 +180,11 @@ class TaskPool:
             app.task_activity.clear()
 
     def done_callback(app, task):
+        if task in app.taskpool: app.taskpool.remove(task)
         app.task_activity.set()
 
         if task.__taskpool_timer_handle__ and not task.__taskpool_timer_handle__.cancelled():
             task.__taskpool_timer_handle__.cancel()
-
-        if task in app.taskpool: app.taskpool.remove(task)
 
     async def create_task(app, *args, **kwargs):
         async with app.task_under_flow: await app.task_under_flow.wait()
