@@ -153,7 +153,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             for key, val in normalized_cookies.items():
                 cookie += "%s%s=%s" % ("; " if cookie else "", key, val)
 
-            headers["Cookie"] = cookie
+            normalized_headers["Cookie"] = cookie
 
         if add_host:
             if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]):
@@ -166,6 +166,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if body:
             normalized_headers["Content-length"] = len(body)
             if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
+
+        if (i := "Content-length") in normalized_headers and i not in headers:
+            headers[i] = normalized_headers.pop(i)
 
         if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
             if not isinstance(content, (bytes, bytearray)):
@@ -206,7 +209,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         await app.protocol.push(payload)
 
         if not app.write:
-            if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
+            if "Transfer-encoding" in headers: app.write = app.write_chunked
             else:
                 app.write = app.push
 
