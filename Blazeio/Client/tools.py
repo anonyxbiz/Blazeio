@@ -366,7 +366,9 @@ class Parsers:
             app.received_len += len(chunk)
             yield chunk
 
-            if app.received_len >= app.content_length and not app.protocol.__stream__: break
+            if app.received_len >= app.content_length and not app.protocol.__stream__:
+                await sleep(0)
+                break
 
 class Pushtools:
     __slots__ = ()
@@ -403,16 +405,19 @@ class Pulltools(Parsers):
     def __init__(app): pass
 
     async def pull(app, *args, http=True, **kwargs):
-        if http: await app.prepare_http()
+        if http and not app.response_headers: await app.prepare_http()
 
         try:
             if not app.decoder:
-                async for chunk in app.handler(*args, **kwargs): yield chunk
+                async for chunk in app.handler(*args, **kwargs):
+                    yield chunk
             else:
                 async for chunk in app.decoder(): yield chunk
 
-        except GeneratorExit as e: pass
-        except StopIteration as e: pass
+        except GeneratorExit as e:
+            await sleep(0)
+        except StopIteration as e:
+            await sleep(0)
 
     async def aread(app, decode=False):
         data = bytearray()
