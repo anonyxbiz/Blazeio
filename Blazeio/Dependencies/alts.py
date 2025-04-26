@@ -66,7 +66,7 @@ class Asynchronizer:
             "event": (event := Event()),
             "loop": get_event_loop(),
             "current_task": current_task(),
-            "awaitable": app.is_async(func)
+            "awaitable": True if str(type(func)).replace('"', "'") == "<class 'method'>" else False
         }
 
         event.clear()
@@ -85,6 +85,15 @@ class Asynchronizer:
     async def async_tasker(app, job):
         try:
             job["result"] = await job["func"](*job["args"], **job["kwargs"])
+        except TypeError as e: app.sync_tasker(job)
+        except Exception as e: job["exception"] = e
+        finally:
+            job["event"].set()
+
+    def sync_tasker(app, job):
+        try:
+            job["result"] = job["func"](*job["args"], **job["kwargs"])
+        except TypeError as e: app.loop.create_task(app.async_tasker(job))
         except Exception as e: job["exception"] = e
         finally:
             job["event"].set()
@@ -97,11 +106,9 @@ class Asynchronizer:
                     job, _ = _, None
                 else:
                     job = app.jobs.get_nowait()
-                
+
                 if not job.get("awaitable"):
-                    try: job["result"] = job["func"](*job["args"], **job["kwargs"])
-                    except Exception as e: job["exception"] = e
-                    finally: job["event"].set()
+                    app.sync_tasker(job)
                 else:
                     app.loop.create_task(app.async_tasker(job))
 
@@ -174,7 +181,8 @@ class TaskPool:
         while True:
             if len(app.taskpool) <= app.maxtasks:
                 available = app.maxtasks - len(app.taskpool)
-                async with app.task_under_flow: app.task_under_flow.notify(available)
+                async with app.task_under_flow:
+                    app.task_under_flow.notify(available)
 
             await app.task_activity.wait()
             app.task_activity.clear()
@@ -187,7 +195,9 @@ class TaskPool:
             task.__taskpool_timer_handle__.cancel()
 
     async def create_task(app, *args, **kwargs):
-        async with app.task_under_flow: await app.task_under_flow.wait()
+        async with app.task_under_flow:
+            app.task_activity.set()
+            await app.task_under_flow.wait()
 
         task = get_event_loop().create_task(*args, **kwargs)
         app.taskpool.append(task)
@@ -198,8 +208,6 @@ class TaskPool:
             task.__taskpool_timer_handle__ = app.timeout
 
         task.add_done_callback(app.done_callback)
-        app.task_activity.set()
-
         return task
 
 class TaskPoolManager:

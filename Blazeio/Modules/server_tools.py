@@ -31,15 +31,9 @@ class Simpleserve:
         "application/json",
     )
     
-    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status = 200, **kwargs):
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, **kwargs):
         if r and file:
-            for method, value in locals().items():
-                if method not in app.__slots__: continue
-    
-                if isinstance(value, dict):
-                    value = dict(value)
-    
-                setattr(app, method, value)
+            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status = r, file, CHUNK_SIZE, dict(headers), cache_control, status
 
             if not path.exists(app.file): raise Abort("Not Found", 404)
 
@@ -84,7 +78,7 @@ class Simpleserve:
         app.headers.update({
             "Content-Type": app.content_type,
             "Content-Disposition": app.content_disposition,
-            "Last-modified": app.last_modified_str,
+            "Last-Modified": app.last_modified_str,
             "Etag": app.etag
         })
 

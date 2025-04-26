@@ -3,8 +3,9 @@ from ..Modules.request import *
 
 ssl_context = create_default_context()
 
-class Rvtools:
-    headers = {
+class __Rvtools__:
+    __slots__ = ()
+    __headers__ = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-language': 'en-US,en;q=0.9',
         'cache-control': 'no-cache',
@@ -21,6 +22,16 @@ class Rvtools:
     }
 
     def __init__(app): pass
+    
+    # Protect data from modification
+    def __getattr__(app, name):
+        value = getattr(app, "__%s__" % name)
+        if isinstance(value, dict): value = dict(value)
+        elif isinstance(value, list): value = list(value)
+
+        return value
+
+Rvtools = __Rvtools__()
 
 class Async:
     @classmethod
@@ -150,6 +161,8 @@ class Urllib:
         if (query := parsed_url.get("query")):
             if parse_params:
                 params.update(await Request.get_params(url="?%s" % query))
+            else:
+                path += ("?%s" % query) if "=" in query else ""
 
         if params:
             query = "?"
