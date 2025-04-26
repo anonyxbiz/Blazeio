@@ -362,12 +362,11 @@ class Parsers:
             if end: break
 
     async def handle_raw(app, *args, **kwargs):
-        async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
+        async for chunk in app.protocol.pull():
             app.received_len += len(chunk)
-
             yield chunk
 
-            if app.received_len >= app.content_length: break
+            if app.received_len >= app.content_length and not app.protocol.__stream__: break
 
 class Pushtools:
     __slots__ = ()
@@ -480,7 +479,9 @@ class Pulltools(Parsers):
 
     async def save(app, filepath: str, mode: str = "wb"):
         async with async_open(filepath, mode) as f:
-            async for chunk in app.pull(): await f.write(bytes(chunk))
+            async for chunk in app.pull():
+                await f.write(bytes(chunk))
+            
             await sleep(0)
 
     async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)

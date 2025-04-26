@@ -26,7 +26,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__continous__: (int, bool) = 0
         app.__perf_counter__: int = perf_counter()
         app.__timeout__: float = 60.0
-        app.max_continous_len: int = 10
+        app.max_continous_len: int = 20
 
         if kwargs:
             for key in kwargs:
@@ -40,11 +40,6 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__evt__: Event = Event()
         app.__overflow_evt__: Event = Event()
         app.pull = app.pull_continous if app.__continous__ else app.pull_paused
-
-    def __setitem__(app, key, value):
-        setattr(app, key, value)
-        if key == "__continous__":
-            app.pull = app.pull_continous if app.__continous__ else app.pull_paused
 
     def connection_made(app, transport):
         if not app.__continous__: transport.pause_reading()
