@@ -122,7 +122,7 @@ class Urllib:
     def __init__(app):
         pass
 
-    async def url_to_host(app, url: str, params: dict):
+    async def url_to_host(app, url: str, params: dict, parse_params: bool = False):
         parsed_url = {}
 
         url = url.replace(r"\/", "/")
@@ -145,24 +145,19 @@ class Urllib:
         if (idx := parsed_url["path"].find(app.param_sepr)) != -1:
             parsed_url["query"], parsed_url["path"] = parsed_url["path"][idx + len(app.param_sepr):], parsed_url["path"][:idx]
 
-        host = parsed_url.get("hostname")
-        path = parsed_url.get("path")
-        port = parsed_url.get("port")
+        host, path, port = parsed_url.get("hostname"), parsed_url.get("path"), parsed_url.get("port")
 
         if (query := parsed_url.get("query")):
-            params.update(await Request.get_params(url="?%s" % query))
-        
+            if parse_params:
+                params.update(await Request.get_params(url="?%s" % query))
+
         if params:
             query = "?"
-
-            for k,v in params.items():
+            for k, v in params.items():
                 v = await Request.url_encode(v)
-    
                 if query == "?": x = ""
                 else: x = "&"
-    
                 query += "%s%s=%s" % (x, k, v)
-    
             path += query
 
         if not port:

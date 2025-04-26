@@ -91,7 +91,8 @@ class Request:
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod
-    async def url_decode(app, value):
+    async def url_decode(app, value: str):
+        if len(value) <= 1024: return app.url_decode_sync(value)
         for k, v in app.URL_DECODE_MAP_ITEMS:
             while (idx := value.find(k)) != -1:
                 value = value[:idx] + v + value[idx + len(k):]
@@ -100,14 +101,92 @@ class Request:
         return value
 
     @classmethod
-    async def url_encode(app, value):
+    async def url_encode(app, value: str):
+        if len(value) <= 1024: return app.url_encode_sync(value)
+
         for k, v in app.URL_ENCODE_MAP_ITEMS:
             while (idx := value.find(k)) != -1:
                 value = value[:idx] + v + value[idx + len(k):]
-
                 await sleep(0)
 
         return value
+
+    @classmethod
+    def url_encode_sync(app, value: str):
+        for k, v in app.URL_ENCODE_MAP_ITEMS:
+            while (idx := value.find(k)) != -1:
+                value = value[:idx] + v + value[idx + len(k):]
+        return value
+
+    @classmethod
+    def url_decode_sync(app, value: str):
+        for k, v in app.URL_DECODE_MAP_ITEMS:
+            while (idx := value.find(k)) != -1:
+                value = value[:idx] + v + value[idx + len(k):]
+        return value
+
+    @classmethod
+    async def get_params(app, r=None, url: (None, str) = None, q: str = "?", o: str = "&", y: str = "="):
+        if len(url) <= 1024: return app.get_params_sync(r, url)
+
+        temp = defaultdict(str)
+
+        if r is not None:
+            if (idx0 := r.tail.find(q)) == -1: return dict(temp)
+            params = r.tail[idx0 + 1:]
+
+        elif url is not None:
+            if (idx0 := url.find(q)) == -1: return dict(temp)
+
+            params = url[idx0 + 1:]
+
+        idx = 0
+
+        while True:
+            await sleep(0)
+
+            if (idx := params.find(y)) != -1:
+                key, value = params[:idx], params[idx + 1:]
+
+                if (idx_end := value.find(q)) != -1:
+                    pass
+                elif (idx := value.find(o)) != -1:
+                    value, params = value[:idx], value[idx + 1:]
+
+                temp[await app.url_decode(key)] = await app.url_decode(value)
+
+            if idx == -1 or idx_end != -1:
+                break
+
+        return dict(temp)
+
+    @classmethod
+    def get_params_sync(app, r=None, url: (None, str) = None, q: str = "?", o: str = "&", y: str = "="):
+        temp: defaultdict = defaultdict(str)
+
+        if r is not None:
+            if (idx0 := r.tail.find(q)) == -1: return dict(temp)
+            params = r.tail[idx0 + 1:]
+
+        elif url is not None:
+            if (idx0 := url.find(q)) == -1: return dict(temp)
+
+            params = url[idx0 + 1:]
+
+        idx: int = 0
+
+        while True:
+            if (idx := params.find(y)) != -1:
+                key, value = params[:idx], params[idx + 1:]
+                if (idx_end := value.find(q)) != -1:
+                    pass
+                elif (idx := value.find(o)) != -1:
+                    value, params = value[:idx], value[idx + 1:]
+                temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
+
+            if idx == -1 or idx_end != -1: break
+
+        return dict(temp)
 
     @classmethod
     async def get_params(app, r=None, url=None, q = "?", o = "&", y = "="):
@@ -134,8 +213,7 @@ class Request:
                     pass
                 elif (idx := value.find(o)) != -1:
                     value, params = value[:idx], value[idx + 1:]
-            
-            
+
                 temp[await app.url_decode(key)] = await app.url_decode(value)
 
             if idx == -1 or idx_end != -1:

@@ -126,7 +126,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             if isinstance(val, dict): val = dict(val)
             elif isinstance(val, list): val = list(val)
             setattr(app, key, val)
-        
+
         headers = dict(headers)
         if app.protocol and app.protocol.transport.is_closing():
             if debug_mode: await Log.warning("protocol transport is_closing")
@@ -163,10 +163,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             body = dumps(json).encode()
             if not 'Content-type' in normalized_headers:
                 normalized_headers["Content-type"] = "application/json"
-
         if body:
             normalized_headers["Content-length"] = len(body)
-            normalized_headers.pop("Transfer-encoding")
+            if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
         if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
             if not isinstance(content, (bytes, bytearray)):
@@ -219,7 +218,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
                 await app.write(content)
             elif isinstance(content, AsyncIterable):
                 async for chunk in content: await app.write(chunk)
-
                 await app.eof()
             else:
                 raise Err("content must be AsyncIterable | bytes | bytearray")
@@ -237,8 +235,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         else:
             payload = bytearray("%s %s:%s HTTP/%s\r\n" % (method.upper(), app.host, app.port, http_version), "utf-8")
 
-        for key, val in headers.items():
-            payload.extend(bytearray("%s: %s\r\n" % (key, val), "utf-8"))
+        for key in headers:
+            payload.extend(bytearray("%s: %s\r\n" % (key, headers[key]), "utf-8"))
 
         payload.extend(b"\r\n")
         return payload
