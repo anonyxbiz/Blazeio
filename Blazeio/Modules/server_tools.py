@@ -42,7 +42,7 @@ class Simpleserve:
 
         return await app.prepare_metadata()
 
-    def validate_cache(app):
+    async def validate_cache(app):
         if app.r.headers.get("If-none-match") == app.etag:
             raise Abort("Not Modified", 304)
 
@@ -64,7 +64,7 @@ class Simpleserve:
 
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
 
-        if app.validate_cache(): return True
+        if await app.validate_cache(): return True
 
         app.content_type = guess_type(app.file)[0]
 
