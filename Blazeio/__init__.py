@@ -84,8 +84,8 @@ class Handler:
         tb = extract_tb(e.__traceback__)
         filename, lineno, func, text = tb[-1]
         
-        msg = "\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s." % (filename, lineno, text, func, str(e))
-        
+        msg = "\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s.\n" % (filename, lineno, text, func, str(e))
+
         if format_only: return msg
 
         for exc in Log.known_exceptions:

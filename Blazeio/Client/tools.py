@@ -486,7 +486,7 @@ class Pulltools(Parsers):
         async with async_open(filepath, mode) as f:
             async for chunk in app.pull():
                 await f.write(bytes(chunk))
-            
+
             await sleep(0)
 
     async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)
