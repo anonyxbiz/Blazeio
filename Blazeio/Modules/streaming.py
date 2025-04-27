@@ -89,9 +89,12 @@ class Abort(Exception):
         headers = app.args[2] if len(app.args) >= 3 else {}
 
         headers["Content-Type"] = "text/plain; charset=utf-8"
-
-        await app.r.prepare(headers, status)
-        await app.r.write(message.encode())
+        
+        try:
+            await app.r.prepare(headers, status)
+            await app.r.write(message.encode())
+        except Err:
+            return
 
 class Eof(Exception):
     __slots__ = (
@@ -116,9 +119,6 @@ class __Payload__:
 
     def __getattr__(app, name):
         return getattr(current_task().get_coro().cr_frame.f_locals.get("app"), name)
-
-# Payload = __Payload__()
-
 
 class FileIO:
     @classmethod
