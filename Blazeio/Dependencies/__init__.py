@@ -75,49 +75,61 @@ class DotDict:
         return token
 
 class Enqueue:
-    __slots__ = ("queue", "event", "maxsize", "queueunderflow",)
-    def __init__(app, maxsize: int = 1000):
+    __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "available",)
+    def __init__(app, maxsize: int = 100):
         app.maxsize = maxsize
         app.queue: deque = deque()
-        app.event: Event = Event()
-        app.event.clear()
-        app.queueunderflow: Event = Event()
-        app.queueunderflow.set()
+        app.queue_event: Event = Event()
+        app.queue_add_event: Event = Event()
+        app.available: int = maxsize
+        app.queueunderflow: Condition = Condition()
         get_event_loop().create_task(app.check_overflow())
 
     async def check_overflow(app):
         while True:
-            await app.event.wait()
-            if app.maxsize and len(app.queue) >= app.maxsize:
-                app.queueunderflow.clear()
-            else:
-                app.queueunderflow.set()
+            if len(app.queue) <= app.maxsize:
+                app.available = app.maxsize - len(app.queue)
 
-    async def get(app):
-        while True:
-            await app.event.wait()
-            await app.check_overflow()
+                async with app.queueunderflow:
+                    app.queueunderflow.notify(app.available)
 
-            while app.queue: yield app.queue.popleft()
+            await app.queue_event.wait()
+            app.queue_event.clear()
+
+    def append(app, item, appendtype: deque):
+        appendtype(item)
+        app.queue_event.set()
+        app.queue_add_event.set()
+        app.queue_add_event.clear()
+
+    def popleft(app):
+        item = app.queue.popleft()
+        app.queue_event.set()
+        return item
 
     async def get_one(app, pop=True):
         if not app.queue:
-            await app.event.wait()
-            app.event.clear()
+            await app.queue_add_event.wait()
+        if pop: return app.popleft()
 
-        if pop: return app.queue.popleft()
-        else: await sleep(0)
+    async def put(app, item, notify: bool = True, prioritize: bool = False):
+        async with app.queueunderflow:
+            appendtype = app.queue.append if not prioritize else app.queue.appendleft
 
-    async def put(app, item):
-        await app.queueunderflow.wait()
-        app.queue.append(item)
-        app.event.set()
-        app.event.clear()
+            app.queue_event.set()
+            await app.queueunderflow.wait()
+
+            app.append(item, appendtype) if notify else app.append(item, appendtype)
+
+    async def get(app):
+        while True:
+            await app.queue_add_event.wait()
+            while app.queue: yield app.queue.popleft()
 
     def put_nowait(app, item):
         app.queue.append(item)
-        app.event.set()
-        app.event.clear()
+        app.queue_event.set()
+        app.queue_add_event.set()
 
     def empty(app):
         return len(app.queue) <= 0
@@ -161,7 +173,7 @@ class Default_logger:
 
     async def __log__(app, *args, **kwargs):
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs)), app.loop))
-    
+
     async def loop_setup(app):
         app.logs = Enqueue(maxsize=app.maxsize)
         app.log_idle_event = Event()
@@ -174,7 +186,7 @@ class Default_logger:
         while True:
             await app.logs.get_one(pop=False)
             while app.logs.queue:
-                args, kwargs = app.logs.queue.popleft()
+                args, kwargs = app.logs.popleft()
                 await app.__log_actual__(*args, **kwargs)
 
             if not app.logs.queue:
@@ -188,7 +200,7 @@ class Default_logger:
     async def flush_dog(app):
         unflushed_logs: int = 0
         while True:
-            await app.logs.event.wait()
+            await app.logs.queue_add_event.wait()
             unflushed_logs += 1
 
             if unflushed_logs >= app.max_unflushed_logs:

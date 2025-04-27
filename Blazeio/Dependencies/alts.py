@@ -154,7 +154,7 @@ class Asynchronizer:
         app.loop.run_until_complete(app.worker())
 
 class TaskPool:
-    __slots__ = ("taskpool", "task_activity", "task_under_flow", "loop", "maxtasks", "listener_task", "timeout")
+    __slots__ = ("taskpool", "task_activity", "task_under_flow", "loop", "maxtasks", "listener_task", "timeout",)
     def __init__(app, maxtasks: int = 100, timeout: (None, float) = None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
@@ -194,6 +194,13 @@ class TaskPool:
         if task.__taskpool_timer_handle__ and not task.__taskpool_timer_handle__.cancelled():
             task.__taskpool_timer_handle__.cancel()
 
+    def done_callback_orchestrator(app, task):
+        for callback in task.__taskpool_callbacks__:
+            get_event_loop().call_soon(callback, task)
+
+    async def add_call_back(app, task, func):
+        task.__taskpool_callbacks__.append(func)
+
     async def create_task(app, *args, **kwargs):
         async with app.task_under_flow:
             app.task_activity.set()
@@ -206,8 +213,12 @@ class TaskPool:
             task.__taskpool_timer_handle__ = get_event_loop().call_later(app.timeout, task.cancel)
         else:
             task.__taskpool_timer_handle__ = app.timeout
+        
+        task.__taskpool_callbacks__ = [app.done_callback]
 
-        task.add_done_callback(app.done_callback)
+        task.__taskpool_add_callback__ = lambda f, t=task: app.add_call_back(t, f)
+
+        task.add_done_callback(app.done_callback_orchestrator)
         return task
 
 class TaskPoolManager:
@@ -219,6 +230,7 @@ class TaskPoolManager:
         return app.pool
 
     async def __aexit__(app, exc_type, exc_value, tb):
+        await app.pool.gather()
         await app.pool.close()
 
 if __name__ == "__main__":
