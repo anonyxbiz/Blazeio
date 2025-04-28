@@ -49,6 +49,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     }
     not_stated = "response_headers"
 
+    __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
+
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
         app.args, app.kwargs = args, kwargs
@@ -67,6 +69,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def conn(app, *args, **kwargs):
+        if not app.response_headers: return await sleep(0)
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
@@ -144,6 +147,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         app.host, app.port, app.path = await app.url_to_host(url, app.params)
 
         normalized_headers = DictView(headers)
+        for i in app.__important_headers__:
+            if i in normalized_headers and i not in headers:
+                headers[i] = normalized_headers.pop(i)
 
         if cookies:
             app.kwargs["cookies"] = cookies
@@ -166,9 +172,6 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         if body:
             normalized_headers["Content-length"] = len(body)
             if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
-
-        if (i := "Content-length") in normalized_headers and i not in headers:
-            headers[i] = normalized_headers.pop(i)
 
         if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
             if not isinstance(content, (bytes, bytearray)):

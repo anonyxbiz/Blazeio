@@ -20,13 +20,13 @@ class BlazeioClientProtocol(BufferedProtocol):
     )
 
     def __init__(app, **kwargs):
-        app.__chunk_size__: int = kwargs.get("__chunk_size__", OUTBOUND_CHUNK_SIZE)
+        app.__chunk_size__: int = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
 
         app.__is_at_eof__: bool = False
         app.__continous__: (int, bool) = 0
         app.__perf_counter__: int = perf_counter()
         app.__timeout__: float = 60.0
-        app.max_continous_len: int = 20
+        app.max_continous_len: int = 200
 
         if kwargs:
             for key in kwargs:
@@ -59,8 +59,7 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__evt__.set()
 
     def buffer_updated_continous(app, nbytes):
-        if len(app.__stream__) >= app.max_continous_len: app.transport.pause_reading()
-
+        app.transport.pause_reading()
         app.__stream__.append(app.__buff__memory__[:nbytes])
         app.__evt__.set()
 
@@ -101,7 +100,7 @@ class BlazeioClientProtocol(BufferedProtocol):
             app.__buff__memory__ = memoryview(app.__buff__)
             app.__stream__.appendleft(sizehint)
         else:
-            app.__stream__.appendleft(data)
+            app.__stream__.appendleft(memoryview(data))
 
         app.__evt__.set()
 
@@ -125,7 +124,9 @@ class BlazeioClientProtocol(BufferedProtocol):
     async def pull_continous(app):
         while True:
             await app.ensure_reading()
-            while app.__stream__: yield bytes(app.__stream__.popleft())
+            while app.__stream__:
+                yield bytes(app.__stream__.popleft())
+                app.transport.resume_reading()
             else:
                 if app.transport.is_closing(): break
 

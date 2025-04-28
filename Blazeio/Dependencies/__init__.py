@@ -46,12 +46,21 @@ debug_mode = environ.get("BlazeioDev", None)
 pid = getpid()
 main_process = psutilProcess(pid)
 
-INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = 1024*100, 1024*100
+class __ioConf__:
+    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE")
+
+    def __init__(app):
+        app.INBOUND_CHUNK_SIZE: int = 102400
+        app.OUTBOUND_CHUNK_SIZE: int = 102400
+
+ioConf = __ioConf__()
+
+INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = ioConf.INBOUND_CHUNK_SIZE, ioConf.OUTBOUND_CHUNK_SIZE
 
 class DotDict:
     __slots__ = ("_dict",)
-    def __init__(app, dictionary: dict):
-        app._dict = dictionary
+    def __init__(app, dictionary: (dict, None) = None):
+        app._dict = dictionary or {}
 
     def __getattr__(app, name):
         if name in app._dict:
@@ -67,12 +76,35 @@ class DotDict:
     def __setitem__(app, key, value):
         app._dict[key] = value
 
+    def __setattr__(app, key, value):
+        if key in app.__slots__:
+            object.__setattr__(app, key, value)
+        else:
+            app._dict[key] = value
+
+    def __getitem__(app, key):
+        return app._dict[key]
+
     async def token_urlsafe(app, *args, **kwargs):
         while (token := token_urlsafe(*args, **kwargs)) in app._dict:
-            await sleep(0.0001)
+            await sleep(0)
 
         app._dict[token] = None
         return token
+
+class Simple:
+    @classmethod
+    def Event(app, cleared = True):
+        event = DotDict()
+        event.event = Event()
+
+        event.set = lambda clear = True, evt = event.event: (evt.set(), evt.clear()) if clear else evt.set()
+        event.clear = lambda evt = event.event: evt.clear()
+        event.wait = lambda evt = event.event: evt.wait()
+        event._waiters = lambda evt = event.event: evt._waiters
+
+        event.clear() if cleared else event.set()
+        return event
 
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "available",)
@@ -164,11 +196,12 @@ class Default_logger:
 
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
-    async def __log_actual__(app, color, log):
+    async def __log_actual__(app, color, log, add_new_line = True):
         if not isinstance(log, str):
             log = str(log)
 
-        if not "\n" in log: log += "\n"
+        if add_new_line and not "\n" in log: log += "\n"
+
         sys_stdout.write("\r%s%s" % (color,log))
 
     async def __log__(app, *args, **kwargs):

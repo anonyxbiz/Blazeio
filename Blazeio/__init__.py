@@ -243,6 +243,8 @@ class App(Handler, OOP_RouteDef):
     declared_routes = OrderedDict()
     ServerConfig = SrvConfig()
     on_exit = deque()
+    is_server_running = Event()
+    is_server_running.clear()
 
     __server_config__ = {
         "__http_request_heading_end_seperator__": b"\r\n\r\n",
@@ -255,6 +257,9 @@ class App(Handler, OOP_RouteDef):
     def __init__(app, *args, **kwargs):
         for i in app.__class__.__bases__: i.__init__(app)
         
+        if len(args) >= 2:
+            app.ServerConfig.__dict__["host"], app.ServerConfig.__dict__["port"] = args[:2]
+
         for key, val in dict(kwargs).items():
             if key in app.__server_config__:
                 app.__server_config__[key] = val
@@ -379,7 +384,7 @@ class App(Handler, OOP_RouteDef):
         await app.configure_server_handler()
 
         app.server = await loop.create_server(
-            lambda: BlazeioServerProtocol(app.handle_client, INBOUND_CHUNK_SIZE),
+            lambda: BlazeioServerProtocol(app.handle_client, ioConf.INBOUND_CHUNK_SIZE),
             HOST,
             PORT,
             **kwargs
@@ -387,6 +392,8 @@ class App(Handler, OOP_RouteDef):
 
         async with app.server:
             await Log.info("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s, Request Logging is %s.\n" % ("http" if not ssl_data else "https", HOST, PORT, "enabled" if app.ServerConfig.__log_requests__ else "disabled"))
+
+            app.is_server_running.set()
             await app.server.serve_forever()
 
     async def cancelloop(app, loop):
