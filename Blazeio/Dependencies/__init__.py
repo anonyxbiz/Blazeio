@@ -98,10 +98,13 @@ class Simple:
         event = DotDict()
         event.event = Event()
 
-        event.set = lambda clear = True, evt = event.event: (evt.set(), evt.clear()) if clear else evt.set()
-        event.clear = lambda evt = event.event: evt.clear()
-        event.wait = lambda evt = event.event: evt.wait()
-        event._waiters = lambda evt = event.event: evt._waiters
+        event.set = lambda evt = event.event: evt.set() != evt.clear()
+
+        for i in ("clear", "wait", "is_set", "_waiters"):
+            if callable(attr := getattr(event.event, i)):
+                setattr(event, i, lambda attr=attr, *a, **k: attr(*a, **k))
+            else:
+                setattr(event, i, lambda attr=attr: attr)
 
         event.clear() if cleared else event.set()
         return event
