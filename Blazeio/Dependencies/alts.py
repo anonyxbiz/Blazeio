@@ -38,6 +38,12 @@ class DictView:
         if key in app._capitalized: app._dict.pop(app._capitalized[key])
         app._dict[key] = value
 
+    def __getitem__(app, key):
+        return app._dict[key]
+
+    def get(app, key, default=None):
+        return app._dict.get(app._capitalized.get(key), default)
+
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 
