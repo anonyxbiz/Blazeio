@@ -105,7 +105,7 @@ class ExtraToolset:
 
             if app.current_length >= app.content_length: break
 
-    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = ""):
+    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp = True):
         await app.writer(b'HTTP/1.1 %s %s\r\nServer: Blazeio\r\n' % (str(status).encode(), StatusReason.reasons.get(status, "Unknown").encode()))
 
         if app.__cookie__: await app.writer(app.__cookie__)
@@ -115,7 +115,7 @@ class ExtraToolset:
 
         for key, val in headers.items():
             if not hasattr(app, "encoder"):
-                if key.capitalize() == "Content-encoding":
+                if key.capitalize() == "Content-encoding" and encode_resp:
                     app.encoder = getattr(app, val, None)
 
             if not hasattr(app, "write"):
