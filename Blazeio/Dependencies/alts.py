@@ -239,6 +239,49 @@ class TaskPoolManager:
         await app.pool.gather()
         await app.pool.close()
 
+class RDict:
+    __slots__ = ("_dict",)
+
+    def __init__(app, **kwargs):
+        object.__setattr__(app, '_dict', app.convert(kwargs or {}))
+
+    def convert(app, _dict: dict):
+        converted = {}
+        for key, value in _dict.items():
+            if isinstance(value, dict):
+                converted[key] = RDict(**value)
+            else:
+                converted[key] = value
+        return converted
+    
+    def __getattr__(app, name):
+        if name in app._dict:
+            return app._dict[name]
+        else:
+            return getattr(app._dict, name)
+
+    def __contains__(app, key):
+        return key in app._dict
+    
+    def __setitem__(app, key, value):
+        if isinstance(value, dict):
+            value = RDict(**value)
+        app._dict[key] = value
+    
+    def __setattr__(app, key, value):
+        if isinstance(value, dict):
+            value = RDict(**value)
+
+        if key in app.__slots__:
+            object.__setattr__(app, key, value)
+        else:
+            app[key] = value
+    
+    def __getitem__(app, key):
+        return app._dict[key]
+
+    def __repr__(app):
+        return repr(app._dict)
 
 if __name__ == "__main__":
     pass
