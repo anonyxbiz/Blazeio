@@ -325,7 +325,7 @@ class Parsers:
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.protocol.pull(app.timeout, *args, **kwargs):
+        async for chunk in app.protocol.pull():
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
