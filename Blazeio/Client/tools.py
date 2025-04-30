@@ -263,6 +263,8 @@ class Parsers:
             app.handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
             app.handler = app.handle_raw
+        else:
+            app.handler = app.protocol.pull
 
         if app.decode_resp:
             if (encoding := app.response_headers.pop("content-encoding", None)):
