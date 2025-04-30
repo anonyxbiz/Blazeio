@@ -17,9 +17,8 @@ class App:
     def __init__(app): pass
 
     async def fetch(app, url: str, save: (str, bool) = None):
-        if not "://" in url:
-            url = "https://%s" % url
-        
+        if not url[:5].lower().startswith("http"): url = "https://%s" % url
+
         headers = {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',

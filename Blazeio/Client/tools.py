@@ -122,7 +122,6 @@ class AsyncHtml:
 
         return items
 
-
 class Urllib:
     __slots__ = ()
     scheme_sepr: str = "://"
@@ -135,7 +134,6 @@ class Urllib:
 
     async def url_to_host(app, url: str, params: dict, parse_params: bool = False):
         parsed_url = {}
-
         url = url.replace(r"\/", "/")
 
         if (idx := url.find(app.scheme_sepr)) != -1:
@@ -291,7 +289,7 @@ class Parsers:
         if all([app.follow_redirects, app.status_code in app.http_redirect_status_range, (location := app.response_headers.get("location", None))]):
             app.cache = {}
             await app.prepare(location)
-        
+
         return True
 
     async def prepare_connect(app, method, headers):
@@ -327,7 +325,7 @@ class Parsers:
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.protocol.ayield(app.timeout, *args, **kwargs):
+        async for chunk in app.protocol.pull(app.timeout, *args, **kwargs):
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
@@ -484,10 +482,28 @@ class Pulltools(Parsers):
 
     async def save(app, filepath: str, mode: str = "wb"):
         async with async_open(filepath, mode) as f:
-            async for chunk in app.pull():
-                await f.write(bytes(chunk))
+            while app.received_len < app.content_length:
+                async for chunk in app.pull():
+                    await f.write(bytes(chunk))
 
-            await sleep(0)
+                if app.handler != app.handle_raw: break
+
+                if app.received_len < app.content_length:
+                    Range = "bytes=%s-%s" % (str(app.received_len), str(app.content_length))
+    
+                    if (_args_len := len(app.args)) >= 3:
+                        headers = app.args[2]
+                        headers["Range"] = Range
+
+                        if _args_len > 3:
+                            app.args = (app.args[:2], headers, app.args[3:])
+                        else:
+                            app.args = (app.args[:2], headers)
+    
+                    elif (headers := app.kwargs.get("headers")):
+                        headers["Range"] = Range
+    
+                    await app.prepare()
 
     async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)
     

@@ -3,7 +3,7 @@ from .streaming import *
 from ..Client import Session
 
 class RenderFreeTierPatch:
-    def __init__(app, production = NotImplemented, host = None, asleep = 60):
+    def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 60):
         for method, value in locals().items():
             if method == app: continue
             setattr(app, method, value)
@@ -32,10 +32,10 @@ class RenderFreeTierPatch:
             await sleep(app.asleep)
 
     async def before_middleware(app, r):
-        if not app.host:
+        if not app.rnd_host and not app.host:
             if not (host := r.headers.get("Referer", r.headers.get("Origin"))):
                 return
-            
+
             if (id1 := host.find(v := "://")) != -1:
                 if (id2 := host[(id1 := id1 + len(v)):].find("/")) != -1:
                     host = host[:id1 + id2]
@@ -44,10 +44,11 @@ class RenderFreeTierPatch:
                 if not host.startswith("https://"):
                     app.production = False
 
+            app.rnd_host = host
             app.host = host
 
-            await p("Added host as: %s" % app.host)
-            
+            await p("Added host as: %s" % app.rnd_host)
+
             if not app.production:
                 try:
                     app.task.cancel()
