@@ -226,6 +226,9 @@ class TaskPool:
 
         task.add_done_callback(app.done_callback_orchestrator)
         return task
+    
+    def available(app):
+        return len(app.taskpool) <= app.maxtasks
 
 class TaskPoolManager:
     __slots__ = ("pool")
