@@ -10,6 +10,7 @@ from typing import Callable
 
 from mimetypes import guess_type
 from os import stat, kill, getpid, path, environ
+os_path = path
 
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
 from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress

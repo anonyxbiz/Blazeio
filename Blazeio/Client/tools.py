@@ -202,7 +202,7 @@ class Parsers:
     def __init__(app): pass
 
     async def prepare_http(app):
-        if app.response_headers: return True
+        if app.status_code: return True
         buff, headers, idx, valid = bytearray(), None, -1, False
 
         async for chunk in app.protocol.pull():
@@ -421,6 +421,11 @@ class Pulltools(Parsers):
 
     async def aread(app, decode=False):
         data = bytearray()
+        if not app.status_code: await app.prepare_http()
+
+        if app.handler == app.protocol.pull:
+            app.handler = app.handle_raw
+
         async for chunk in app.pull():
             data.extend(chunk)
 
@@ -494,16 +499,17 @@ class Pulltools(Parsers):
                     Range = "bytes=%s-%s" % (str(app.received_len), str(app.content_length))
     
                     if (_args_len := len(app.args)) >= 3:
-                        headers = app.args[2]
+                        headers = dict(app.args[2])
                         headers["Range"] = Range
 
                         if _args_len > 3:
-                            app.args = (app.args[:2], headers, app.args[3:])
+                            app.args = (*app.args[:2], headers, *app.args[3:])
                         else:
-                            app.args = (app.args[:2], headers)
-    
-                    elif (headers := app.kwargs.get("headers")):
+                            app.args = (*app.args[:2], headers)
+
+                    elif (headers := dict(app.kwargs.get("headers"))):
                         headers["Range"] = Range
+                        app.kwargs["headers"] = headers
     
                     await app.prepare()
 

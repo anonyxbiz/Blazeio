@@ -45,7 +45,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
     __should_be_reset__ = ("decompressor", "compressor",)
     NON_BODIED_HTTP_METHODS = {
-        "GET", "HEAD", "OPTIONS"
+        "GET", "HEAD", "OPTIONS", "DELETE"
     }
     not_stated = "response_headers"
 
@@ -95,7 +95,8 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         if exc_type or exc_value or traceback:
             if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
-                await Log.warning("exc_type: %s, exc_value: %s, traceback: %s" % (exc_type, exc_value, traceback))
+                filename, lineno, func, text = extract_tb(traceback)[-1]
+                await log.critical("\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s.\n" % (filename, lineno, text, func, str(exc_value)))
 
         return False
 
@@ -117,10 +118,12 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         response_headers: dict = {},
         params: dict = {},
         body: (bool, bytes, bytearray) = None,
+        stream_file: (None, tuple) = None,
         decode_resp: bool = True,
         max_unthreaded_json_loads_size: int = 102400,
         follow_redirects: bool = False,
         auto_set_cookies: bool = False,
+        status_code: int = 0,
         **kwargs
     ):
         __locals__ = locals()
@@ -130,26 +133,34 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             elif isinstance(val, list): val = list(val)
             setattr(app, key, val)
 
-        headers = dict(headers)
+        stdheaders = dict(headers)
+
         if app.protocol and app.protocol.transport.is_closing():
-            if debug_mode: await Log.warning("protocol transport is_closing")
             app.protocol = None
 
         if app.protocol: proxy = None
-
-        if (multipart := kwargs.get("multipart")):
-            multipart = Multipart(**multipart)
-            headers.update(multipart.headers)
-            content = multipart.pull()
 
         method = method.upper()
 
         app.host, app.port, app.path = await app.url_to_host(url, app.params)
 
-        normalized_headers = DictView(headers)
+        normalized_headers = DictView(stdheaders)
+
         for i in app.__important_headers__:
-            if i in normalized_headers and i not in headers:
-                headers[i] = normalized_headers.pop(i)
+            if i in normalized_headers and i not in stdheaders:
+                stdheaders[i] = normalized_headers.pop(i)
+
+        if (multipart := kwargs.get("multipart")):
+            multipart = Multipart(**multipart)
+            stdheaders.update(multipart.headers)
+            content = multipart.pull()
+
+        if stream_file:
+            normalized_headers["Content-length"] = str(os_path.getsize(stream_file[0]))
+            if (content_type := guess_type(stream_file[0])[0]):
+                normalized_headers["Content-type"] = content_type
+
+            content = Gen.file(*stream_file)
 
         if cookies:
             app.kwargs["cookies"] = cookies
@@ -169,17 +180,20 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
             body = dumps(json).encode()
             if not 'Content-type' in normalized_headers:
                 normalized_headers["Content-type"] = "application/json"
+
+            if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
+
         if body:
             normalized_headers["Content-length"] = len(body)
             if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
-        if (content is not None or body is not None) and not "Content-length" in headers and not "Transfer-encoding" in headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT"}:
+        if (content is not None or body is not None) and not "Content-length" in stdheaders and not "Transfer-encoding" in stdheaders and method not in {"GET", "HEAD", "OPTIONS", "CONNECT", "DELETE"}:
             if not isinstance(content, (bytes, bytearray)):
                 normalized_headers["Transfer-encoding"] = "chunked"
             else:
                 normalized_headers["Content-length"] = str(len(content))
 
-        if proxy: await app.proxy_config(headers, proxy)
+        if proxy: await app.proxy_config(stdheaders, proxy)
         ssl = ssl_context if app.port == 443 else None
         if app.proxy_port:
             ssl = ssl_context if app.proxy_port == 443 else None
@@ -204,7 +218,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             return app
 
-        payload = await app.gen_payload(method if not proxy else "CONNECT", headers, app.path)
+        payload = await app.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path)
 
         if body:
             payload = payload + body
@@ -212,12 +226,12 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         await app.protocol.push(payload)
 
         if not app.write:
-            if "Transfer-encoding" in headers: app.write = app.write_chunked
+            if "Transfer-encoding" in stdheaders: app.write = app.write_chunked
             else:
                 app.write = app.push
 
         if proxy:
-            await app.prepare_connect(method, headers)
+            await app.prepare_connect(method, stdheaders)
 
         if content is not None:
             if isinstance(content, (bytes, bytearray)):
