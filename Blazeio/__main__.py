@@ -4,19 +4,23 @@ from .Client import Session
 from .Dependencies import *
 from os import name
 
-OUTBOUND_CHUNK_SIZE = 1024*1024
+ioConf.OUTBOUND_CHUNK_SIZE = 4096
 
-parser = ArgumentParser(prog="Blazeio", description="Blazeio")
+with open("%s/../README.md" % path.abspath(path.dirname(__file__)), encoding="utf-8") as f: long_description = f.read()
+
+parser = ArgumentParser(prog="Blazeio", description=long_description.split("\n\n")[1])
+
 parser.add_argument('url', type=str)
-parser.add_argument('-save', '--save', type=str, required=False)
+
+for query, _type, _help in (("save", str, "filepath"), ("method", str, "http request method")):
+    parser.add_argument('-%s' % query, '--%s' % query, type = _type, required = False, help = _help.capitalize())
 
 args = parser.parse_args()
 
 class App:
-    redirect_range = {i for i in range(300,310)}
     def __init__(app): pass
 
-    async def fetch(app, url: str, save: (str, bool) = None):
+    async def fetch(app, url: str, method: (None, str) = None, save: (None, str) = None):
         if not url[:5].lower().startswith("http"): url = "https://%s" % url
 
         headers = {
@@ -35,24 +39,16 @@ class App:
             'user-agent': 'BlazeI/O',
             'connection': 'keep-alive',
         }
-
-        async with Session(url, "GET", headers) as r:
-            await r.prepare_http()
-            while r.status_code in app.redirect_range:
-                if not (url := r.response_headers.get("location")): break
-
-                await r.conn(url, "GET", headers)
-
-                await r.prepare_http()
-
+        
+        start = perf_counter()
+        async with Session(url, method or "get", headers, follow_redirects = True) as resp:
             if save:
-                await r.save(save)
+                await resp.save(save)
             else:
-                async for chunk in r.pull():
+                async for chunk in resp.pull():
                     await log.info(chunk.decode())
 
-def main():
-    loop.run_until_complete(App().fetch(**args.__dict__))
+            await log.debug("<%s@%s%s> completed request in <%s's>." % (resp.args[1].lower(), resp.host, resp.path, str(perf_counter() - start)))
 
 if __name__ == "__main__":
-    main()
+    get_event_loop().run_until_complete(App().fetch(**args.__dict__))

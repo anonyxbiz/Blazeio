@@ -52,14 +52,12 @@ class Asynchronizer:
     def __init__(app, maxsize=0, perform_test=False, await_ready=True):
         app.jobs = asyncQueue(maxsize=maxsize)
         app.perform_test = perform_test
-        app.idle_event = Event()
-        app.idle_event.clear()
-        app.start_event = Event()
-        app.start_event.clear()
+        app.idle_event = Sharpevent()
+        app.start_event = Sharpevent()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
         if await_ready: loop.run_until_complete(app.ready())
-    
+
     def is_async(app, func): return True if str(type(func)) == "<class 'method'>" else False
 
     async def job(app, func, *args, **kwargs):
@@ -69,13 +67,11 @@ class Asynchronizer:
             "kwargs": kwargs,
             "exception": None,
             "result": NotImplemented,
-            "event": (event := Event()),
+            "event": (event := Sharpevent()),
             "loop": get_event_loop(),
             "current_task": current_task(),
             "awaitable": True if str(type(func)).replace('"', "'") == "<class 'method'>" else False
         }
-
-        event.clear()
 
         app.loop.call_soon_threadsafe(app.jobs.put_nowait, job)
 
@@ -119,7 +115,6 @@ class Asynchronizer:
                     app.loop.create_task(app.async_tasker(job))
 
             if app.jobs.empty(): app.idle_event.set()
-            else: app.idle_event.clear()
 
     async def flush(app):
         return await wrap_future(run_coroutine_threadsafe(app.idle_event.wait(), app.loop))
@@ -164,7 +159,7 @@ class TaskPool:
     def __init__(app, maxtasks: int = 100, timeout: (None, float) = None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.task_activity = Event()
+        app.task_activity = Sharpevent()
         app.task_activity.clear()
         app.task_under_flow = Condition()
 
@@ -191,7 +186,6 @@ class TaskPool:
                     app.task_under_flow.notify(available)
 
             await app.task_activity.wait()
-            app.task_activity.clear()
 
     def done_callback(app, task):
         if task in app.taskpool: app.taskpool.remove(task)

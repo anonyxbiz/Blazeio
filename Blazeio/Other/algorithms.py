@@ -20,6 +20,7 @@ class Perf:
                 duration = perf_counter() - start
 
                 stats = take_snapshot().compare_to(sn1, "lineno")
+
                 tm_stop()
 
                 filtered_stats = [str(i) for i in stats if all([x not in str(i) for x in ("python3.12", "importlib", "<")])]

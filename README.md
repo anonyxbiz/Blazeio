@@ -1,24 +1,104 @@
 ## Overview
 
-**Blazeio** is an ultra-fast asynchronous web framework crafted for high-performance backend applications. Built on Python's asyncio, it delivers non-blocking operations, minimal overhead, and lightning-quick request handling.
+**Blazeio** is a cutting-edge asynchronous web server and client framework designed for building high-performance backend applications with minimal overhead.
 
-Designed with flexibility, low-latency operations, and simplicity in mind, Blazeio is perfect for developers aiming to create scalable, high-performing backend systems. Its asynchronous nature ensures top-tier performance with, while its modular structure allows easy customization and extension to meet any project's needs.
+Built on Python's asyncio event loop, Blazeio provides:
 
-Blazeio offers a lean yet powerful foundation for building fast, scalable web applications. Whether you're using object-oriented or functional programming styles, Blazeio's intuitive setup and minimal boilerplate empower you to get your web app up and running quickly, while maintaining flexibility for complex use cases.
+- Zero-copy streaming
+- Protocol-agnostic request handling
+- Automatic backpressure management
+- Microsecond-level reactivity
+- Connection-aware processing
 
----
+Blazeio operates at the transport layer while maintaining a simple, developer-friendly API.
 
-## Features
+## Key Features
 
-- **Asynchronous Execution**: Blazeio uses asyncio, ensuring that operations are non-blocking and allowing for high throughput, making it suitable for real-time applications.
-- **Middleware System**: Blazeio supports powerful middleware that can run before, after, or in response to unmatched routes.
-- **Request Handling**: Blazeio provides tools to easily manage and process incoming HTTP requests, including multipart form data and file uploads.
-- **Route Management**: Dynamically add routes and middleware with minimal boilerplate.
-- **Logging**: A custom logging system to track every action and request that passes through the server.
-- **Streaming Support**: Efficient file and data streaming capabilities, optimized for large data transfers.
-- **Static File Handling**: Built-in support for serving static files with the **IN_MEMORY_STATIC_CACHE**, enabling fast access to cached and compressed static resources directly from memory, improving performance for frequently accessed files.
+- 🚀 **Event-optimized I/O**: Direct socket control with smart backpressure
+- ⚡ **Instant disconnect detection**: No zombie connections
+- 🔄 **Bidirectional streaming**: HTTP/1.1, SSE, and custom protocols
+- 🧠 **Memory-safe architecture**: No buffer overflows
+- ⏱️ **Precise flow control**: Async sleeps instead of spinlocks
+- 🔗 **Unified client/server API**: Same code for both sides
 
----
+## Core API: Request Object
+
+### `BlazeioServerProtocol` (Request Object)
+
+The foundation of Blazeio's performance comes from its optimized request handling:
+
+```python
+class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset):
+    __slots__ = (
+        'transport', 'method', 'path', 'headers',
+        'content_length', 'current_length', 'transfer_encoding'
+        # ... and other internal state
+    )
+```
+
+### Essential Methods
+
+#### Connection Management
+```python
+def connection_made(self, transport):
+    """Called when new client connects"""
+    self.transport = transport
+
+def connection_lost(self, exc):
+    """Called when client disconnects"""
+    self.__is_alive__ = False
+```
+
+#### Flow Control
+```python
+async def buffer_overflow_manager(self):
+    """Sleeps at 0% CPU when kernel buffers are full"""
+    if self.__is_buffer_over_high_watermark__:
+        await self.__overflow_evt__.wait()
+        self.__overflow_evt__.clear()
+
+async def writer(self, data: bytes):
+    """Safe write with backpressure and disconnect checks"""
+    await self.buffer_overflow_manager()
+    if not self.transport.is_closing():
+        self.transport.write(data)
+```
+
+#### Streaming
+```python
+async def request(self):
+    """Generator for incoming data chunks"""
+    while True:
+        await self.ensure_reading()
+        while self.__stream__:
+            yield bytes(self.__buff__memory__[:self.__stream__.popleft()])
+```
+
+### Advanced Features
+
+#### Chunked Encoding
+```python
+async def write_chunked(self, data):
+    """HTTP chunked transfer encoding"""
+    await self.writer(b"%X\r\n%s\r\n" % (len(data), data))
+
+async def handle_chunked(self):
+    """Parse incoming chunked data"""
+    async for chunk in self.ayield():
+        yield chunk  # Auto-decodes chunked encoding
+```
+
+#### Compression
+```python
+async def br(self, data: bytes):
+    """Brotli compression"""
+    return await to_thread(brotlicffi_compress, data)
+
+async def gzip(self, data: bytes):
+    """Gzip compression"""
+    encoder = compressobj(wbits=31)
+    return encoder.compress(data) + encoder.flush()
+```
 
 ## Modules
 
@@ -45,7 +125,6 @@ Blazeio includes various middlewares that provide hooks into the request/respons
 
 The **Request** module provides utilities to work with incoming HTTP requests:
 
-- **stream_chunks**: A controlled way to stream request chunks, reducing memory overhead.
 - **get_json**: Parses JSON data from the request.
 - **get_form_data**: Parses multipart form data into a structured JSON object.
 - **get_params**: Retrieves URL parameters from the request.
@@ -53,7 +132,6 @@ The **Request** module provides utilities to work with incoming HTTP requests:
 
 ### Streaming
 
-- **Stream**: Facilitates real-time streaming of large data.
 - **Deliver**: Manages data delivery and ensures that responses are properly handled.
 - **Abort**: An exception used to quickly abort a request.
 
@@ -94,7 +172,7 @@ This middleware runs when no specific route is matched, avoiding a default 404 r
 ```python
 @web.add_route
 async def handle_all_middleware(request):
-    return "Route not found, but handled."
+    raise Abort("Route not found, but handled.", 404)
 ```
 
 ---
@@ -104,12 +182,6 @@ async def handle_all_middleware(request):
 Blazeio includes several useful tools to make handling requests easier:
 
 ### Request Tools
-
-- **Request.stream_chunks**: Stream request data in chunks, ideal for large file uploads or slow connections.
-    ```python
-    async for chunk in Blazeio.Request.stream_chunks(r):
-        # Process each chunk
-    ```
 
 - **Request.get_json**: Retrieve JSON data from the request body:
     ```python
@@ -123,9 +195,8 @@ Blazeio includes several useful tools to make handling requests easier:
 
 - **Request.get_upload**: Stream file uploads in chunks:
     ```python
-    async for file_chunk in Blazeio.Request.get_upload(r):
-        if file_chunk is not None:
-            # Process file chunk
+    async for chunk in Blazeio.Request.get_upload(r):
+        # Process file chunk
     ```
 
 ---
@@ -150,9 +221,7 @@ import Blazeio as io
 from asyncio import new_event_loop
 from os import path
 
-loop = new_event_loop()
-
-web = loop.run_until_complete(io.App.init())
+web = io.App("0.0.0.0", 8000)
 
 # OOP IMPLEMENTATION
 class Server:
@@ -176,12 +245,7 @@ class Server:
         return app
 
     async def before_middleware(app, r):
-        if r.method in ["GET", "OPTIONS", "HEAD"]:
-            json_data = await io.Request.get_params(r)
-        else:
-            json_data = await io.Request.get_json(r)
-
-        r.json_data = json_data
+        r.store = {"json_data": = await io.Request.body_or_params(r)}
 
     # /
     async def _redirect(app, r):
@@ -209,14 +273,9 @@ async def this_function_name_wont_be_used_as_the_route_if_overriden_in_the_route
     # Send a text response
     await io.Deliver.text(r, message)
 
-
 if __name__ == "__main__":
-    loop.run_until_complete(Server.setup())
-
-    HOST = "0.0.0.0"
-    PORT = "8000"
-
-    web.runner(HOST, PORT, backlog=5000)
+    io.loop.run_until_complete(Server.setup())
+    web.runner()
 ```
 
 ### Explanation
@@ -255,6 +314,50 @@ async def _new_route(app, r):
 ```
 
 This will automatically add a new route at `/new/route`.
+
+## Why Blazeio?
+
+1. **Zero-Copy Architecture**
+   - No unnecessary data copies between kernel and userspace
+   - Memory views instead of byte duplication
+
+2. **Microsecond-Level Reactivity**
+   - Small chunk sizes (default 4KB) enable rapid feedback
+   - Immediate disconnect detection
+
+3. **Self-Healing Design**
+   - Automatic cleanup of dead connections
+   - Timeout cascades cancel stuck operations
+
+## Example Use Cases
+
+### Reverse Proxy
+```python
+async def proxy_handler(r):
+    async with io.Session(upstream_url) as resp:
+        await r.prepare(resp.headers, resp.status_code)
+        async for chunk in resp.pull():
+            await r.write(chunk)
+```
+
+### Real-Time Streaming
+```python
+async def sse_handler(r):
+    while True:
+        await r.write(f"data: {timestamp()}\n\n")
+        await asyncio.sleep(1)
+```
+
+### File Upload with Validation
+```python
+async def upload_handler(r):
+    form = await io.Request.form_data(r)
+    if not validate(form.get("metadata")):
+        raise io.Abort("Invalid metadata", 400)
+
+    async for chunk in r.pull():
+        await storage.write(chunk)
+```
 
 ---
 

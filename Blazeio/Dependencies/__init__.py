@@ -110,33 +110,46 @@ class Simple:
         event.clear() if cleared else event.set()
         return event
 
+class Sharpevent:
+    __slots__ = ("event",)
+    def __init__(app):
+        app.event = Event()
+
+    def __getattr__(app, name): return getattr(app.event, name)
+
+    def is_set(app): return app.event.is_set()
+
+    def wait(app): return app.event.wait()
+
+    def set(app):
+        app.event.set()
+        app.event.clear()
+
 class Enqueue:
-    __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "available",)
+    __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow",)
     def __init__(app, maxsize: int = 100):
         app.maxsize = maxsize
         app.queue: deque = deque()
-        app.queue_event: Event = Event()
-        app.queue_add_event: Event = Event()
-        app.available: int = maxsize
+        app.queue_event: Sharpevent = Sharpevent()
+        app.queue_add_event: Sharpevent = Sharpevent()
         app.queueunderflow: Condition = Condition()
         get_event_loop().create_task(app.check_overflow())
 
     async def check_overflow(app):
         while True:
             if len(app.queue) <= app.maxsize:
-                app.available = app.maxsize - len(app.queue)
-
                 async with app.queueunderflow:
-                    app.queueunderflow.notify(app.available)
+                    app.queueunderflow.notify(app.maxsize - len(app.queue))
 
             await app.queue_event.wait()
-            app.queue_event.clear()
+
+    def available(app):
+        return len(app.queue) <= app.maxsize
 
     def append(app, item, appendtype: deque):
         appendtype(item)
         app.queue_event.set()
         app.queue_add_event.set()
-        app.queue_add_event.clear()
 
     def popleft(app):
         item = app.queue.popleft()
@@ -213,7 +226,7 @@ class Default_logger:
 
     async def loop_setup(app):
         app.logs = Enqueue(maxsize=app.maxsize)
-        app.log_idle_event = Event()
+        app.log_idle_event = Sharpevent()
         app.log_idle_event.set()
         app.loop.create_task(app.flush_dog())
 

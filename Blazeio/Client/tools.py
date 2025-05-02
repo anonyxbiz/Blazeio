@@ -288,9 +288,8 @@ class Parsers:
 
                     app.kwargs["cookies"][key] = val
 
-        if all([app.follow_redirects, app.status_code in app.http_redirect_status_range, (location := app.response_headers.get("location", None))]):
-            app.cache = {}
-            await app.prepare(location)
+        if app.follow_redirects and app.status_code in app.http_redirect_status_range and (location := app.response_headers.get("location", None)):
+            return await app.prepare(location)
 
         return True
 

@@ -4,17 +4,17 @@ from os import environ, getcwd
 
 data_path = ""
 
-if 1:
-    with open(f"{data_path}requirements.txt") as f:
-        requirements = f.read().splitlines()
-    
-    with open(f"{data_path}README.md", encoding="utf-8") as f:
-        long_description = f.read()
+with open(f"{data_path}requirements.txt") as f:
+    requirements = f.read().splitlines()
+
+with open(f"{data_path}README.md", encoding="utf-8") as f:
+    long_description = f.read()
+
 else:
     requirements = []
     long_description = ""
 
-version = "2.1.0.8"
+version = "2.1.0.9"
 
 setup(
     name="Blazeio",
