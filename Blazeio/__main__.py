@@ -1,7 +1,7 @@
 # Blazeio.__main__.py
 from argparse import ArgumentParser
-from .Client import Session
 from .Dependencies import *
+from .Client import Session
 from os import name
 
 ioConf.OUTBOUND_CHUNK_SIZE = 4096
@@ -50,5 +50,8 @@ class App:
 
             await log.debug("<%s@%s%s> completed request in <%s's>." % (resp.args[1].lower(), resp.host, resp.path, str(perf_counter() - start)))
 
+def main():
+    loop.run_until_complete(App().fetch(**args.__dict__))
+
 if __name__ == "__main__":
-    get_event_loop().run_until_complete(App().fetch(**args.__dict__))
+    main()

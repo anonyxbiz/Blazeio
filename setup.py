@@ -1,20 +1,16 @@
 from setuptools import setup, find_packages
 from datetime import datetime as dt
-from os import environ, getcwd
+from os import environ, getcwd, path
 
-data_path = ""
+data_path = path.abspath(path.dirname(__file__))
 
-with open(f"{data_path}requirements.txt") as f:
+with open(f"{data_path}/requirements.txt") as f:
     requirements = f.read().splitlines()
 
-with open(f"{data_path}README.md", encoding="utf-8") as f:
+with open(f"{data_path}/README.md", encoding="utf-8") as f:
     long_description = f.read()
 
-else:
-    requirements = []
-    long_description = ""
-
-version = "2.1.0.9"
+version = "2.1.1.0"
 
 setup(
     name="Blazeio",
