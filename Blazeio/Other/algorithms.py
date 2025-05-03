@@ -6,7 +6,7 @@ class Perf:
     def __init__(app):
         app.tasks = []
 
-    def ops_calc(app, amt: int = 10):
+    def ops_calc(app, amt: int = 10, name: (None, str) = None):
         conc = int(amt)
         def decor(func: Callable):
             nonlocal conc
@@ -29,7 +29,7 @@ class Perf:
                 filtered_stats = [str(i) for i in stats if all([x not in str(i) for x in ("python3.12", "importlib", "<")])]
 
                 data = {
-                    "function": func.__name__,
+                    "function": name or func.__name__,
                     "duration_seconds": duration,
                     "memory_stats": filtered_stats,
                     "total_memory_used": "%s Kib" % str(sum(stat.size_diff for stat in stats) / 1024),
@@ -58,14 +58,14 @@ class Perf:
                 filtered_stats = [str(i) for i in stats if all([x not in str(i) for x in ("python3.12", "importlib", "<")])]
 
                 data = {
-                    "function": func.__name__,
+                    "function": name or func.__name__,
                     "duration_seconds": duration,
                     "memory_stats": filtered_stats,
                     "total_memory_used": "%s Kib" % str(sum(stat.size_diff for stat in stats) / 1024),
                     "total_allocations": sum(stat.count_diff for stat in stats)
                 }
 
-                await log.debug("<%s>: %s\n" % (func.__name__, dumps(data, indent=2, escape_forward_slashes=False)))
+                await log.debug("<%s>: %s\n\n" % (func.__name__, dumps(data, indent=2, escape_forward_slashes=False)))
                 return data
 
             if "async" in func.__name__:

@@ -75,8 +75,8 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         app.store = None
         app.__timeout__ = None
         app.__buff__memory__ = memoryview(app.__buff__)
-        app.__evt__ = SharpEventManual()
-        app.__overflow_evt__ = SharpEventManual()
+        app.__evt__ = SharpEvent(0)
+        app.__overflow_evt__ = SharpEvent(0)
 
         for i in app.__class__.__bases__: i.__init__(app)
 
