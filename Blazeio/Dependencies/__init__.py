@@ -96,7 +96,7 @@ class DotDict:
 class SharpEvent:
     __slots__ = ("_set", "_waiters")
     def __init__(app):
-        app._set, app._waiters = False, []
+        app._set, app._waiters = False, deque()
 
     def is_set(app):
         return app._set
@@ -104,7 +104,10 @@ class SharpEvent:
     async def wait(app):
         if app._set: return True
 
-        app._waiters.append(fut := get_event_loop().create_future())
+        if not app._waiters:
+            app._waiters.append(fut := get_event_loop().create_future())
+        else:
+            fut = app._waiters[0]
 
         return await fut
 
@@ -113,8 +116,7 @@ class SharpEvent:
 
     def setter(app):
         for fut in app._waiters:
-            fut.set_result(True)
-
+            if not fut.done(): fut.set_result(True)
         app._waiters.clear()
 
     def set(app):
@@ -125,7 +127,7 @@ class SharpEvent:
 class SharpEventManual:
     __slots__ = ("_set", "_waiters")
     def __init__(app):
-        app._set, app._waiters = False, []
+        app._set, app._waiters = False, deque()
 
     def is_set(app):
         return app._set
@@ -133,7 +135,10 @@ class SharpEventManual:
     async def wait(app):
         if app._set: return True
 
-        app._waiters.append(fut := get_event_loop().create_future())
+        if not app._waiters:
+            app._waiters.append(fut := get_event_loop().create_future())
+        else:
+            fut = app._waiters[0]
 
         return await fut
 
@@ -142,8 +147,7 @@ class SharpEventManual:
 
     def setter(app):
         for fut in app._waiters:
-            fut.set_result(True)
-
+            if not fut.done(): fut.set_result(True)
         app._waiters.clear()
 
     def set(app):
