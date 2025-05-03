@@ -115,15 +115,25 @@ class Sharpevent:
     def __init__(app):
         app.event = Event()
 
-    def __getattr__(app, name): return getattr(app.event, name)
+    def __getattr__(app, name):
+        return getattr(app.event, name)
 
-    def is_set(app): return app.event.is_set()
+    def is_set(app):
+        return app.event.is_set()
 
-    def wait(app): return app.event.wait()
+    async def coro(app, result):
+        return result
+
+    def wait(app):
+        if app.event.is_set():
+            return app.coro(app.event.clear())
+
+        return app.event.wait()
 
     def set(app):
+        has_waiters = len(app.event._waiters)
         app.event.set()
-        app.event.clear()
+        if has_waiters: app.event.clear()
 
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow",)
@@ -245,8 +255,8 @@ class Default_logger:
                 app.log_idle_event.clear()
 
     async def flush(app):
-        return await wrap_future(run_coroutine_threadsafe(app.log_idle_event.wait(), app.loop))
-    
+        if app.logs.queue: return await wrap_future(run_coroutine_threadsafe(app.log_idle_event.wait(), app.loop))
+
     async def flush_dog(app):
         unflushed_logs: int = 0
         while True:
