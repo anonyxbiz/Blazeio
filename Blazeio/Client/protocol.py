@@ -37,8 +37,8 @@ class BlazeioClientProtocol(BufferedProtocol):
         app.__buff__: bytearray = bytearray(app.__chunk_size__)
         app.__buff__memory__: memoryview = memoryview(app.__buff__)
         app.__is_buffer_over_high_watermark__: bool = False
-        app.__evt__: Event = Event()
-        app.__overflow_evt__: Event = Event()
+        app.__evt__: SharpEventManual = SharpEventManual()
+        app.__overflow_evt__: SharpEventManual = SharpEventManual()
         app.pull = app.pull_continous if app.__continous__ else app.pull_paused
 
     def connection_made(app, transport):

@@ -52,8 +52,8 @@ class Asynchronizer:
     def __init__(app, maxsize=0, perform_test=False, await_ready=True):
         app.jobs = asyncQueue(maxsize=maxsize)
         app.perform_test = perform_test
-        app.idle_event = Sharpevent()
-        app.start_event = Sharpevent()
+        app.idle_event = SharpEvent()
+        app.start_event = SharpEvent()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
         if await_ready: loop.run_until_complete(app.ready())
@@ -67,7 +67,7 @@ class Asynchronizer:
             "kwargs": kwargs,
             "exception": None,
             "result": NotImplemented,
-            "event": (event := Sharpevent()),
+            "event": (event := SharpEvent()),
             "loop": get_event_loop(),
             "current_task": current_task(),
             "awaitable": True if str(type(func)).replace('"', "'") == "<class 'method'>" else False
@@ -159,7 +159,7 @@ class TaskPool:
     def __init__(app, maxtasks: int = 100, timeout: (None, float) = None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.task_activity = Sharpevent()
+        app.task_activity = SharpEvent()
         app.task_activity.clear()
         app.task_under_flow = Condition()
 

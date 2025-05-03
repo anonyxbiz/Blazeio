@@ -93,55 +93,70 @@ class DotDict:
         app._dict[token] = None
         return token
 
-class Simple:
-    @classmethod
-    def Event(app, cleared = True):
-        event = DotDict()
-        event.event = Event()
-
-        event.set = lambda evt = event.event: evt.set() != evt.clear()
-
-        for i in ("clear", "wait", "is_set", "_waiters"):
-            if callable(attr := getattr(event.event, i)):
-                setattr(event, i, lambda attr=attr, *a, **k: attr(*a, **k))
-            else:
-                setattr(event, i, lambda attr=attr: attr)
-
-        event.clear() if cleared else event.set()
-        return event
-
-class Sharpevent:
-    __slots__ = ("event",)
+class SharpEvent:
+    __slots__ = ("_set", "_waiters")
     def __init__(app):
-        app.event = Event()
-
-    def __getattr__(app, name):
-        return getattr(app.event, name)
+        app._set, app._waiters = False, []
 
     def is_set(app):
-        return app.event.is_set()
+        return app._set
 
-    async def coro(app, result):
-        return result
+    async def wait(app):
+        if app._set: return True
 
-    def wait(app):
-        if app.event.is_set():
-            return app.coro(app.event.clear())
+        app._waiters.append(fut := get_event_loop().create_future())
 
-        return app.event.wait()
+        return await fut
+
+    def clear(app):
+        app._set = False
+
+    def setter(app):
+        for fut in app._waiters:
+            fut.set_result(True)
+
+        app._waiters.clear()
 
     def set(app):
-        has_waiters = len(app.event._waiters)
-        app.event.set()
-        if has_waiters: app.event.clear()
+        app._set = True
+        app.setter()
+        app.clear()
+
+class SharpEventManual:
+    __slots__ = ("_set", "_waiters")
+    def __init__(app):
+        app._set, app._waiters = False, []
+
+    def is_set(app):
+        return app._set
+
+    async def wait(app):
+        if app._set: return True
+
+        app._waiters.append(fut := get_event_loop().create_future())
+
+        return await fut
+
+    def clear(app):
+        app._set = False
+
+    def setter(app):
+        for fut in app._waiters:
+            fut.set_result(True)
+
+        app._waiters.clear()
+
+    def set(app):
+        app._set = True
+        app.setter()
 
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow",)
     def __init__(app, maxsize: int = 100):
         app.maxsize = maxsize
         app.queue: deque = deque()
-        app.queue_event: Sharpevent = Sharpevent()
-        app.queue_add_event: Sharpevent = Sharpevent()
+        app.queue_event: SharpEvent = SharpEvent()
+        app.queue_add_event: SharpEvent = SharpEvent()
         app.queueunderflow: Condition = Condition()
         get_event_loop().create_task(app.check_overflow())
 
@@ -236,7 +251,7 @@ class Default_logger:
 
     async def loop_setup(app):
         app.logs = Enqueue(maxsize=app.maxsize)
-        app.log_idle_event = Sharpevent()
+        app.log_idle_event = SharpEvent()
         app.log_idle_event.set()
         app.loop.create_task(app.flush_dog())
 

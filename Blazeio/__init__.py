@@ -243,7 +243,7 @@ class App(Handler, OOP_RouteDef):
     declared_routes = OrderedDict()
     ServerConfig = SrvConfig()
     on_exit = deque()
-    is_server_running = Simple.Event()
+    is_server_running = SharpEvent()
 
     __server_config__ = {
         "__http_request_heading_end_seperator__": b"\r\n\r\n",
