@@ -109,7 +109,8 @@ class SharpEvent:
         else:
             fut = app._waiters[0]
 
-        return await fut
+        await fut
+        if app.auto_clear and app._set: app.clear()
 
     def clear(app):
         app._set = False
@@ -120,7 +121,6 @@ class SharpEvent:
             if not fut.done(): fut.set_result(True)
 
         app._waiters.clear()
-        if app.auto_clear: app.clear()
 
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
 
