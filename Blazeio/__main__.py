@@ -24,7 +24,6 @@ class App:
         headers = {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
-            'accept-encoding': 'gzip, br',
             'origin': url,
             'priority': 'u=1, i',
             'referer': url,
