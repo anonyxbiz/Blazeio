@@ -6,7 +6,7 @@ from os import name
 
 ioConf.OUTBOUND_CHUNK_SIZE = 4096
 
-with open("%s/../README.md" % path.abspath(path.dirname(__file__)), encoding="utf-8") as f: long_description = f.read()
+with open(path.join(path.abspath(path.dirname(__file__)), "..", "README.md"), encoding="utf-8") as f: long_description = f.read()
 
 parser = ArgumentParser(prog="Blazeio", description=long_description.split("\n\n")[1])
 
