@@ -19,7 +19,7 @@ class BlazeioPayloadUtils:
         await sleep(0)
         app.transport.close()
 
-class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset):
+class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUtils, ExtraToolset):
     __slots__ = (
         'on_client_connected',
         '__stream__',
@@ -52,6 +52,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         'encoder_obj',
         '__evt__',
         '__overflow_evt__',
+        'cancel'
     )
     
     def __init__(app, on_client_connected, INBOUND_CHUNK_SIZE=None):
@@ -75,30 +76,31 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         app.store = None
         app.__timeout__ = None
         app.__buff__memory__ = memoryview(app.__buff__)
-        app.__evt__ = SharpEvent(0)
-        app.__overflow_evt__ = SharpEvent(0)
-
-        for i in app.__class__.__bases__: i.__init__(app)
+        app.__evt__ = SharpEvent(False)
+        app.__overflow_evt__ = SharpEvent(False)
+        app.cancel = None
 
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
-        loop.create_task(app.transporter())
+        app.cancel = lambda cancel = (task := loop.create_task(app.transporter())).cancel: cancel()
 
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__stream__.append(nbytes)
+        app.__stream__.append(app.__buff__memory__[:nbytes])
         app.__evt__.set()
 
     def get_buffer(app, sizehint):
         if sizehint > len(app.__buff__memory__):
             app.__buff__ = bytearray(sizehint)
             app.__buff__memory__ = memoryview(app.__buff__)
+        elif sizehint <= 0:
+            sizehint = len(app.__buff__memory__)
 
         return app.__buff__memory__[:sizehint]
 
     def connection_lost(app, exc):
-        app.__is_alive__ = False
+        if app.cancel: app.cancel()
         app.__evt__.set()
         app.__overflow_evt__.set()
 
@@ -115,14 +117,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
 
     async def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
-
-        sizehint = len(data)
-
-        app.__buff__ = bytearray(data) + app.__buff__ 
-
-        app.__buff__memory__ = memoryview(app.__buff__)
-
-        app.__stream__.appendleft(sizehint)
+        app.__stream__.appendleft(memoryview(data))
         app.__evt__.set()
 
     async def ensure_reading(app):
@@ -136,9 +131,8 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
     async def request(app):
         while True:
             await app.ensure_reading()
-
             while app.__stream__:
-                yield bytes(app.__buff__memory__[:app.__stream__.popleft()])
+                yield bytes(app.__stream__.popleft())
             else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
@@ -158,7 +152,7 @@ class BlazeioServerProtocol(BufferedProtocol, BlazeioPayloadUtils, ExtraToolset)
         if not app.transport.is_closing():
             app.transport.write(data)
         else:
-            raise Err("Client has disconnected.")
+            raise ClientDisconnected()
 
 if __name__ == "__main__":
     pass

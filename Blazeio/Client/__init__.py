@@ -90,13 +90,14 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
-        if (protocol := getattr(app, "protocol", None)):
-            protocol.transport.close()
+        if not isinstance(exc_type, ServerDisconnected):
+            if (protocol := getattr(app, "protocol", None)):
+                protocol.transport.close()
 
-        if exc_type or exc_value or traceback:
-            if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
-                filename, lineno, func, text = extract_tb(traceback)[-1]
-                await log.critical("\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s.\n" % (filename, lineno, text, func, str(exc_value)))
+            if exc_type or exc_value or traceback:
+                if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
+                    filename, lineno, func, text = extract_tb(traceback)[-1]
+                    await log.critical("\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s.\n" % (filename, lineno, text, func, str(exc_value)))
 
         return False
 

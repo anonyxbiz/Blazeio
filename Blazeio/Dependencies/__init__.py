@@ -58,6 +58,9 @@ ioConf = __ioConf__()
 
 INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = ioConf.INBOUND_CHUNK_SIZE, ioConf.OUTBOUND_CHUNK_SIZE
 
+class BlazeioProtocol:
+    __slots__ = ()
+
 class DotDict:
     __slots__ = ("_dict",)
     def __init__(app, dictionary: (dict, None) = None):
@@ -260,7 +263,10 @@ class Default_logger:
         app.loop = new_event_loop()
         app.loop.run_until_complete(app.log_worker())
 
-class Err(Exception):
+class BlazeioException(Exception):
+    __slots__ = ()
+
+class Err(BlazeioException):
     __slots__ = (
         'message',
     )
@@ -270,7 +276,23 @@ class Err(Exception):
     def __str__(app) -> str:
         return app.message
 
-class ServerGotInTrouble(Exception):
+class ClientDisconnected(BlazeioException):
+    __slots__ = ('message')
+    def __init__(app, message: (None, str) = "Client has disconnected."):
+        app.message = message
+
+    def __str__(app) -> str:
+        return str(app.message)
+
+class ServerDisconnected(BlazeioException):
+    __slots__ = ('message')
+    def __init__(app, message: (None, str) = "Server has disconnected."):
+        app.message = message
+
+    def __str__(app) -> str:
+        return str(app.message)
+
+class ServerGotInTrouble(BlazeioException):
     __slots__ = (
         'message',
     )
@@ -305,12 +327,7 @@ def routine_executor(arg):
 routine_executor(routines)
 
 class __log__:
-    known_exceptions = (
-        "[Errno 104] Connection reset by peer",
-        "Client has disconnected.",
-        "Connection lost",
-        "asyncio/tasks.py",
-    )
+    known_exceptions = ()
 
     def __init__(app): pass
 
@@ -318,7 +335,7 @@ class __log__:
         if name in logger.colors._dict:
             async def dynamic_method(*args, **kwargs):
                 return await app.__log__(*args, **kwargs, logger_=logger.__getattr__(name))
-            
+
             setattr(app, name, dynamic_method)
             return dynamic_method
 
@@ -326,9 +343,8 @@ class __log__:
 
     async def __log__(app, r=None, message=None, color=None, logger_=None):
         try:
-            if "BlazeioServerProtocol" in str(r):
+            if isinstance(r, BlazeioProtocol):
                 message = str(message).strip()
-
                 if message in app.known_exceptions:
                     return
 
@@ -347,9 +363,6 @@ class __log__:
                     _ += message
                     
                 message = _
-
-                if message in app.known_exceptions:
-                    return
 
                 msg = message
 
@@ -447,7 +460,7 @@ class __ReMonitor__:
 
         if not (Payload := args.get("app")): return
 
-        if not "BlazeioServerProtocol" in str(Payload): return
+        if not isinstance(Payload, BlazeioProtocol): return
 
         if not hasattr(Payload, "__slots__"): return
 

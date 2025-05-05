@@ -77,7 +77,7 @@ class ExtraToolset:
                 await app.prepend(__buff__)
 
                 read, size = 0, False
-            
+
             yield chunk
 
             if end: break

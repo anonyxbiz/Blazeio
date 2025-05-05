@@ -107,14 +107,13 @@ class Handler:
 
             await app.__main_handler__(r)
 
-        except Abort as e:
-            await e.text()
+        except Abort as e: await e.text()
         except (Err, ServerGotInTrouble) as e:
             await Log.warning(r, e)
-        except Eof as e:
-            pass
-        except KeyboardInterrupt as e: raise e
-        except (ConnectionResetError, BrokenPipeError, CancelledError, Exception) as e:
+        except (ClientDisconnected, Eof): pass
+        except KeyboardInterrupt: raise
+        except (ConnectionResetError, BrokenPipeError, CancelledError): pass
+        except Exception as e:
             await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
 
         if app.ServerConfig.__log_requests__:
@@ -170,7 +169,6 @@ class SrvConfig:
 
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
-
     def __init__(app, func, *args, **kwargs): app.func, app.args, app.kwargs = func, args, kwargs
     
     def run(app): app.func(*app.args, **app.kwargs)

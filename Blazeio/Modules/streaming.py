@@ -70,7 +70,7 @@ class Deliver:
         headers["Location"] = path
         await r.prepare(headers, status=status, reason=reason)
 
-class Abort(Exception):
+class Abort(BlazeioException):
     __slots__ = (
         'args',
         'r',
