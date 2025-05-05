@@ -18,16 +18,9 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
 
     def __init__(app, **kwargs):
         app.__chunk_size__: int = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
-
+        app.__timeout__: float = kwargs.get("__timeout__", 60.0)
         app.__is_at_eof__: bool = False
         app.__perf_counter__: int = perf_counter()
-        app.__timeout__: float = 60.0
-
-        if kwargs:
-            for key in kwargs:
-                if key in app.__slots__:
-                    setattr(app, key, kwargs[key])
-
         app.__stream__: deque = deque()
         app.__buff__: bytearray = bytearray(app.__chunk_size__)
         app.__buff__memory__: memoryview = memoryview(app.__buff__)

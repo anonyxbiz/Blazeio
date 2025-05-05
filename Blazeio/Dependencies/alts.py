@@ -47,6 +47,32 @@ class DictView:
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 
+class ioCondition:
+    __slots__ = ("event", "notify_count", "waiter_count",)
+    def __init__(app):
+        app.event, app.notify_count, app.waiter_count = SharpEvent(), 0, 0
+
+    async def __aexit__(app, exc_type, exc_value, tb): pass
+
+    async def __aenter__(app):
+        pass
+
+    async def wait(app):
+        while True:
+            app.waiter_count += 1
+            await app.event.wait()
+
+            if app.notify_count:
+                app.notify_count -= 1
+                break
+
+            elif app.waiter_count and not app.event._waiters:
+                app.waiter_count = 0
+
+    def notify(app, count: (None, int) = None):
+        app.notify_count = count or app.waiter_count
+        app.event.set()
+
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
     def __init__(app, maxsize=0, perform_test=False, await_ready=True):
@@ -159,8 +185,7 @@ class TaskPool:
     def __init__(app, maxtasks: int = 100, timeout: (None, float) = None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.task_activity = SharpEvent()
-        app.task_activity.clear()
+        app.task_activity = SharpEvent(False)
         app.task_under_flow = Condition()
 
         app.loop = get_event_loop()
@@ -186,6 +211,7 @@ class TaskPool:
                     app.task_under_flow.notify(available)
 
             await app.task_activity.wait()
+            app.task_activity.clear()
 
     def done_callback(app, task):
         if task in app.taskpool: app.taskpool.remove(task)
