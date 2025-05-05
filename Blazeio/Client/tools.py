@@ -365,9 +365,7 @@ class Parsers:
             app.received_len += len(chunk)
             yield chunk
 
-            if app.received_len >= app.content_length and not app.protocol.__stream__:
-                await sleep(0)
-                break
+            if app.received_len >= app.content_length and not app.protocol.__stream__: break
 
 class Pushtools:
     __slots__ = ()
@@ -414,9 +412,9 @@ class Pulltools(Parsers):
                 async for chunk in app.decoder(): yield chunk
 
         except GeneratorExit as e:
-            await sleep(0)
+            pass
         except StopIteration as e:
-            await sleep(0)
+            pass
 
     async def aread(app, decode=False):
         data = bytearray()

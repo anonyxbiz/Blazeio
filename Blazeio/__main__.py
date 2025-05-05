@@ -19,6 +19,9 @@ class App:
     def __init__(app): pass
 
     async def fetch(app, url: str, method: (None, str) = None, save: (None, str) = None):
+        if "," in url:
+            return [await app.fetch(i, method, save) for i in url.split(",")]
+
         if not url[:5].lower().startswith("http"): url = "https://%s" % url
 
         headers = {
