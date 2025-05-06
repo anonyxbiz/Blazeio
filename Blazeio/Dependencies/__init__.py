@@ -192,7 +192,20 @@ class Default_logger:
         'warning': '\033[33m',
         'critical': '\033[38;5;1m',
         'debug': '\033[34m',
-        'reset': '\033[32m'
+        'reset': '\033[32m',
+        'yellow': '\033[33m',
+        'blue': '\033[34m',
+        'magenta': '\033[35m',
+        'cyan': '\033[36m',
+        'white': '\033[37m',
+        'gray': '\033[90m',
+        'b_red': '\033[91m',
+        'b_green': '\033[92m',
+        'b_yellow': '\033[93m',
+        'b_blue': '\033[94m',
+        'b_magenta': '\033[95m',
+        'b_cyan': '\033[96m',
+        'b_white': '\033[97m'
     })
 
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
@@ -341,7 +354,7 @@ class __log__:
 
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
-    async def __log__(app, r=None, message=None, color=None, logger_=None):
+    async def __log__(app, r=None, message=None, color=None, logger_=None, **kwargs):
         try:
             if isinstance(r, BlazeioProtocol):
                 message = str(message).strip()
@@ -367,7 +380,7 @@ class __log__:
                 msg = message
 
                 if msg == "":
-                    await logger_(message)
+                    await logger_(message, **kwargs)
                     return
                 
                 await logger_(

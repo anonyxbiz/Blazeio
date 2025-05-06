@@ -48,30 +48,70 @@ class DictView:
         return app._dict.pop(app._capitalized.get(key), default)
 
 class ioCondition:
-    __slots__ = ("event", "notify_count", "waiter_count",)
+    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)
     def __init__(app):
-        app.event, app.notify_count, app.waiter_count = SharpEvent(), 0, 0
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEvent(False), SharpEvent(False), 0, 0, False
 
-    async def __aexit__(app, exc_type, exc_value, tb): pass
+    def release(app):
+        if app._lock_event.is_set():
+            raise RuntimeError("Cannot be invoked on an unlocked lock.")
+
+        app.is_locked = False
+        app._lock_event.set()
+
+    def locked(app):
+        return app.is_locked
+    
+    def lock(app):
+        app.is_locked = True
+        app._lock_event.clear()
+
+    def notify(app, n: int = 0):
+        app.notify_count = n or app.waiter_count
+        app.event.set()
+    
+    def notify_all(app):
+        app.notify()
+
+    async def __aexit__(app, exc_type, exc_value, tb):
+        if not app._lock_event.is_set():
+            app.release()
 
     async def __aenter__(app):
-        pass
+        await app.acquire()
+
+    async def acquire(app):
+        while app.is_locked:
+            await app._lock_event.wait()
+
+        app.lock()
 
     async def wait(app):
+        if not app.is_locked:
+            raise RuntimeError("Cannot be invoked on an unlocked lock.")
+
+        app.release()
+
         while True:
             app.waiter_count += 1
             await app.event.wait()
 
+            if not app.event.is_set(): continue
+
             if app.notify_count:
                 app.notify_count -= 1
                 break
-
-            elif app.waiter_count and not app.event._waiters:
+            else:
                 app.waiter_count = 0
 
-    def notify(app, count: (None, int) = None):
-        app.notify_count = count or app.waiter_count
-        app.event.set()
+            app.event.clear()
+
+    async def wait_for(app, predicate: callable):
+        while not (result := predicate()):
+            await app.wait()
+
+        return result
+
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
@@ -182,11 +222,11 @@ class Asynchronizer:
 
 class TaskPool:
     __slots__ = ("taskpool", "task_activity", "task_under_flow", "loop", "maxtasks", "listener_task", "timeout",)
-    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None):
+    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
         app.task_activity = SharpEvent(False)
-        app.task_under_flow = Condition()
+        app.task_under_flow = cond()
 
         app.loop = get_event_loop()
 
@@ -205,13 +245,12 @@ class TaskPool:
 
     async def listener(app):
         while True:
-            if len(app.taskpool) <= app.maxtasks:
-                available = app.maxtasks - len(app.taskpool)
-                async with app.task_under_flow:
-                    app.task_under_flow.notify(available)
-
             await app.task_activity.wait()
             app.task_activity.clear()
+
+            async with app.task_under_flow:
+                if int(available := app.maxtasks - len(app.taskpool)) > 0:
+                    app.task_under_flow.notify(available)
 
     def done_callback(app, task):
         if task in app.taskpool: app.taskpool.remove(task)
