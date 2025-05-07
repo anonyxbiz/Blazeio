@@ -47,6 +47,42 @@ class DictView:
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 
+class SharpEventLab:
+    __slots__ = ("_set", "_waiters", "loop", "auto_clear")
+    def __init__(app, auto_clear: bool = True):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [get_event_loop().create_future()], get_event_loop(), auto_clear
+
+    def is_set(app):
+        return app._set
+
+    async def wait(app):
+        if app._set: return True
+
+        if not app._waiters:
+            app._waiters.append(fut := app.loop.create_future())
+        else:
+            fut = app._waiters[0]
+        
+        fut.__is_cleared__ = False
+        await fut
+        if not fut.__is_cleared__:
+            fut.__is_cleared__ = True
+            if app.auto_clear: app.clear()
+
+    def clear(app):
+        app._set = False
+
+    def set(app):
+        app._set = True
+
+        if len(app._waiters) == 1:
+            if not app._waiters[0].done(): app._waiters[0].set_result(True)
+        else:
+            for fut in app._waiters:
+                if not fut.done(): fut.set_result(True)
+
+        app._waiters.clear()
+
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)
     def __init__(app):
@@ -61,7 +97,7 @@ class ioCondition:
 
     def locked(app):
         return app.is_locked
-    
+
     def lock(app):
         app.is_locked = True
         app._lock_event.clear()
@@ -69,7 +105,7 @@ class ioCondition:
     def notify(app, n: int = 0):
         app.notify_count = n or app.waiter_count
         app.event.set()
-    
+
     def notify_all(app):
         app.notify()
 
@@ -89,19 +125,17 @@ class ioCondition:
     async def wait(app):
         if not app.is_locked:
             raise RuntimeError("Cannot be invoked on an unlocked lock.")
-
-        app.release()
+        else:
+            app.release()
 
         while True:
             app.waiter_count += 1
             await app.event.wait()
 
-            if not app.event.is_set(): continue
-
             if app.notify_count:
                 app.notify_count -= 1
                 break
-            else:
+            elif app.event.is_set() and app.waiter_count:
                 app.waiter_count = 0
 
             app.event.clear()
@@ -111,7 +145,6 @@ class ioCondition:
             await app.wait()
 
         return result
-
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
@@ -344,36 +377,6 @@ class RDict:
 
     def __repr__(app):
         return repr(app._dict)
-
-class SharpEventLab:
-    __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    
-    def __init__(app, auto_clear: bool = True):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
-
-    def is_set(app):
-        return app._set
-
-    async def wait(app):
-        if app._set: return True
-
-        if not app._waiters:
-            app._waiters.append(fut := app.loop.create_future())
-        else:
-            fut = app._waiters[0]
-
-        await fut
-        if app.auto_clear and app._set: app.clear()
-
-    def clear(app):
-        app._set = False
-
-    def set(app):
-        app._set = True
-        for fut in app._waiters:
-            if not fut.done(): fut.set_result(True)
-
-        app._waiters.clear()
 
 if __name__ == "__main__":
     pass

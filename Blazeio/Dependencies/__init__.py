@@ -99,7 +99,7 @@ class DotDict:
 class SharpEvent:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
     def __init__(app, auto_clear: bool = True):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
+        app._set, app._waiters, app.loop, app.auto_clear = False, [get_event_loop().create_future()], get_event_loop(), auto_clear
 
     def is_set(app):
         return app._set
@@ -111,17 +111,24 @@ class SharpEvent:
             app._waiters.append(fut := app.loop.create_future())
         else:
             fut = app._waiters[0]
-
+        
+        fut.__is_cleared__ = False
         await fut
-        if app.auto_clear and app._set: app.clear()
+        if not fut.__is_cleared__:
+            fut.__is_cleared__ = True
+            if app.auto_clear: app.clear()
 
     def clear(app):
         app._set = False
 
     def set(app):
         app._set = True
-        for fut in app._waiters:
-            if not fut.done(): fut.set_result(True)
+
+        if len(app._waiters) == 1:
+            if not app._waiters[0].done(): app._waiters[0].set_result(True)
+        else:
+            for fut in app._waiters:
+                if not fut.done(): fut.set_result(True)
 
         app._waiters.clear()
 
