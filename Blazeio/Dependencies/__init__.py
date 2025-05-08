@@ -108,16 +108,14 @@ class SharpEvent:
         if fut.__is_cleared__: return
         fut.__is_cleared__ = True
         if app.auto_clear: app.clear()
-    
+
     def done_callback_orchestrator(app, fut):
         for callback in fut.__acallbacks__:
             callback(fut)
 
-    def add_done_call_back(app, callback: callable):
+    def add_done_callback(app, callback: callable):
         fut = app.get_fut()
-
         if callback in fut.__acallbacks__: return
-
         fut.__acallbacks__.append(callback)
 
     def get_fut(app):
@@ -133,22 +131,22 @@ class SharpEvent:
 
     async def wait(app):
         if app._set: return True
-
         return await app.get_fut()
 
     def clear(app):
         app._set = False
 
-    def set(app):
+    def set(app, item = True):
         app._set = True
 
         if len(app._waiters) == 1:
-            if not app._waiters[0].done(): app._waiters[0].set_result(True)
+            if not app._waiters[0].done(): app._waiters[0].set_result(item)
         else:
             for fut in app._waiters:
-                if not fut.done(): fut.set_result(True)
+                if not fut.done(): fut.set_result(item)
 
         app._waiters.clear()
+
 
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
 
