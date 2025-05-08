@@ -49,25 +49,43 @@ class DictView:
 
 class SharpEventLab:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    def __init__(app, auto_clear: bool = True):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [get_event_loop().create_future()], get_event_loop(), auto_clear
+    def __init__(app, auto_clear: bool = False):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
 
     def is_set(app):
         return app._set
+    
+    def fut_done(app, fut):
+        if fut.__is_cleared__: return
+        fut.__is_cleared__ = True
+        if app.auto_clear: app.clear()
+    
+    def done_callback_orchestrator(app, fut):
+        for callback in fut.__acallbacks__:
+            callback(fut)
+
+    def add_done_call_back(app, callback: callable):
+        fut = app.get_fut()
+
+        if callback in fut.__acallbacks__: return
+
+        fut.__acallbacks__.append(callback)
+
+    def get_fut(app):
+        if app._waiters:
+            return app._waiters[0]
+
+        app._waiters.append(fut := app.loop.create_future())
+        fut.__is_cleared__ = False
+        fut.__acallbacks__ = [app.fut_done]
+        fut.add_done_callback(app.done_callback_orchestrator)
+
+        return fut
 
     async def wait(app):
         if app._set: return True
 
-        if not app._waiters:
-            app._waiters.append(fut := app.loop.create_future())
-        else:
-            fut = app._waiters[0]
-        
-        fut.__is_cleared__ = False
-        await fut
-        if not fut.__is_cleared__:
-            fut.__is_cleared__ = True
-            if app.auto_clear: app.clear()
+        return await app.get_fut()
 
     def clear(app):
         app._set = False
