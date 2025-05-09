@@ -422,7 +422,7 @@ class Pulltools(Parsers):
         data = bytearray()
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == app.protocol.pull: raise ClientGotInTrouble("Unsupported Protocol.")
+        if app.handler == app.protocol.pull: return
 
         async for chunk in app.pull():
             data.extend(chunk)
@@ -516,7 +516,7 @@ class Pulltools(Parsers):
     async def data(app):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == app.protocol.pull: raise ClientGotInTrouble("Unsupported Protocol.")
+        if app.handler == app.protocol.pull: return
 
         if app.handler == app.handle_raw and not app.content_length: return
 

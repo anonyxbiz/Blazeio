@@ -10,7 +10,7 @@ with open(f"{data_path}/requirements.txt") as f:
 with open(f"{data_path}/README.md", encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.1.3.1"
+version = "2.1.3.2"
 
 setup(
     name="Blazeio",
