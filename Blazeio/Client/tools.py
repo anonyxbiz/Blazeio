@@ -259,7 +259,7 @@ class Parsers:
 
             app.response_headers[key] = value
 
-        app.received_len, app.content_length = 0, int(app.response_headers.get('content-length',  0))
+        app.received_len, app.content_length = 0, int(app.response_headers.get('content-length', 0))
 
         if app.response_headers.get("transfer-encoding"):
             app.handler = app.handle_chunked
@@ -420,10 +420,9 @@ class Pulltools(Parsers):
 
     async def aread(app, decode=False):
         data = bytearray()
-        if not app.status_code: await app.prepare_http()
+        if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == app.protocol.pull:
-            app.handler = app.handle_raw
+        if app.handler == app.protocol.pull: raise ClientGotInTrouble("Unsupported Protocol.")
 
         async for chunk in app.pull():
             data.extend(chunk)
@@ -516,12 +515,12 @@ class Pulltools(Parsers):
     
     async def data(app):
         if not app.is_prepared(): await app.prepare_http()
-        
-        if not app.content_length: return
 
-        if not (content_type := app.response_headers.get("content-type", "")): return
+        if app.handler == app.protocol.pull: raise ClientGotInTrouble("Unsupported Protocol.")
 
-        if content_type.lower() == "application/json":
+        if app.handler == app.handle_raw and not app.content_length: return
+
+        if (content_type := app.response_headers.get("content-type")).lower() == "application/json":
             func = app.json
         else:
             func = app.text
