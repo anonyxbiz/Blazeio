@@ -200,9 +200,11 @@ class Parsers:
     http_startswith = b"HTTP"
 
     def __init__(app): pass
+    
+    def is_prepared(app): return app.status_code
 
     async def prepare_http(app):
-        if app.status_code: return True
+        if app.is_prepared(): return True
         buff, headers, idx, valid = bytearray(), None, -1, False
 
         async for chunk in app.protocol.pull():
@@ -402,7 +404,7 @@ class Pulltools(Parsers):
     def __init__(app): pass
 
     async def pull(app, *args, http=True, **kwargs):
-        if http and not app.response_headers: await app.prepare_http()
+        if http and not app.is_prepared(): await app.prepare_http()
 
         try:
             if not app.decoder:
@@ -513,9 +515,11 @@ class Pulltools(Parsers):
     async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)
     
     async def data(app):
-        if not app.response_headers: await app.prepare_http()
+        if not app.is_prepared(): await app.prepare_http()
+        
+        if not app.content_length: return
 
-        content_type = app.response_headers.get("content-type", "")
+        if not (content_type := app.response_headers.get("content-type", "")): return
 
         if content_type.lower() == "application/json":
             func = app.json

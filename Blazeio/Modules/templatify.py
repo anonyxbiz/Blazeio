@@ -75,10 +75,11 @@ class TemplateEngine:
         if not ctx:
             ctx = Simpleserve()
             if not file.endswith(".html"): return await ctx.push(r, file, app.chunk_size, gzip=False)
-    
+
             await ctx.initialize(r, file, app.chunk_size, cache_control=app.cache_control)
     
-            for q in ("Content-Length", "Etag", "Cache-Control", "Last-Modified"): ctx.headers.pop(q, None)
+            for q in ("Content-Length",):
+                ctx.headers.pop(q, None)
 
         template_ctx = Simpleserve()
 

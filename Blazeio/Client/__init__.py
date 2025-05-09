@@ -248,6 +248,9 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
         elif (method in app.NON_BODIED_HTTP_METHODS) or body:
             await app.prepare_http()
 
+        if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
+            for callback in callbacks: await callback(app)
+
         return app
 
     async def gen_payload(app, method: str, headers: dict, path: str, http_version = "1.1"):
