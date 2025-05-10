@@ -115,7 +115,7 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         app.__is_buffer_over_high_watermark__ = False
         app.__overflow_evt__.set()
 
-    async def prepend(app, data):
+    def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
         app.__stream__.appendleft(memoryview(data))
         app.__evt__.set()

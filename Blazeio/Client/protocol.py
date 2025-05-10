@@ -67,7 +67,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         await app.__overflow_evt__.wait()
         app.__overflow_evt__.clear()
 
-    async def prepend(app, data):
+    def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
         app.__stream__.appendleft(memoryview(data))
         app.__evt__.set()

@@ -1,21 +1,29 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
 from datetime import datetime as dt
 from os import environ, getcwd, path
 
 data_path = path.abspath(path.dirname(__file__))
 
-with open(f"{data_path}/requirements.txt") as f:
+with open("%s/requirements.txt" % data_path) as f:
     requirements = f.read().splitlines()
 
-with open(f"{data_path}/README.md", encoding="utf-8") as f:
+with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.1.3.3"
+version = "2.1.3.4"
+
+ext_modules = []
+ext_modules.append(Extension(
+    'Blazeio._c_client_http_modules',
+    sources=['Blazeio/Extensions/_c_client_http_modules.c'],
+    extra_compile_args=['-O3'],
+    define_macros=[('NDEBUG', '1')],
+))
 
 setup(
     name="Blazeio",
     version=version,
-    description="Blazeio.",
+    description="Blazeio",
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="MIT",
@@ -25,8 +33,10 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=requirements,
+    ext_modules=ext_modules,
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: C",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
@@ -36,4 +46,11 @@ setup(
             'Blazeio = Blazeio.__main__:main',
         ],
     },
+    options={
+        'build_ext': {
+            'inplace': True,
+            'force': True
+        }
+    },
+    zip_safe=False,
 )

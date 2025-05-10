@@ -172,7 +172,7 @@ class Asynchronizer:
         app._thread.start()
         if await_ready: loop.run_until_complete(app.ready())
 
-    def is_async(app, func): return True if str(type(func)) == "<class 'method'>" else False
+    def is_async(app, func): return iscoroutinefunction(func)
 
     async def job(app, func, *args, **kwargs):
         job = {
@@ -184,7 +184,7 @@ class Asynchronizer:
             "event": (event := SharpEvent()),
             "loop": get_event_loop(),
             "current_task": current_task(),
-            "awaitable": True if str(type(func)).replace('"', "'") == "<class 'method'>" else False
+            "awaitable": iscoroutinefunction(func)
         }
 
         app.loop.call_soon_threadsafe(app.jobs.put_nowait, job)

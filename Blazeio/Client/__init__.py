@@ -68,26 +68,26 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
     async def __aenter__(app):
         return await app.create_connection(*app.args, **app.kwargs)
 
-    async def conn(app, *args, **kwargs):
-        if not app.response_headers: return await sleep(0)
+    def conn(app, *args, **kwargs):
+        if not app.response_headers: return sleep(0)
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
         for key in app.__should_be_reset__: setattr(app, key, None)
 
-        return await app.create_connection(*app.args, **app.kwargs)
-
-    async def prepare(app, *args, **kwargs):
+        return app.create_connection(*app.args, **app.kwargs)
+    
+    def prepare(app, *args, **kwargs):
         if app.protocol: app.protocol.__stream__.clear()
 
-        if not app.response_headers: return await sleep(0)
+        if not app.response_headers: return sleep(0)
 
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
         for key in app.__should_be_reset__: setattr(app, key, None)
 
-        return await app.create_connection(*app.args, **app.kwargs)
+        return app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         if not isinstance(exc_type, ServerDisconnected):
@@ -219,7 +219,7 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
             return app
 
-        payload = await app.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path)
+        payload = app.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path)
 
         if body:
             payload = payload + body
@@ -253,17 +253,17 @@ class Session(Pushtools, Pulltools, Urllib, metaclass=SessionMethodSetter):
 
         return app
 
-    async def gen_payload(app, method: str, headers: dict, path: str, http_version = "1.1"):
+    def gen_payload(app, method: str, headers: dict, path: str = "/", host: str = "", port: int = 0, http_version = "1.1"):
         if method not in ["CONNECT"]:
-            payload = bytearray("%s %s HTTP/%s\r\n" % (method, path, http_version), "utf-8")
+            payload = "%s %s HTTP/%s\r\n" % (method, path, http_version)
         else:
-            payload = bytearray("%s %s:%s HTTP/%s\r\n" % (method.upper(), app.host, app.port, http_version), "utf-8")
+            payload = "%s %s:%s HTTP/%s\r\n" % (method.upper(), host, port, http_version)
 
         for key in headers:
-            payload.extend(bytearray("%s: %s\r\n" % (key, headers[key]), "utf-8"))
+            payload += "%s: %s\r\n" % (key, headers[key])
 
-        payload.extend(b"\r\n")
-        return payload
+        payload += "\r\n"
+        return payload.encode()
 
     async def proxy_config(app, headers, proxy):
         username, password = None, None

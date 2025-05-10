@@ -229,7 +229,7 @@ class Request:
 
                 await app.set_method(r, server, __heading__)
                 
-                await r.prepend(__buff__)
+                r.prepend(__buff__)
 
                 break
 
@@ -262,7 +262,7 @@ class Request:
                 if (ida := data.rfind(app.form_signal3)) != -1:
                     __buff__, data = data[ida + len(app.form_signal3):], data[:ida]
 
-                    await r.prepend(b'' + __buff__)
+                    r.prepend(b'' + __buff__)
                     r.current_length -= len(__buff__)
                     break
         

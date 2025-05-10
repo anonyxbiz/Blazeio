@@ -394,19 +394,19 @@ class App(Handler, OOP_RouteDef):
             await app.server.serve_forever()
 
     async def cancelloop(app, loop):
-        for task in all_tasks(loop=loop):
+        tasks = all_tasks(loop=loop)
+        for task in tasks:
             if task is not current_task():
                 name = task.get_name()
                 await Log.info(
                     "Blazeio.exit",
                     ":: [%s] Terminated" % name
                 )
- 
-                try:
-                    task.cancel()
-                    # await task
-                except CancelledError: pass
-                except Exception as e: await Log.critical("Blazeio.exit", e)
+                task.cancel()
+        try:
+            await gather(*tasks)
+        except CancelledError: pass
+        except Exception as e: await Log.critical("Blazeio.exit", e)
 
     async def exit(app):
         try:

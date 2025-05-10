@@ -223,11 +223,9 @@ class Parsers:
             headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
             break
 
-        if buff: await app.protocol.prepend(buff)
+        if buff: app.protocol.prepend(buff)
 
-        if idx == -1:
-            if debug_mode: await Log.warning(buff)
-            return
+        if idx == -1: return
 
         if (idx := headers.find(app.prepare_http_sepr1)) != -1:
             prot_headers = headers[:idx]
@@ -322,7 +320,7 @@ class Parsers:
 
                 break
 
-        await app.protocol.push(await app.gen_payload(method, headers, app.path))
+        await app.protocol.push(app.gen_payload(method, headers, app.path))
 
     async def handle_chunked(app, *args, **kwargs):
         end, buff = False, bytearray()
@@ -354,7 +352,7 @@ class Parsers:
 
                 chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
                 
-                await app.protocol.prepend(__buff__)
+                app.protocol.prepend(__buff__)
 
                 read, size = 0, False
             
