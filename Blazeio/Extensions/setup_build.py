@@ -14,7 +14,7 @@ argv[1:] = unknown
 from setuptools import setup, Extension
 from os import path as ospath
 
-setup_script = ospath.join(abspath := (path := ospath.abspath(__file__))[:path.rfind("/")], "setup_build.py")
+setup_script = ospath.join(abspath := (path := ospath.abspath(ospath.dirname(__file__))), "setup_build.py")
 
 with open(setup_script, "rb") as f:
     code = (f.read()).decode()

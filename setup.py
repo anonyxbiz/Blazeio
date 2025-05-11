@@ -10,7 +10,7 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.1.3.5"
+version = "2.1.3.6"
 
 system("cd Blazeio/Extensions && python setup_build.py build --mname Blazeio_iourllib --mpath iourllib.c && python setup_build.py install --mname Blazeio_iourllib --mpath Blazeio_iourllib.c")
 
