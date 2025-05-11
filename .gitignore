@@ -4,6 +4,12 @@ Blazeio/Dependencies/__pycache__
 Blazeio/Modules/__pycache__
 Blazeio/Client/__pycache__
 Blazeio/Other/__pycache__
+Blazeio/Extensions/__pycache__
+Blazeio/Extensions/dist
+Blazeio/Extensions/Blazeio_iourllib.egg-info
+Blazeio/Extensions/Blazeio_iourllib.cpython-312.so
+Blazeio/Extensions/_c_client_http_modules.c
+Blazeio/Extensions/build
 dist
 build
 .gitignore

@@ -24,6 +24,12 @@ try:
 except:
     from json import dumps, loads, JSONDecodeError
 
+try:
+    from Blazeio_iourllib import url_to_host
+except ImportError as e:
+    print(e)
+    url_to_host = None
+
 from html import escape
 from traceback import extract_tb, format_exc
 from queue import Queue

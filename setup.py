@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages, Extension
 from datetime import datetime as dt
-from os import environ, getcwd, path
+from os import environ, getcwd, path, system
 
 data_path = path.abspath(path.dirname(__file__))
 
@@ -10,15 +10,9 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.1.3.4"
+version = "2.1.3.5"
 
-ext_modules = []
-ext_modules.append(Extension(
-    'Blazeio._c_client_http_modules',
-    sources=['Blazeio/Extensions/_c_client_http_modules.c'],
-    extra_compile_args=['-O3'],
-    define_macros=[('NDEBUG', '1')],
-))
+system("cd Blazeio/Extensions && python setup_build.py build --mname Blazeio_iourllib --mpath iourllib.c && python setup_build.py install --mname Blazeio_iourllib --mpath Blazeio_iourllib.c")
 
 setup(
     name="Blazeio",
@@ -33,7 +27,6 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=requirements,
-    ext_modules=ext_modules,
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: C",
@@ -45,12 +38,5 @@ setup(
         'console_scripts': [
             'Blazeio = Blazeio.__main__:main',
         ],
-    },
-    options={
-        'build_ext': {
-            'inplace': True,
-            'force': True
-        }
-    },
-    zip_safe=False,
+    }
 )

@@ -132,7 +132,8 @@ class Urllib:
     def __init__(app):
         pass
 
-    async def url_to_host(app, url: str, params: dict, parse_params: bool = False):
+    @classmethod
+    def url_to_host(app, url: str, params: dict, parse_params: bool = False):
         parsed_url = {}
         url = url.replace(r"\/", "/")
 
@@ -158,7 +159,7 @@ class Urllib:
 
         if (query := parsed_url.get("query")):
             if parse_params:
-                params.update(await Request.get_params(url="?%s" % query))
+                params.update(Request.get_params_sync(url="?%s" % query))
             else:
                 path += ("?%s" % query) if "=" in query else ""
 
@@ -178,6 +179,8 @@ class Urllib:
                 port = 80
 
         return (host, port, path)
+
+if not url_to_host: url_to_host = Urllib.url_to_host
 
 class StaticStuff:
     __slots__ = ()
@@ -200,8 +203,8 @@ class Parsers:
     http_startswith = b"HTTP"
 
     def __init__(app): pass
-    
-    def is_prepared(app): return app.status_code
+
+    def is_prepared(app): return True if app.status_code and app.handler else False
 
     async def prepare_http(app):
         if app.is_prepared(): return True
