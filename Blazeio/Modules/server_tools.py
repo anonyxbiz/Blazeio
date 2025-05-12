@@ -36,13 +36,13 @@ class Simpleserve:
             app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status = r, file, CHUNK_SIZE, dict(headers), cache_control, status
 
             if not path.exists(app.file): raise Abort("Not Found", 404)
-
-    async def initialize(app, *args, **kwargs):
+    
+    def initialize(app, *args, **kwargs):
         if args or kwargs: app.__init__(*args, **kwargs)
 
-        return await app.prepare_metadata()
+        return app.prepare_metadata()
 
-    async def validate_cache(app):
+    def validate_cache(app):
         if app.r.headers.get("If-none-match") == app.etag:
             raise Abort("Not Modified", 304)
 
@@ -64,7 +64,7 @@ class Simpleserve:
 
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
 
-        if await app.validate_cache(): return True
+        if app.validate_cache(): return True
 
         app.content_type = guess_type(app.file)[0]
 

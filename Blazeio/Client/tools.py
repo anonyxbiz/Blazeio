@@ -513,6 +513,8 @@ class Pulltools(Parsers):
             yield chunk
 
     async def save(app, filepath: str, mode: str = "wb"):
+        if not app.is_prepared(): await app.prepare_http()
+
         async with async_open(filepath, mode) as f:
             while app.received_len < app.content_length:
                 async for chunk in app.pull():
