@@ -26,25 +26,9 @@ class HTTPParser:
             await app.make(r, header)
 
 class Request:
-    URL_DECODE_MAP = {
-        "%20": " ", "%21": "!", "%22": '"', "%23": "#", "%24": "$", "%25": "%", 
-        "%26": "&", "%27": "'", "%28": "(", "%29": ")", "%2A": "*", "%2B": "+",
-        "%2C": ",", "%2D": "-", "%2E": ".", "%2F": "/", "%30": "0", "%31": "1", 
-        "%32": "2", "%33": "3", "%34": "4", "%35": "5", "%36": "6", "%37": "7",
-        "%38": "8", "%39": "9", "%3A": ":", "%3B": ";", "%3C": "<", "%3D": "=",
-        "%3E": ">", "%3F": "?", "%40": "@", "%41": "A", "%42": "B", "%43": "C",
-        "%44": "D", "%45": "E", "%46": "F", "%47": "G", "%48": "H", "%49": "I",
-        "%4A": "J", "%4B": "K", "%4C": "L", "%4D": "M", "%4E": "N", "%4F": "O",
-        "%50": "P", "%51": "Q", "%52": "R", "%53": "S", "%54": "T", "%55": "U",
-        "%56": "V", "%57": "W", "%58": "X", "%59": "Y", "%5A": "Z", "%5B": "[",
-        "%5C": "\\", "%5D": "]", "%5E": "^", "%5F": "_", "%60": "`", "%61": "a",
-        "%62": "b", "%63": "c", "%64": "d", "%65": "e", "%66": "f", "%67": "g",
-        "%68": "h", "%69": "i", "%6A": "j", "%6B": "k", "%6C": "l", "%6D": "m",
-        "%6E": "n", "%6F": "o", "%70": "p", "%71": "q", "%72": "r", "%73": "s",
-        "%74": "t", "%75": "u", "%76": "v", "%77": "w", "%78": "x", "%79": "y",
-        "%7A": "z", "%7B": "{", "%7C": "|", "%7D": "}", "%7E": "~",
-        "%25": "%",
-    }
+    URL_DECODE_MAP = {"%20": " ", "%21": "!", "%22": '"', "%23": "#", "%24": "$", "%25": "%", "%26": "&", "%27": "'", "%28": "(", "%29": ")", "%2A": "*", "%2B": "+", "%2C": ",", "%2D": "-", "%2E": ".", "%2F": "/", "%30": "0", "%31": "1", "%32": "2", "%33": "3", "%34": "4", "%35": "5", "%36": "6", "%37": "7", "%38": "8", "%39": "9", "%3A": ":", "%3B": ";", "%3C": "<", "%3D": "=", "%3E": ">", "%3F": "?", "%40": "@", "%41": "A", "%42": "B", "%43": "C", "%44": "D", "%45": "E", "%46": "F", "%47": "G", "%48": "H", "%49": "I", "%4A": "J", "%4B": "K", "%4C": "L", "%4D": "M", "%4E": "N", "%4F": "O", "%50": "P", "%51": "Q", "%52": "R", "%53": "S", "%54": "T", "%55": "U", "%56": "V", "%57": "W", "%58": "X", "%59": "Y", "%5A": "Z", "%5B": "[", "%5C": "\\", "%5D": "]", "%5E": "^", "%5F": "_", "%60": "`", "%61": "a", "%62": "b", "%63": "c", "%64": "d", "%65": "e", "%66": "f", "%67": "g", "%68": "h", "%69": "i", "%6A": "j", "%6B": "k", "%6C": "l", "%6D": "m", "%6E": "n", "%6F": "o", "%70": "p", "%71": "q", "%72": "r", "%73": "s", "%74": "t", "%75": "u", "%76": "v", "%77": "w", "%78": "x", "%79": "y", "%7A": "z", "%7B": "{", "%7C": "|", "%7D": "}", "%7E": "~", "%25": "%", "%3A": ":"}
+    
+    alphas = set([*string.ascii_lowercase, *string.ascii_uppercase, *[str(i) for i in range(10)]])
 
     url_encoding_map = {
         " ": "%20",
@@ -63,6 +47,8 @@ class Request:
         "__http_request_initial_separatir__": b' ',
         "__http_request_auto_header_parsing__": True
     }
+    cache = {}
+    max_cache_len = 10
 
     @classmethod
     async def get_cookie(app, r, val: str):
@@ -112,17 +98,45 @@ class Request:
         return value
 
     @classmethod
-    def url_encode_sync(app, value: str):
-        for k, v in app.URL_ENCODE_MAP_ITEMS:
-            while (idx := value.find(k)) != -1:
-                value = value[:idx] + v + value[idx + len(k):]
+    def url_encode_sync(app, rawvalue: str, func_name: str = "url_encode_sync"):
+        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
+
+        value = rawvalue
+
+        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
+
+        if not func_name in app.cache:
+            app.cache[func_name] = {}
+
+        for k, v in app.URL_DECODE_MAP.items():
+            if v not in value or v in app.alphas: continue
+            value = value.replace(v, k)
+
+        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
+
+        app.cache[func_name][rawvalue] = value
+
         return value
 
     @classmethod
-    def url_decode_sync(app, value: str):
-        for k, v in app.URL_DECODE_MAP_ITEMS:
-            while (idx := value.find(k)) != -1:
-                value = value[:idx] + v + value[idx + len(k):]
+    def url_decode_sync(app, rawvalue: str, func_name: str = "url_decode_sync"):
+        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
+
+        value = rawvalue
+
+        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
+
+        if not func_name in app.cache:
+            app.cache[func_name] = {}
+
+        for k, v in app.URL_DECODE_MAP.items():
+            if k not in value: continue
+            value = value.replace(k, v)
+
+        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
+
+        app.cache[func_name][rawvalue] = value
+
         return value
 
     @classmethod

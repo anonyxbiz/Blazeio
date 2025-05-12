@@ -3,33 +3,8 @@ from .request import *
 from .streaming import *
 
 class Simpleserve:
-    __slots__ = (
-        'headers',
-        'cache_control',
-        'CHUNK_SIZE',
-        'r',
-        'file_size',
-        'filename',
-        'file_stats',
-        'last_modified',
-        'etag',
-        'last_modified_str',
-        'file',
-        'content_type',
-        'content_disposition',
-        'start',
-        'end',
-        'range_',
-        'status',
-    )
-    compressable = (
-        "text/html",
-        "text/css",
-        "text/javascript",
-        "text/x-python",
-        "application/javascript",
-        "application/json",
-    )
+    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status')
+    compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
     
     def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, **kwargs):
         if r and file:
