@@ -260,7 +260,7 @@ class Request:
         if r is None: r = await Context.r()
 
         if r.method in ["GET", "OPTIONS", "HEAD"]:
-            return await app.get_params(r)
+            return app.get_params_sync(r)
         else:
             return await app.get_json(r)
 
