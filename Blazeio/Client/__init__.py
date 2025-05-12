@@ -185,7 +185,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
         if body:
-            normalized_headers["Content-length"] = len(body)
+            normalized_headers["Content-length"] = str(len(body))
             if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
         if (content is not None or body is not None) and not "Content-length" in stdheaders and not "Transfer-encoding" in stdheaders and method not in {"GET", "HEAD", "OPTIONS", "CONNECT", "DELETE"}:
@@ -218,8 +218,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             )
 
             return app
-
-        payload = ioConf.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path)
+        
+        payload = ioConf.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path, str(app.port))
 
         if body:
             payload = payload + body
