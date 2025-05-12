@@ -1,6 +1,0 @@
-setup_build.py
-simple_serve_util.c
-simple_serve_util.egg-info/PKG-INFO
-simple_serve_util.egg-info/SOURCES.txt
-simple_serve_util.egg-info/dependency_links.txt
-simple_serve_util.egg-info/top_level.txt
