@@ -143,7 +143,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         method = method.upper()
 
-        app.host, app.port, app.path = url_to_host(url, app.params)
+        app.host, app.port, app.path = ioConf.url_to_host(url, app.params)
 
         normalized_headers = DictView(stdheaders)
 
@@ -219,7 +219,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
             return app
 
-        payload = app.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path)
+        payload = ioConf.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path)
 
         if body:
             payload = payload + body
@@ -253,18 +253,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         return app
 
-    def gen_payload(app, method: str, headers: dict, path: str = "/", host: str = "", port: int = 0, http_version = "1.1"):
-        if method not in ["CONNECT"]:
-            payload = "%s %s HTTP/%s\r\n" % (method, path, http_version)
-        else:
-            payload = "%s %s:%s HTTP/%s\r\n" % (method.upper(), host, port, http_version)
-
-        for key in headers:
-            payload += "%s: %s\r\n" % (key, headers[key])
-
-        payload += "\r\n"
-        return payload.encode()
-
     async def proxy_config(app, headers, proxy):
         username, password = None, None
         if isinstance(proxy, dict):
@@ -291,6 +279,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if username and password:
             auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
             headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
+
+        return
 
     @classmethod
     @asynccontextmanager

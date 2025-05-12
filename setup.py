@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages, Extension
 from datetime import datetime as dt
-from os import environ, getcwd, path, system
+from os import environ, getcwd, path, system, environ
 
 data_path = path.abspath(path.dirname(__file__))
 
@@ -10,9 +10,11 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.1.3.6"
+version = "2.1.3.7"
 
-system("cd Blazeio/Extensions && python setup_build.py build --mname Blazeio_iourllib --mpath iourllib.c && python setup_build.py install --mname Blazeio_iourllib --mpath Blazeio_iourllib.c")
+exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util")
+
+for ext in exts: system("python %s build --mname %s --mpath %s && python %s install --mname %s --mpath %s" % (path.join(data_path, "Blazeio", "Extensions", "setup_build.py"), ext, path.join(data_path, "Blazeio", "Extensions", ext + ".c"), path.join(data_path, "Blazeio", "Extensions", "setup_build.py"), ext, path.join(data_path, "Blazeio", "Extensions", ext + ".c")))
 
 setup(
     name="Blazeio",

@@ -180,7 +180,33 @@ class Urllib:
 
         return (host, port, path)
 
-if not url_to_host: url_to_host = Urllib.url_to_host
+class OtherUtils:
+    __slots__ = ()
+    def __init__(app):
+        pass
+    
+    @classmethod
+    def gen_payload(app, method: str, headers: dict, path: str = "/", host: str = "", port: int = 0, http_version = "1.1"):
+        if method not in ["CONNECT"]:
+            payload = "%s %s HTTP/%s\r\n" % (method, path, http_version)
+        else:
+            payload = "%s %s:%s HTTP/%s\r\n" % (method.upper(), host, port, http_version)
+
+        for key in headers:
+            payload += "%s: %s\r\n" % (key, headers[key])
+
+        payload += "\r\n"
+        return payload.encode()
+
+if not ioConf.url_to_host:
+    get_event_loop().create_task(log.critical("Using pure python implementation of: %s, which is %sX slower." % ("url_to_host", "3.0")))
+
+    ioConf.url_to_host = Urllib.url_to_host
+
+if not ioConf.gen_payload:
+    get_event_loop().create_task(log.critical("Using pure python implementation of: %s, which is %sX slower." % ("gen_payload", "6.6")))
+
+    ioConf.gen_payload = OtherUtils.gen_payload
 
 class StaticStuff:
     __slots__ = ()

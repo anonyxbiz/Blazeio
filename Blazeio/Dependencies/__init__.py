@@ -1,12 +1,12 @@
 # Dependencies.__init___.py
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, Protocol as asyncProtocol, run, create_subprocess_shell, set_event_loop, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, iscoroutine, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction
+from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction
 
 from collections import deque, defaultdict, OrderedDict
 
 from sys import exit
 from datetime import datetime as dt
 from inspect import signature as sig, stack
-from typing import Callable
+from typing import Callable, Any
 
 from mimetypes import guess_type
 from os import stat, kill, getpid, path, environ
@@ -23,12 +23,6 @@ try:
     from ujson import dumps, loads, JSONDecodeError
 except:
     from json import dumps, loads, JSONDecodeError
-
-try:
-    from Blazeio_iourllib import url_to_host
-except ImportError as e:
-    print(e)
-    url_to_host = None
 
 from html import escape
 from traceback import extract_tb, format_exc
@@ -54,15 +48,36 @@ pid = getpid()
 main_process = psutilProcess(pid)
 
 class __ioConf__:
-    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE")
+    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync")
 
     def __init__(app):
-        app.INBOUND_CHUNK_SIZE: int = 102400
-        app.OUTBOUND_CHUNK_SIZE: int = 102400
+        for key in app.__slots__:
+            if getattr(app, key, False) == False: setattr(app, key, None)
 
 ioConf = __ioConf__()
+ioConf.INBOUND_CHUNK_SIZE: int = 102400
+ioConf.OUTBOUND_CHUNK_SIZE: int = 102400
 
-INBOUND_CHUNK_SIZE, OUTBOUND_CHUNK_SIZE = ioConf.INBOUND_CHUNK_SIZE, ioConf.OUTBOUND_CHUNK_SIZE
+def c_extension_importer():
+    try:
+        from Blazeio_iourllib import url_to_host
+        ioConf.url_to_host = url_to_host
+    except ImportError as e:
+        print(e)
+
+    try:
+        from client_payload_gen import gen_payload
+        ioConf.gen_payload = gen_payload
+    except ImportError as e:
+        print(e)
+
+    try:
+        from c_request_util import url_decode_sync, url_encode_sync, get_params_sync
+        for i in (url_decode_sync, url_encode_sync, get_params_sync): setattr(ioConf, i.__name__, i)
+    except ImportError as e:
+        print(e)
+
+c_extension_importer()
 
 class BlazeioProtocol:
     __slots__ = ()
@@ -152,7 +167,6 @@ class SharpEvent:
                 if not fut.done(): fut.set_result(item)
 
         app._waiters.clear()
-
 
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
 

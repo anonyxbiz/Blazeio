@@ -43,7 +43,7 @@ class Request:
         "%6E": "n", "%6F": "o", "%70": "p", "%71": "q", "%72": "r", "%73": "s",
         "%74": "t", "%75": "u", "%76": "v", "%77": "w", "%78": "x", "%79": "y",
         "%7A": "z", "%7B": "{", "%7C": "|", "%7D": "}", "%7E": "~",
-        "%25": "%",  # Keep %25 last to avoid double decoding issues
+        "%25": "%",
     }
 
     url_encoding_map = {
@@ -92,7 +92,7 @@ class Request:
 
     @classmethod
     async def url_decode(app, value: str):
-        # if len(value) <= 1024: return app.url_decode_sync(value)
+        if len(value) <= 4096: return app.url_decode_sync(value)
         for k, v in app.URL_DECODE_MAP_ITEMS:
             while (idx := value.find(k)) != -1:
                 value = value[:idx] + v + value[idx + len(k):]
@@ -102,7 +102,7 @@ class Request:
 
     @classmethod
     async def url_encode(app, value: str):
-        # if len(value) <= 1024: return app.url_encode_sync(value)
+        if len(value) <= 4096: return app.url_encode_sync(value)
 
         for k, v in app.URL_ENCODE_MAP_ITEMS:
             while (idx := value.find(k)) != -1:
@@ -287,6 +287,19 @@ class Request:
     @classmethod
     async def get_form_data(app, r):
         return await app.form_data(r)
+
+    @classmethod
+    async def wrapper(app, target, *a, **k):
+        return target(*a, **k)
+
+for i in (Request.url_decode_sync, Request.url_encode_sync, Request.get_params_sync):
+    if (func := getattr(ioConf, i.__name__)):
+        setattr(Request, "_python_" + i.__name__, i)
+        setattr(Request, i.__name__, func)
+        setattr(Request, (async_method := i.__name__[:-5]), lambda *a, **k: Request.wrapper(func, *a, **k))
+
+    else:
+        setattr(ioConf, i.__name__, i)
 
 if __name__ == "__main__":
     pass

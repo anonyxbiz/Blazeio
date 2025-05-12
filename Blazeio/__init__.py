@@ -390,12 +390,12 @@ class App(Handler, OOP_RouteDef):
         async with app.server:
             await Log.info("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s, Request Logging is %s.\n" % ("http" if not ssl_data else "https", HOST, PORT, "enabled" if app.ServerConfig.__log_requests__ else "disabled"))
 
-            app.is_server_running.set()
+            get_event_loop().call_soon(app.is_server_running.set)
+
             await app.server.serve_forever()
 
     async def cancelloop(app, loop):
-        tasks = all_tasks(loop=loop)
-        for task in tasks:
+        for task in (tasks := all_tasks(loop=loop)):
             if task is not current_task():
                 name = task.get_name()
                 await Log.info(

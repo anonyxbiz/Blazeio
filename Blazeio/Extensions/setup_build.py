@@ -1,4 +1,4 @@
-version = "1.1.3.2"
+version = "1.1.8.0"
 
 from argparse import ArgumentParser
 parser = ArgumentParser(prog="Setup", description = "Setup")
@@ -12,7 +12,7 @@ from sys import argv
 argv[1:] = unknown
 
 from setuptools import setup, Extension
-from os import path as ospath
+from os import path as ospath, environ
 
 setup_script = ospath.join(abspath := (path := ospath.abspath(ospath.dirname(__file__))), "setup_build.py")
 
@@ -39,7 +39,7 @@ setup(
     ext_modules = ext_modules,
     options={
         'build_ext': {
-            'inplace': True,
+            'inplace': False if environ.get("BlazeioDev", None) else False,
             'force': True
         }
     },
