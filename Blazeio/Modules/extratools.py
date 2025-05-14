@@ -105,7 +105,7 @@ class ExtraToolset:
 
             if app.current_length >= app.content_length: break
 
-    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp = True):
+    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True):
         await app.writer(b'HTTP/1.1 %s %s\r\nServer: Blazeio\r\n' % (str(status).encode(), StatusReason.reasons.get(status, "Unknown").encode()))
 
         if app.__cookie__: await app.writer(app.__cookie__)

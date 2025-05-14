@@ -433,6 +433,8 @@ class Pulltools(Parsers):
     async def pull(app, *args, http=True, **kwargs):
         if http and not app.is_prepared(): await app.prepare_http()
 
+        if not app.handler: app.handler = app.protocol.pull
+
         try:
             if not app.decoder:
                 async for chunk in app.handler(*args, **kwargs):
@@ -497,17 +499,32 @@ class Pulltools(Parsers):
             return chunk
 
     async def brotli(app):
-        if not app.decompressor:
-            app.decompressor = await to_thread(Decompressor)
+        if not app.decompressor: app.decompressor = await to_thread(Decompressor)
+
+        buff = bytearray()
+
         async for chunk in app.handler():
-            yield await to_thread(app.decompressor.decompress, bytes(chunk))
+            buff.extend(chunk)
+
+            if len(buff) >= 1024:
+                yield await to_thread(app.decompressor.decompress, bytes(buff))
+                buff = buff[len(buff):]
+
+        if buff: yield await to_thread(app.decompressor.decompress, bytes(buff))
 
     async def gzip(app):
-        if not app.decompressor:
-            app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
+        if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
+
+        buff = bytearray()
 
         async for chunk in app.handler():
-            yield app.decompressor.decompress(bytes(chunk))
+            buff.extend(chunk)
+
+            if len(buff) >= 1024:
+                yield app.decompressor.decompress(bytes(buff))
+                buff = buff[len(buff):]
+
+        if buff: yield app.decompressor.decompress(bytes(buff))
 
         if (chunk := app.decompressor.flush()):
             yield chunk
