@@ -1,5 +1,6 @@
 from ..Dependencies import *
 from ..Modules.streaming import Context, Abort
+from ..Other._refuture import reTask
 
 async def agather(*coros):
     return await gather(*[loop.create_task(coro) if iscoroutine(coro) else coro for coro in coros])
@@ -392,6 +393,8 @@ class RDict:
 
     def __repr__(app):
         return repr(app._dict)
+
+create_task = lambda *a, **k: get_event_loop().create_task(*a, **k)
 
 if __name__ == "__main__":
     pass

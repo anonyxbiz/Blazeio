@@ -1,4 +1,4 @@
-from ..Dependencies import *
+from ..Dependencies import CancelledError, get_event_loop, deque, InvalidStateError
 
 _PENDING: str = "_PENDING"
 _CANCELLED: str = "_CANCELLED"
@@ -23,6 +23,18 @@ class reFuture:
 
     def exception(app): return app._exception
 
+    def set_exception(app, exception):
+        if isinstance(exception, StopIteration):
+            new_exc = RuntimeError("StopIteration interacts badly with generators and cannot be raised into a Future")
+            new_exc.__cause__ = exception
+            new_exc.__context__ = exception
+            exception = new_exc
+
+        app._exception = exception
+        app._state = _FINISHED
+        app._mortality = _FINITE
+        return app.flush()
+
     def add_done_callback(app, fn, context=None):
         if app._state != _PENDING:
             app._loop.call_soon(fn, app, context=context)
@@ -31,7 +43,7 @@ class reFuture:
 
     def result(app):
         if app._exception is not None:
-            return app.exception()
+            raise app.exception()
 
         if app._state != _FINISHED:
             if app._exception is None:
@@ -43,8 +55,8 @@ class reFuture:
         if app._state == _CANCELLED:
             raise app.exception()
 
-        elif app._state != _PENDING:
-            pass
+        elif app._state == _FINISHED:
+            return
 
         app._state = _FINISHED
         app._result = result
@@ -57,8 +69,7 @@ class reFuture:
         app._mortality = _FINITE
         app._exception = CancelledError(msg)
 
-        app.flush()
-        return True
+        return app.flush()
 
     def awake(app):
         while app._sleepers:
@@ -72,8 +83,6 @@ class reFuture:
         return app
 
     def flush(app):
-        if not app._sleepers: return
-
         app.awake()
 
         if app.is_infinite(): app._loop.call_soon(app.restart)
@@ -87,3 +96,53 @@ class reFuture:
             raise RuntimeError("await wasn't used with future")
 
         return app.result()
+
+class reTask(reFuture):
+    __slots__ = ("_coro", "__taskpool_timer_handle__", "__taskpool_callbacks__",)
+
+    def __init__(app, coro, *a, **k):
+        app._coro = coro
+
+        super().__init__(*a, mortality = _FINITE, **k)
+
+        app._loop.call_soon(app._step)
+
+    def _step(app, exc=None):
+        if app.done():
+            exc = InvalidStateError("_step(): already done")
+        try:
+            app._step_run_and_handle_result(exc)
+        finally:
+            app = None
+
+    def _step_run_and_handle_result(app, exc):
+        try:
+            if exc is None:
+                result = app._coro.send(None)
+            else:
+                result = app._coro.throw(exc)
+        except StopIteration as exc:
+            if app.cancelled():
+                app.cancel(exc.value)
+            else:
+                app.set_result(exc.value)
+
+        except CancelledError as e:
+            app.set_exception(e)
+        except BaseException as e:
+            app.set_exception(e)
+        else:
+            if result and result is not app:
+                result.add_done_callback(app._wakeup)
+            else:
+                app.set_result(result)
+
+    def _wakeup(app, fut):
+        try:
+            fut.result()
+        except BaseException as e:
+            app.set_exception(e)
+        else:
+            app._step()
+        
+        app = None

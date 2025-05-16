@@ -66,10 +66,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return method
 
     async def __aenter__(app):
+        if app.is_prepared(): return app
+
         return await app.create_connection(*app.args, **app.kwargs)
 
     def conn(app, *args, **kwargs):
-        if not app.response_headers: return sleep(0)
+        if not app.is_prepared(): return sleep(0)
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
@@ -80,7 +82,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     def prepare(app, *args, **kwargs):
         if app.protocol: app.protocol.__stream__.clear()
 
-        if not app.response_headers: return sleep(0)
+        if not app.is_prepared(): return sleep(0)
 
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
@@ -249,7 +251,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             await app.prepare_http()
 
         if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
-            for callback in callbacks: await callback(app)
+            for callback in callbacks: await callback(app) if iscoroutinefunction(callback) else callback(app)
 
         return app
 
