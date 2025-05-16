@@ -66,6 +66,22 @@ class Request:
         return cookie
 
     @classmethod
+    def get_cookie_sync(app, r, val: str):
+        val += "="
+        if not val in (cookie := r.headers.get("Cookie", "")):
+            return None
+
+        cookie_start, cookie_end = val, ";"
+
+        if (idx := cookie.find(cookie_start)) != -1:
+            cookie = cookie[idx+len(cookie_start):]
+
+            if (idx := cookie.find(cookie_end)) != -1: cookie = cookie[:idx]
+
+        return cookie
+
+
+    @classmethod
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
         temp = bytearray()
 
@@ -259,6 +275,14 @@ class Request:
     async def body_or_params(app, r=None):
         if r is None: r = await Context.r()
 
+        if r.method in ["GET", "OPTIONS", "HEAD"]:
+            return app.get_params_sync(r)
+        else:
+            return await app.get_json(r)
+
+    @classmethod
+    async def bop(app):
+        r = Context.r_sync()
         if r.method in ["GET", "OPTIONS", "HEAD"]:
             return app.get_params_sync(r)
         else:
