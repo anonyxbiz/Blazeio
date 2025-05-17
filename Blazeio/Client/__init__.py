@@ -41,7 +41,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures")
 
     __should_be_reset__ = ("decompressor", "compressor",)
     NON_BODIED_HTTP_METHODS = {
@@ -71,25 +71,24 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     def conn(app, *args, **kwargs):
-        if not app.is_prepared(): return sleep(0)
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
         for key in app.__should_be_reset__: setattr(app, key, None)
 
         return app.create_connection(*app.args, **app.kwargs)
-    
-    def prepare(app, *args, **kwargs):
+
+    async def prepare(app, *args, **kwargs):
         if app.protocol: app.protocol.__stream__.clear()
 
-        if not app.is_prepared(): return sleep(0)
+        if not app.is_prepared(): return app
 
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
         for key in app.__should_be_reset__: setattr(app, key, None)
 
-        return app.create_connection(*app.args, **app.kwargs)
+        return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         if not isinstance(exc_type, ServerDisconnected):

@@ -146,3 +146,8 @@ class reTask(reFuture):
             app._step()
         
         app = None
+
+def tempFut(result):
+    fut = reFuture(mortality = _FINITE)
+    fut._loop.call_soon(fut.set_result, result)
+    return fut
