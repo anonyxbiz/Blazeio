@@ -184,8 +184,7 @@ class Asynchronizer:
             "result": NotImplemented,
             "event": (event := SharpEvent()),
             "loop": get_event_loop(),
-            "current_task": current_task(),
-            "awaitable": iscoroutinefunction(func)
+            "current_task": current_task()
         }
 
         app.loop.call_soon_threadsafe(app.jobs.put_nowait, job)
@@ -202,15 +201,6 @@ class Asynchronizer:
     async def async_tasker(app, job):
         try:
             job["result"] = await job["func"](*job["args"], **job["kwargs"])
-        except TypeError as e: app.sync_tasker(job)
-        except Exception as e: job["exception"] = e
-        finally:
-            job["event"].set()
-
-    def sync_tasker(app, job):
-        try:
-            job["result"] = job["func"](*job["args"], **job["kwargs"])
-        except TypeError as e: app.loop.create_task(app.async_tasker(job))
         except Exception as e: job["exception"] = e
         finally:
             job["event"].set()
@@ -224,8 +214,9 @@ class Asynchronizer:
                 else:
                     job = app.jobs.get_nowait()
 
-                if not job.get("awaitable"):
-                    app.sync_tasker(job)
+                if not iscoroutinefunction(job["func"]):
+                    job["result"] = job["func"](*job["args"], **job["kwargs"])
+                    job["event"].set()
                 else:
                     app.loop.create_task(app.async_tasker(job))
 
@@ -400,7 +391,10 @@ async def traceback_logger(e, *args):
     if "__traceback__" in dir(e): tb = e.__traceback__
     else: tb = e
 
-    await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(tb)[-1], ", ".join(list(args))))
+    try:
+        await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(tb)[-1], "".join([*args])))
+    except:
+        await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(e)[-1], "".join([*args])))
 
 def read_safe_sync(_type = bytes, *a, **k):
     with open(*a, **k) as fd:
