@@ -41,9 +41,10 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures")
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers")
 
-    __should_be_reset__ = ("decompressor", "compressor",)
+    __should_be_reset__ = ("decompressor", "compressor", "has_sent_headers",)
+
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS", "DELETE"
     }
@@ -66,29 +67,17 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return method
 
     async def __aenter__(app):
-        if app.is_prepared(): return app
-
         return await app.create_connection(*app.args, **app.kwargs)
 
-    def conn(app, *args, **kwargs):
+    def conn(app, *a, **k): return app.prepare(*args, **kwargs)
+
+    def prepare(app, *args, **kwargs):
+        if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return sleep(0)
+
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
-
-        for key in app.__should_be_reset__: setattr(app, key, None)
 
         return app.create_connection(*app.args, **app.kwargs)
-
-    async def prepare(app, *args, **kwargs):
-        if app.protocol: app.protocol.__stream__.clear()
-
-        if not app.is_prepared(): return app
-
-        if args: app.args = (*args, *app.args[len(args):])
-        if kwargs: app.kwargs.update(kwargs)
-
-        for key in app.__should_be_reset__: setattr(app, key, None)
-
-        return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         if not isinstance(exc_type, ServerDisconnected):
@@ -97,37 +86,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
             if exc_type or exc_value or traceback:
                 if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
-                    filename, lineno, func, text = extract_tb(traceback)[-1]
-                    await log.critical("\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s.\n" % (filename, lineno, text, func, str(exc_value)))
+                    await traceback_logger(traceback, exc_value)
 
         return False
 
-    async def create_connection(
-        app,
-        url: str = "",
-        method: str = "",
-        headers: dict = {},
-        connect_only: bool = False,
-        host: int = 0,
-        port: int = 0,
-        path: str = "",
-        content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None,
-        proxy: (tuple,dict) = {},
-        add_host: bool = True,
-        timeout: float = 30.0,
-        json: dict = {},
-        cookies: dict = {},
-        response_headers: dict = {},
-        params: dict = {},
-        body: (bool, bytes, bytearray) = None,
-        stream_file: (None, tuple) = None,
-        decode_resp: bool = True,
-        max_unthreaded_json_loads_size: int = 102400,
-        follow_redirects: bool = False,
-        auto_set_cookies: bool = False,
-        status_code: int = 0,
-        **kwargs
-    ):
+    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host: int = 0, port: int = 0, path: str = "", content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
             if (val := __locals__.get(key, NotImplemented)) == NotImplemented: continue
@@ -136,6 +99,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             setattr(app, key, val)
 
         stdheaders = dict(headers)
+
+        for key in app.__should_be_reset__: setattr(app, key, None)
+
+        if app.protocol:
+            app.protocol.__stream__.clear()
 
         if app.protocol and app.protocol.transport.is_closing():
             app.protocol = None
@@ -201,7 +169,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             ssl = ssl_context if app.proxy_port == 443 else None
 
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
-
+        
         if not app.protocol and not connect_only:
             transport, app.protocol = await get_event_loop().create_connection(
                 lambda: BlazeioClientProtocol(**kwargs),
@@ -219,7 +187,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             )
 
             return app
-        
+
         payload = ioConf.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path, str(app.port))
 
         if body:
@@ -251,6 +219,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
             for callback in callbacks: await callback(app) if iscoroutinefunction(callback) else callback(app)
+        
+        app.has_sent_headers = True
 
         return app
 

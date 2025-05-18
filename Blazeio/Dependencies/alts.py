@@ -396,5 +396,27 @@ class RDict:
 
 create_task = lambda *a, **k: get_event_loop().create_task(*a, **k)
 
+async def traceback_logger(e, *args):
+    if "__traceback__" in dir(e): tb = e.__traceback__
+    else: tb = e
+
+    await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(tb)[-1], ", ".join(list(args))))
+
+def read_safe_sync(_type = bytes, *a, **k):
+    with open(*a, **k) as fd:
+        data = bytearray()
+
+        while (chunk := fd.read(ioConf.INBOUND_CHUNK_SIZE)):
+            data.extend(chunk)
+            if len(data) >= 100000000:
+                raise BlazeioException("File too large")
+
+        if _type == dict:
+            return loads(data.decode())
+        elif _type == str:
+            return data.decode()
+
+        return bytes(data)
+
 if __name__ == "__main__":
     pass
