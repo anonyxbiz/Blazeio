@@ -71,13 +71,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     def conn(app, *a, **k): return app.prepare(*args, **kwargs)
 
-    def prepare(app, *args, **kwargs):
-        if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return sleep(0)
+    async def prepare(app, *args, **kwargs):
+        if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
 
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
-        return app.create_connection(*app.args, **app.kwargs)
+        return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         if not isinstance(exc_type, ServerDisconnected):
@@ -102,8 +102,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         for key in app.__should_be_reset__: setattr(app, key, None)
 
-        if app.protocol:
-            app.protocol.__stream__.clear()
+        if app.protocol and app.protocol.__stream__: app.protocol.__stream__.clear()
 
         if app.protocol and app.protocol.transport.is_closing():
             app.protocol = None
