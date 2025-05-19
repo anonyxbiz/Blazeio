@@ -118,15 +118,17 @@ class DotDict:
         return token
 
 class SharpEvent:
-    __slots__ = ("_set", "_waiters", "loop", "auto_clear")
+    __slots__ = ("_set", "_waiters", "loop", "auto_clear", "result")
     def __init__(app, auto_clear: bool = True):
         app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
+        app.result = None
 
     def is_set(app):
         return app._set
     
     def fut_done(app, fut):
         if fut.__is_cleared__: return
+        app.result = fut.result
         fut.__is_cleared__ = True
         if app.auto_clear: app.clear()
 
@@ -151,21 +153,20 @@ class SharpEvent:
         return fut
 
     async def wait(app):
-        if app._set: return True
+        if app._set: return app.result
         return await app.get_fut()
 
     def clear(app):
         app._set = False
 
     def set(app, item = True):
-        app._set = True
-
         if len(app._waiters) == 1:
             if not app._waiters[0].done(): app._waiters[0].set_result(item)
         else:
             for fut in app._waiters:
                 if not fut.done(): fut.set_result(item)
 
+        app._set = True
         app._waiters.clear()
 
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
