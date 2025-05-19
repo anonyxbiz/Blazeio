@@ -161,8 +161,8 @@ class SrvConfig:
     HOST: str =  "0.0.0.0"
     PORT: int = 8000
     __timeout__: float = float(60*10)
-    __timeout_check_freq__: int = 5
-    __health_check_freq__: int = 5
+    __timeout_check_freq__: int = 30
+    __health_check_freq__: int = 30
     __log_requests__: bool = False
     INBOUND_CHUNK_SIZE: (None, int) = None
 

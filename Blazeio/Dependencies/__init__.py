@@ -118,17 +118,16 @@ class DotDict:
         return token
 
 class SharpEvent:
-    __slots__ = ("_set", "_waiters", "loop", "auto_clear", "result")
-    def __init__(app, auto_clear: bool = True):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
-        app.result = None
+    __slots__ = ("_set", "_waiters", "loop", "auto_clear")
+    def __init__(app, auto_clear: bool = True, loop = None):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], loop or get_event_loop(), auto_clear
 
     def is_set(app):
         return app._set
     
     def fut_done(app, fut):
         if fut.__is_cleared__: return
-        app.result = fut.result
+
         fut.__is_cleared__ = True
         if app.auto_clear: app.clear()
 
@@ -153,7 +152,7 @@ class SharpEvent:
         return fut
 
     async def wait(app):
-        if app._set: return app.result
+        if app._set: return True
         return await app.get_fut()
 
     def clear(app):
@@ -168,6 +167,7 @@ class SharpEvent:
 
         app._set = True
         app._waiters.clear()
+
 
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
 
@@ -453,11 +453,10 @@ routine_executor({
 })
 
 class __ReMonitor__:
-    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "client_queue",)
+    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig",)
 
     def __init__(app):
         app.terminate = False
-        app.client_queue = Enqueue()
 
     def Monitoring_thread_join(app):
         app.terminate = True
@@ -469,38 +468,10 @@ class __ReMonitor__:
         app.Monitoring_thread_loop.run_until_complete(app.__monitor_loop__())
 
     async def __monitor_loop__(app):
-        # run_coroutine_threadsafe(app.check_client_protocol(None), app.event_loop)
-
         while not app.terminate:
-            await wrap_future(run_coroutine_threadsafe(app.check_server_protocol(), app.event_loop))
+            await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+
             await sleep(app.ServerConfig.__timeout_check_freq__)
-
-    async def check_client_protocol(app, Payload=None):
-        if not Payload:
-            while True:
-                len_ = len(app.client_queue.queue)
-                count = 0
-                async for Payload in app.client_queue.get():
-                    count += 1
-                    await app.check_client_protocol(Payload)
-                    if count >= len_: break
-                await sleep(app.ServerConfig.__timeout_check_freq__)
-            return
-
-        duration = float(perf_counter() - getattr(Payload, "__perf_counter__"))
-
-        timeout = float(Payload.__timeout__ or app.ServerConfig.__timeout__)
-
-        condition = duration >= timeout
-
-        if Payload.transport.is_closing(): Payload.__evt__.set()
-
-        elif condition:
-            await Log.critical("BlazeioTimeout:: Task [%s:%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (Payload.transport.get_extra_info("peername"), str(timeout), str(duration)))
-            Payload.transport.close()
-            Payload.__evt__.set()
-        else:
-            pass#app.client_queue.put_nowait(Payload)
 
     async def enforce_health(app, Payload, task):
         if Payload.transport.is_closing():
@@ -541,7 +512,7 @@ class __ReMonitor__:
 
         if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
 
-    async def check_server_protocol(app):
+    async def analyze_protocols(app):
         for task in all_tasks(loop=app.event_loop):
             if task is not current_task():
                 try:

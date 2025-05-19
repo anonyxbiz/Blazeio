@@ -49,20 +49,18 @@ class DictView:
         return app._dict.pop(app._capitalized.get(key), default)
 
 class SharpEventLab:
-    __slots__ = ("_set", "_waiters", "loop", "auto_clear", "result")
-    def __init__(app, auto_clear: bool = True):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
-        app.result = None
+    __slots__ = ("_set", "_waiters", "loop", "auto_clear")
+    def __init__(app, auto_clear: bool = True, loop = None):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], loop or get_event_loop(), auto_clear
 
-    def __repr__(app):
-        return "<%s %s>" % (SharpEventLab.__name__, ", ".join(["(%s=%s)" % (i, str(getattr(app, i, None))) for i in app.__slots__]))
+    def __repr__(app): return "<%s %s>" % (SharpEventLab.__name__, ", ".join(["(%s=%s)" % (i, str(getattr(app, i, None))) for i in app.__slots__]))
 
     def is_set(app):
         return app._set
     
     def fut_done(app, fut):
         if fut.__is_cleared__: return
-        app.result = fut.result()
+
         fut.__is_cleared__ = True
         if app.auto_clear: app.clear()
 
@@ -87,15 +85,13 @@ class SharpEventLab:
         return fut
 
     async def wait(app):
-        if app._set: return app.result
+        if app._set: return True
         return await app.get_fut()
 
     def clear(app):
         app._set = False
 
     def set(app, item = True):
-        if app._set: return
-
         if len(app._waiters) == 1:
             if not app._waiters[0].done(): app._waiters[0].set_result(item)
         else:
@@ -104,6 +100,7 @@ class SharpEventLab:
 
         app._set = True
         app._waiters.clear()
+
 
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)

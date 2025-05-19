@@ -12,7 +12,7 @@ class Gen:
     
     @classmethod
     async def file(app, file_path: str, chunk_size: (bool, int) = None):
-        if not chunk_size: chunk_size = OUTBOUND_CHUNK_SIZE
+        if not chunk_size: chunk_size = ioConf.OUTBOUND_CHUNK_SIZE
 
         async with async_open(file_path, "rb") as f:
             while (chunk := await f.read(chunk_size)): yield chunk
@@ -86,11 +86,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
             if exc_type or exc_value or traceback:
                 if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
-                    await traceback_logger(traceback, exc_value)
+                    await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(traceback)[-1], exc_value))
 
         return False
 
-    async def create_connection(app, url: str = "", method: str = "", headers: dict = {}, connect_only: bool = False, host: int = 0, port: int = 0, path: str = "", content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, **kwargs):
+    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
             if (val := __locals__.get(key, NotImplemented)) == NotImplemented: continue
@@ -100,14 +100,15 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         stdheaders = dict(headers)
 
-        for key in app.__should_be_reset__: setattr(app, key, None)
+        if app.protocol:
+            if app.protocol.__stream__: app.protocol.__stream__.clear()
 
-        if app.protocol and app.protocol.__stream__: app.protocol.__stream__.clear()
+            for key in app.__should_be_reset__: setattr(app, key, None)
 
-        if app.protocol and app.protocol.transport.is_closing():
-            app.protocol = None
+            if app.protocol.transport.is_closing():
+                app.protocol = None
 
-        if app.protocol: proxy = None
+            proxy = None
 
         method = method.upper()
 
