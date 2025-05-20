@@ -101,11 +101,10 @@ class SharpEventLab:
 
         app._waiters.clear()
 
-
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)
     def __init__(app, loop=None):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEventLab(False, loop), SharpEventLab(False, loop), 0, 0, False
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEvent(False, loop), SharpEvent(False, loop), 0, 0, False
 
     def release(app):
         if app._lock_event.is_set():
@@ -269,7 +268,7 @@ class TaskPool:
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
         app.loop = loop or get_event_loop()
-        app.task_activity = SharpEventLab(False, app.loop)
+        app.task_activity = SharpEvent(False, app.loop)
 
         app.task_under_flow = cond(loop=app.loop)
 
