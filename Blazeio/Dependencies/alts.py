@@ -50,8 +50,8 @@ class DictView:
 
 class SharpEventLab:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    def __init__(app, auto_clear: bool = True):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
+    def __init__(app, auto_clear: bool = True, loop = None):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], loop or get_event_loop(), auto_clear
 
     def __repr__(app): return "<%s %s>" % (SharpEventLab.__name__, ", ".join(["(%s=%s)" % (i, str(getattr(app, i, None))) for i in app.__slots__]))
 
@@ -104,8 +104,8 @@ class SharpEventLab:
 
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)
-    def __init__(app):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEvent(False), SharpEvent(False), 0, 0, False
+    def __init__(app, loop=None):
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEventLab(False, loop), SharpEventLab(False, loop), 0, 0, False
 
     def release(app):
         if app._lock_event.is_set():
@@ -268,10 +268,10 @@ class TaskPool:
     def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition, loop=None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.task_activity = SharpEvent(False)
-        app.task_under_flow = cond()
-
         app.loop = loop or get_event_loop()
+        app.task_activity = SharpEventLab(False, app.loop)
+
+        app.task_under_flow = cond(loop=app.loop)
 
         app.listener_task = app.loop.create_task(app.listener())
 
