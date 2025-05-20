@@ -317,7 +317,7 @@ class TaskPool:
         app.taskpool.append(task)
 
         if app.timeout:
-            task.__taskpool_timer_handle__ = get_event_loop().call_later(app.timeout, task.cancel)
+            task.__taskpool_timer_handle__ = app.loop.call_later(app.timeout, task.cancel)
         else:
             task.__taskpool_timer_handle__ = app.timeout
         
