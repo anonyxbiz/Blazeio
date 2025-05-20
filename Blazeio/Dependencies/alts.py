@@ -264,13 +264,13 @@ class Asynchronizer:
 
 class TaskPool:
     __slots__ = ("taskpool", "task_activity", "task_under_flow", "loop", "maxtasks", "listener_task", "timeout",)
-    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition, loop=None):
+    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition, evloop=None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.loop = loop or get_event_loop()
+        app.loop = evloop or get_event_loop()
         app.task_activity = SharpEvent(False, app.loop)
 
-        app.task_under_flow = cond(loop=app.loop)
+        app.task_under_flow = cond(evloop=app.loop)
 
         app.listener_task = app.loop.create_task(app.listener())
 
