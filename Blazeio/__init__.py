@@ -378,7 +378,7 @@ class App(Handler, OOP_RouteDef):
         await app.configure_server_handler()
 
         app.server = await app.event_loop.create_server(
-            lambda: BlazeioServerProtocol(app.handle_client, ioConf.INBOUND_CHUNK_SIZE),
+            lambda: BlazeioServerProtocol(app.handle_client, app.event_loop, ioConf.INBOUND_CHUNK_SIZE),
             host,
             port,
             **kwargs
