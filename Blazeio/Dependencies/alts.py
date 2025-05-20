@@ -50,8 +50,8 @@ class DictView:
 
 class SharpEventLab:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    def __init__(app, auto_clear: bool = True, loop = None):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], loop or get_event_loop(), auto_clear
+    def __init__(app, auto_clear: bool = True, evloop = None):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], evloop or get_event_loop(), auto_clear
 
     def __repr__(app): return "<%s %s>" % (SharpEventLab.__name__, ", ".join(["(%s=%s)" % (i, str(getattr(app, i, None))) for i in app.__slots__]))
 
@@ -103,8 +103,8 @@ class SharpEventLab:
 
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)
-    def __init__(app, loop=None):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEvent(False, loop), SharpEvent(False, loop), 0, 0, False
+    def __init__(app, evloop=None):
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEvent(False, evloop), SharpEvent(False, evloop), 0, 0, False
 
     def release(app):
         if app._lock_event.is_set():

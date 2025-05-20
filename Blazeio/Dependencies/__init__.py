@@ -116,8 +116,8 @@ class DotDict:
 
 class SharpEvent:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    def __init__(app, auto_clear: bool = True, loop = None):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], loop or get_event_loop(), auto_clear
+    def __init__(app, auto_clear: bool = True, evloop = None):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], evloop or get_event_loop(), auto_clear
 
     def is_set(app):
         return app._set
