@@ -125,7 +125,8 @@ class FileIO:
     async def save(app, file_path: str, mode: str = "wb", r=None):
         if not r: r = Context.r_sync()
         async with async_open(file_path, mode) as f:
-            async for chunk in r.pull(): await f.write(chunk)
+            async for chunk in r.pull():
+                if chunk: await f.write(chunk)
 
 if __name__ == "__main__":
     pass

@@ -88,6 +88,7 @@ class DotDict:
         app._dict = dictionary or {}
 
     def __getattr__(app, name):
+        if name == "_dict": return app._dict
         if name in app._dict:
             return app._dict[name]
         else:
@@ -108,6 +109,7 @@ class DotDict:
             app._dict[key] = value
 
     def __getitem__(app, key):
+        if key == "_dict": return app._dict
         return app._dict[key]
 
     async def token_urlsafe(app, *args, **kwargs):
