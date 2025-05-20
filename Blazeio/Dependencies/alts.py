@@ -304,7 +304,7 @@ class TaskPool:
 
     def done_callback_orchestrator(app, task):
         for callback in task.__taskpool_callbacks__:
-            get_event_loop().call_soon(callback, task)
+            app.loop.call_soon(callback, task)
 
     async def add_call_back(app, task, func):
         task.__taskpool_callbacks__.append(func)
