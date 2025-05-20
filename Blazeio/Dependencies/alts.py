@@ -268,7 +268,7 @@ class TaskPool:
     def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition, loop=None):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
-        app.task_activity = SharpEvent()
+        app.task_activity = SharpEvent(False)
         app.task_under_flow = cond()
 
         app.loop = loop or get_event_loop()
