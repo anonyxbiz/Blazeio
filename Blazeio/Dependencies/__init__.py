@@ -1,62 +1,57 @@
 # Dependencies.__init___.py
+from ..Exceptions import BlazeioException, Err, ClientDisconnected, ServerDisconnected, ServerGotInTrouble, ClientGotInTrouble
 from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, InvalidStateError
 
 from collections import deque, defaultdict, OrderedDict
+from collections.abc import AsyncIterable
 
-from sys import exit
+from sys import exit, stdout as sys_stdout
 from datetime import datetime as dt
+
 from inspect import signature as sig, stack
-from typing import Callable, Any
+from typing import Callable, Any, Optional, Union
 
 from mimetypes import guess_type
-from os import stat, kill, getpid, path, environ
-os_path = path
+from os import stat, kill, getpid, path, environ, name as os_name
+
+from os import path as os_path
+from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
+
+from threading import Thread
+from html import escape
+
+from traceback import extract_tb, format_exc
+from ssl import create_default_context, SSLError, Purpose, CERT_NONE
+
+from contextlib import asynccontextmanager
+from base64 import b64encode
+
+from secrets import token_urlsafe
+from string import ascii_lowercase as string_ascii_lowercase, ascii_uppercase as string_ascii_uppercase
 
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
 from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 
-from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
-
-from threading import Thread, Event as ThreadEvent
-
-try:
-    from ujson import dumps, loads, JSONDecodeError
-except:
-    from json import dumps, loads, JSONDecodeError
-
-from html import escape
-from traceback import extract_tb, format_exc
-from queue import Queue
-
-from sys import stdout as sys_stdout
-
-from collections.abc import AsyncIterable
-from typing import Optional, Union
-
-from ssl import create_default_context, SSLError, Purpose, CERT_NONE
-
-from contextlib import asynccontextmanager
-
 from psutil import Process as psutilProcess
-from base64 import b64encode
-from secrets import token_urlsafe
-import string
+
+try: from ujson import dumps, loads, JSONDecodeError
+except: from json import dumps, loads, JSONDecodeError
 
 debug_mode = environ.get("BlazeioDev", None)
 
-pid = getpid()
-main_process = psutilProcess(pid)
+main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
     __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync")
 
     def __init__(app):
+        for bound in ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE"):
+            setattr(app, bound, 102400)
+
         for key in app.__slots__:
             if getattr(app, key, False) == False: setattr(app, key, None)
 
 ioConf = __ioConf__()
-ioConf.INBOUND_CHUNK_SIZE: int = 102400
-ioConf.OUTBOUND_CHUNK_SIZE: int = 102400
 
 def c_extension_importer():
     try:
@@ -169,7 +164,6 @@ class SharpEvent:
                 if not fut.done(): fut.set_result(item)
 
         app._waiters.clear()
-
 
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
 
@@ -322,51 +316,6 @@ class Default_logger:
         app.loop = new_event_loop()
         app.loop.run_until_complete(app.log_worker())
 
-class BlazeioException(Exception):
-    __slots__ = ()
-
-class Err(BlazeioException):
-    __slots__ = (
-        'message',
-    )
-    def __init__(app, message=None):
-        app.message = str(message)
-
-    def __str__(app) -> str:
-        return app.message
-
-class ClientDisconnected(BlazeioException):
-    __slots__ = ('message')
-    def __init__(app, message: (None, str) = "Client has disconnected."):
-        app.message = message
-
-    def __str__(app) -> str:
-        return str(app.message)
-
-class ServerDisconnected(BlazeioException):
-    __slots__ = ('message')
-    def __init__(app, message: (None, str) = "Server has disconnected."):
-        app.message = message
-
-    def __str__(app) -> str:
-        return str(app.message)
-
-class ServerGotInTrouble(BlazeioException):
-    __slots__ = ('message')
-    def __init__(app, message=None):
-        app.message = str(message)
-
-    def __str__(app) -> str:
-        return app.message
-
-class ClientGotInTrouble(BlazeioException):
-    __slots__ = ('message')
-    def __init__(app, message=None):
-        app.message = str(message)
-
-    def __str__(app) -> str:
-        return app.message
-
 routines = {
     ("loop = get_event_loop()", "loop = None"),
     ("import uvloop", ""),
@@ -455,13 +404,16 @@ routine_executor({
 })
 
 class __ReMonitor__:
-    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig",)
+    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "current_task",)
 
     def __init__(app):
         app.terminate = False
+        app.event_loop = loop
+        app.current_task = None
 
     def Monitoring_thread_join(app):
         app.terminate = True
+        if app.current_task is not None: app.current_task.cancel()
 
     def Monitoring_thread_monitor(app, parent=None):
         app.Monitoring_thread_loop = new_event_loop()
@@ -471,9 +423,9 @@ class __ReMonitor__:
 
     async def __monitor_loop__(app):
         while not app.terminate:
-            await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+            app.current_task = await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
 
-            await sleep(app.ServerConfig.__timeout_check_freq__)
+            app.current_task = await sleep(app.ServerConfig.__timeout_check_freq__)
 
     async def enforce_health(app, Payload, task):
         if Payload.transport.is_closing():

@@ -171,7 +171,7 @@ class SrvConfig:
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
     def __init__(app, func, *args, **kwargs): app.func, app.args, app.kwargs = func, args, kwargs
-    
+
     def run(app): app.func(*app.args, **app.kwargs)
 
 class Middlewarez:
@@ -242,7 +242,7 @@ class App(Handler, OOP_RouteDef):
     declared_routes = OrderedDict()
     ServerConfig = SrvConfig()
     on_exit = deque()
-    is_server_running = SharpEvent()
+    is_server_running = SharpEvent(False)
 
     __server_config__ = {
         "__http_request_heading_end_seperator__": b"\r\n\r\n",
@@ -266,7 +266,6 @@ class App(Handler, OOP_RouteDef):
         if kwargs:
             app.ServerConfig.__dict__.update(**kwargs)
 
-        ReMonitor.event_loop = app.event_loop
         ReMonitor.ServerConfig = app.ServerConfig
 
         ReMonitor.Monitoring_thread = Thread(target=ReMonitor.Monitoring_thread_monitor, args=(app,), daemon = True)
@@ -369,78 +368,78 @@ class App(Handler, OOP_RouteDef):
         
         return ssl_context
 
-    async def run(app, HOST: str = "", PORT: int = 0, **kwargs):
-        HOST = HOST or app.ServerConfig.host
-        PORT = PORT or app.ServerConfig.port
+    async def run(app, host: (None, str) = None, port: (None, int) = None, **kwargs):
+        if not host: host = app.ServerConfig.host
+        if not port: port = app.ServerConfig.port
 
-        if not (ssl_data := kwargs.get("ssl", None)):
-            pass
-        else:
-            if isinstance(ssl_data, dict):
-                kwargs["ssl"] = app.setup_ssl(HOST, PORT, ssl_data)
+        if (ssl_data := kwargs.get("ssl", None)) and isinstance(ssl_data, dict):
+            kwargs["ssl"] = app.setup_ssl(host, port, ssl_data)
 
         await app.configure_server_handler()
 
-        app.server = await loop.create_server(
+        app.server = await app.event_loop.create_server(
             lambda: BlazeioServerProtocol(app.handle_client, ioConf.INBOUND_CHUNK_SIZE),
-            HOST,
-            PORT,
+            host,
+            port,
             **kwargs
         )
 
         async with app.server:
-            await Log.info("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s, Request Logging is %s.\n" % ("http" if not ssl_data else "https", HOST, PORT, "enabled" if app.ServerConfig.__log_requests__ else "disabled"))
+            app.event_loop.create_task(Log.magenta("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s, Request Logging is %s.\n" % ("http" if not ssl_data else "https", host, port, "enabled" if app.ServerConfig.__log_requests__ else "disabled")))
 
-            get_event_loop().call_soon(app.is_server_running.set)
+            app.event_loop.call_soon(app.is_server_running.set)
 
             await app.server.serve_forever()
 
-    async def cancelloop(app, loop):
+    async def cancelloop(app, loop, warn = Log.warning):
+        cancelled_tasks = []
         for task in (tasks := all_tasks(loop=loop)):
             if task is not current_task():
-                name = task.get_name()
-                await Log.info(
-                    "Blazeio.exit",
-                    ":: [%s] Terminated" % name
-                )
+                cancelled_tasks.append(task)
                 task.cancel()
-        try:
-            await gather(*tasks)
+                await warn("Task [%s] Cancelled" % task.get_name())
+
+        try: await gather(*cancelled_tasks)
         except CancelledError: pass
-        except Exception as e: await Log.critical("Blazeio.exit", e)
+        except Exception: raise
 
-    async def exit(app):
-        try:
-            await Log.info("Blazeio.exit", ":: KeyboardInterrupt Detected, Shutting down gracefully.")
+    async def exit(app, e, exception_handled = False):
+        warn = lambda _log: Log.warning("<Blazeio.exit>", ":: %s" % str(_log))
 
-            for do in app.on_exit:
-                await Log.info("Blazeio.exit", ":: running on_exit func: %s." % do.func.__name__)
-                do.run()
-            
-            await app.cancelloop(app.event_loop)
+        if not exception_handled:
+            try: await app.exit(e, True)
+            except Exception as e: await traceback_logger(e, str(e))
+            finally:
+                await warn("Exited.")
+                await log.flush()
+                return main_process.terminate()
 
-            await Log.info("Blazeio.exit", ":: Event loop wiped, ready to exit.")
+        if isinstance(e, KeyboardInterrupt):
+            await warn("KeyboardInterrupt Detected, Shutting down gracefully.")
+            app.server.close()
 
-        except Exception as e: await Log.critical("Blazeio.exit", str(e))
-        finally:
-            await Log.info("Blazeio.exit", ":: Exited.")
-            main_process.terminate()
+        else: await traceback_logger(e)
+
+        for callback in app.on_exit:
+            callback.run()
+            await warn("Executed app.on_exit `callback`: %s." % callback.func.__name__)
+
+        await app.cancelloop(app.event_loop, warn)
+
+        await warn("Event loop wiped, ready to exit.")
 
     def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))
 
-    def runner(app, HOST=None, PORT=None, **kwargs):
-        HOST = HOST or app.ServerConfig.host
-        PORT = PORT or app.ServerConfig.port
+    def runner(app, host: (None, str) = None, port: (None, int) = None, **kwargs):
+        if not kwargs.get("backlog"):
+            kwargs["backlog"] = 5000
 
         try:
-            if not kwargs.get("backlog"):
-                kwargs["backlog"] = 5000
-
-            loop.run_until_complete(app.run(HOST, PORT, **kwargs))
-
-        except KeyboardInterrupt:
-            app.server.close()
-            loop.run_until_complete(app.exit())
+            app.event_loop.run_until_complete(app.run(host, port, **kwargs))
+        except (KeyboardInterrupt, Exception) as e:
+            app.event_loop.run_until_complete(app.exit(e))
+        finally:
+            return app
 
 if __name__ == "__main__":
     pass

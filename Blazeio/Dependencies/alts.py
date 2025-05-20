@@ -50,8 +50,8 @@ class DictView:
 
 class SharpEventLab:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    def __init__(app, auto_clear: bool = True, loop = None):
-        app._set, app._waiters, app.loop, app.auto_clear = False, [], loop or get_event_loop(), auto_clear
+    def __init__(app, auto_clear: bool = True):
+        app._set, app._waiters, app.loop, app.auto_clear = False, [], get_event_loop(), auto_clear
 
     def __repr__(app): return "<%s %s>" % (SharpEventLab.__name__, ", ".join(["(%s=%s)" % (i, str(getattr(app, i, None))) for i in app.__slots__]))
 
@@ -60,7 +60,6 @@ class SharpEventLab:
     
     def fut_done(app, fut):
         if fut.__is_cleared__: return
-
         fut.__is_cleared__ = True
         if app.auto_clear: app.clear()
 
@@ -92,13 +91,14 @@ class SharpEventLab:
         app._set = False
 
     def set(app, item = True):
+        app._set = True
+
         if len(app._waiters) == 1:
             if not app._waiters[0].done(): app._waiters[0].set_result(item)
         else:
             for fut in app._waiters:
                 if not fut.done(): fut.set_result(item)
 
-        app._set = True
         app._waiters.clear()
 
 
@@ -360,7 +360,8 @@ class RDict:
         return converted
     
     def __getattr__(app, name):
-        if name in app._dict:
+        if name == "_dict": return app._dict
+        elif name in app._dict:
             return app._dict[name]
         else:
             return getattr(app._dict, name)
@@ -381,8 +382,9 @@ class RDict:
             object.__setattr__(app, key, value)
         else:
             app[key] = value
-    
+
     def __getitem__(app, key):
+        if key == "_dict": return app._dict
         return app._dict[key]
 
     def __repr__(app):
@@ -391,7 +393,7 @@ class RDict:
 create_task = lambda *a, **k: get_event_loop().create_task(*a, **k)
 
 async def traceback_logger(e, *args):
-    if "__traceback__" in dir(e): tb = e.__traceback__
+    if isinstance(e, Exception): tb = e.__traceback__
     else: tb = e
 
     try:

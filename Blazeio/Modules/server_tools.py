@@ -80,9 +80,9 @@ class Simpleserve:
         if all([kwargs.get("encode", None), app.content_type in app.compressable]):
             if (encoding := app.r.headers.get("Accept-encoding")):
                 if "gzip" in encoding:
-                     app.headers["Content-Encoding"] = "gzip"
+                     app.headers["Content-encoding"] = "gzip"
                 elif "br" in encoding:
-                     app.headers["Content-Encoding"] = "br"
+                     app.headers["Content-encoding"] = "br"
 
         await app.r.prepare(app.headers, app.status)
 
