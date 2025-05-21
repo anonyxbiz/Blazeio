@@ -73,7 +73,7 @@ class ExtraToolset:
 
                 chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
                 
-                await app.prepend(__buff__)
+                app.prepend(__buff__)
 
                 read, size = 0, False
 
