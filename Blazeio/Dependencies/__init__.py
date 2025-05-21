@@ -1,12 +1,13 @@
 # Dependencies.__init___.py
-from ..Exceptions import BlazeioException, Err, ClientDisconnected, ServerDisconnected, ServerGotInTrouble, ClientGotInTrouble
+from ..Exceptions import *
+from ..Protocols import *
 from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, InvalidStateError
 
 from collections import deque, defaultdict, OrderedDict
 from collections.abc import AsyncIterable
 
 from sys import exit, stdout as sys_stdout
-from datetime import datetime as dt
+from datetime import datetime as dt, UTC
 
 from inspect import signature as sig, stack
 from typing import Callable, Any, Optional, Union
@@ -42,7 +43,7 @@ debug_mode = environ.get("BlazeioDev", None)
 main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
-    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync")
+    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync", "loop")
 
     def __init__(app):
         for bound in ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE"):
@@ -50,6 +51,9 @@ class __ioConf__:
 
         for key in app.__slots__:
             if getattr(app, key, False) == False: setattr(app, key, None)
+
+    def run(app, coro):
+        return app.loop.run_until_complete(coro)
 
 ioConf = __ioConf__()
 
@@ -73,9 +77,6 @@ def c_extension_importer():
         print(e)
 
 c_extension_importer()
-
-class BlazeioProtocol:
-    __slots__ = ()
 
 class DotDict:
     __slots__ = ("_dict",)
@@ -320,7 +321,7 @@ routines = {
     ("loop = get_event_loop()", "loop = None"),
     ("import uvloop", ""),
     ("uvloop.install()", ""),
-    ("from aiofile import async_open", "async_open = NotImplemented"),
+    ("from aiofile import async_open", "async_open = NotImplemented")
 }
 
 def routine_executor(arg):
@@ -339,6 +340,8 @@ def routine_executor(arg):
                 print("routine_executor Exception: %s\n" % str(e).strip())
 
 routine_executor(routines)
+
+ioConf.loop = loop
 
 class __log__:
     known_exceptions = ()

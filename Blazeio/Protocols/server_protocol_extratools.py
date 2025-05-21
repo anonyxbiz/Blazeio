@@ -1,9 +1,8 @@
 from ..Dependencies import *
-from .request import *
-from .streaming import *
-from .server_tools import *
-from .reasons import *
-from ..Client import Async
+from ..Modules.request import *
+from ..Modules.streaming import *
+from ..Modules.server_tools import *
+from ..Modules.reasons import *
 
 class ExtraToolset:
     __slots__ = ()
@@ -48,7 +47,7 @@ class ExtraToolset:
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.ayield(*args, **kwargs):
+        async for chunk in app.request():
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
@@ -98,7 +97,7 @@ class ExtraToolset:
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app.ayield(*args, **kwargs):
+        async for chunk in app.request():
             if chunk:
                 app.current_length += len(chunk)
                 yield chunk

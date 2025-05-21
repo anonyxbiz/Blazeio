@@ -1,11 +1,11 @@
 # Blazeio/__init__.py
 from .Dependencies import *
 from .Dependencies.alts import *
-from .Modules.protocol import *
+from .Protocols.server_protocol import *
+from .Protocols.client_protocol import *
 from .Modules.streaming import *
 from .Modules.server_tools import *
 from .Modules.request import *
-from .Modules.extratools import *
 from .Modules.reasons import *
 from .Client import *
 from .Modules.templatify import *

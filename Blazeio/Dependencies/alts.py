@@ -102,9 +102,10 @@ class SharpEventLab:
         app._waiters.clear()
 
 class ioCondition:
-    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked",)
-    def __init__(app, evloop=None):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked = SharpEvent(False, evloop), SharpEvent(False, evloop), 0, 0, False
+    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial")
+    def __init__(app, evloop=loop):
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(False, evloop), SharpEvent(False, evloop), 0, 0, False, True
+        app.event.set()
 
     def release(app):
         if app._lock_event.is_set():
@@ -127,6 +128,9 @@ class ioCondition:
     def notify_all(app):
         app.notify()
 
+    def available(app, n: int):
+        return int(n - app.waiter_count)
+
     async def __aexit__(app, exc_type, exc_value, tb):
         if not app._lock_event.is_set():
             app.release()
@@ -145,6 +149,10 @@ class ioCondition:
             raise RuntimeError("Cannot be invoked on an unlocked lock.")
         else:
             app.release()
+
+        if app.initial and app.event.is_set():
+            app.initial = False
+            return app.event.clear()
 
         while True:
             app.waiter_count += 1
@@ -264,7 +272,7 @@ class Asynchronizer:
 
 class TaskPool:
     __slots__ = ("taskpool", "task_activity", "task_under_flow", "loop", "maxtasks", "listener_task", "timeout",)
-    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition, evloop=None):
+    def __init__(app, maxtasks: int = 100, timeout: (None, float) = None, cond: (Condition, ioCondition) = ioCondition, evloop=loop):
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
         app.loop = evloop or get_event_loop()
@@ -415,6 +423,9 @@ def read_safe_sync(_type = bytes, *a, **k):
             return data.decode()
 
         return bytes(data)
+
+
+frmt_log = lambda *logs: "<[%s]>:\n    %s\n\n" % ((now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], ", ".join([str(log) for log in logs]))
 
 if __name__ == "__main__":
     pass

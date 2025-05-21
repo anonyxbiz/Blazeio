@@ -5,7 +5,7 @@ ssl_context = create_default_context()
 
 class __Rvtools__:
     __slots__ = ()
-    __headers__ = {
+    headers = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-language': 'en-US,en;q=0.9',
         'cache-control': 'no-cache',
@@ -22,14 +22,6 @@ class __Rvtools__:
     }
 
     def __init__(app): pass
-    
-    # Protect data from modification
-    def __getattr__(app, name):
-        value = getattr(app, "__%s__" % name)
-        if isinstance(value, dict): value = dict(value)
-        elif isinstance(value, list): value = list(value)
-
-        return value
 
 Rvtools = __Rvtools__()
 
@@ -337,7 +329,7 @@ class Parsers:
             max_retry_count = 2
 
             while retry_count < max_retry_count:
-                try: tls_transport = await get_event_loop().start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
+                try: tls_transport = await app.loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
                 except Exception as e:
                     retry_count += 1
                     if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))

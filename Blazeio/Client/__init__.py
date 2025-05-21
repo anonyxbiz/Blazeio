@@ -2,8 +2,7 @@
 from ..Dependencies import *
 from ..Dependencies.alts import *
 from ..Modules.request import *
-from .protocol import *
-from .tools import *
+from ..Protocols.client_protocol import *
 
 class Gen:
     __slots__ = ()
@@ -41,7 +40,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers")
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "occupied",)
 
     __should_be_reset__ = ("decompressor", "compressor", "has_sent_headers",)
 
@@ -54,6 +53,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
+        app.loop = kwargs.pop("evloop", None)
         app.args, app.kwargs = args, kwargs
 
     def __getattr__(app, name):
@@ -65,8 +65,18 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
         return method
+    
+    def is_occupied(app): return not app.occupied.is_set()
 
     async def __aenter__(app):
+        if not app.loop:
+            app.loop = get_event_loop()
+            app.occupied = SharpEvent(False, evloop=app.loop)
+        else:
+            app.occupied.clear()
+
+        if app.protocol: return app
+
         return await app.create_connection(*app.args, **app.kwargs)
 
     def conn(app, *a, **k): return app.prepare(*args, **kwargs)
@@ -77,16 +87,32 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
 
+        if app.close_on_exit != False:
+            app.close_on_exit = False
+
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
+        if (on_exit_callback := app.kwargs.get("on_exit_callback")):
+            func = on_exit_callback[0]
+            if len(on_exit_callback) > 1:
+                args = (app, *on_exit_callback[1:])
+            else:
+                args = (app,)
+
+            await func(*args) if iscoroutinefunction(func) else func(*args)
+
+        app.occupied.set()
+
         if not isinstance(exc_type, ServerDisconnected):
-            if (protocol := getattr(app, "protocol", None)):
+            if app.close_on_exit != False and (protocol := getattr(app, "protocol", None)):
                 protocol.transport.close()
 
             if exc_type or exc_value or traceback:
                 if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
                     await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(traceback)[-1], exc_value))
+
+        if app.close_on_exit == False: return True
 
         return False
 
@@ -171,15 +197,15 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
         
         if not app.protocol and not connect_only:
-            transport, app.protocol = await get_event_loop().create_connection(
-                lambda: BlazeioClientProtocol(**kwargs),
+            transport, app.protocol = await app.loop.create_connection(
+                lambda: BlazeioClientProtocol(evloop=app.loop, **kwargs),
                 host=remote_host,
                 port=remote_port,
                 ssl=ssl,
             )
         elif not app.protocol and connect_only:
-            transport, app.protocol = await get_event_loop().create_connection(
-                lambda: BlazeioClientProtocol(**{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
+            transport, app.protocol = await app.loop.create_connection(
+                lambda: BlazeioClientProtocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
                 host=app.host,
                 port=app.port,
                 ssl=ssl if not kwargs.get("ssl") else kwargs.get("ssl"),
@@ -296,6 +322,32 @@ class __Request__(metaclass=DynamicRequestResponse):
 
 Session.request = __Request__
 # Session.Multipart = Multipart
+
+class SessionPool:
+    __slots__ = ("sessions", "loop",)
+    def __init__(app, evloop = None):
+        app.sessions = {}
+        app.loop = evloop or ioConf.loop
+
+    async def release(app, session, context):
+        async with context:
+            context.notify(1)
+
+    async def get(app, url, *a, **k):
+        host, port, path = ioConf.url_to_host(url, {})
+
+        if not (instance := app.sessions.get(key := (host, port))):
+            app.sessions[key] = (instance := {})
+            instance["context"] = ioCondition()
+
+            k.update(dict(on_exit_callback = (app.release, instance["context"]) ))
+
+            instance["session"] = Session(url, *a, **k)
+
+        async with instance["context"]:
+            await instance["context"].wait()
+
+        return instance["session"]
 
 if __name__ == "__main__":
     pass
