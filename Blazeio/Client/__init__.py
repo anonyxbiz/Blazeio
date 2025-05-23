@@ -4,6 +4,8 @@ from ..Dependencies.alts import *
 from ..Modules.request import *
 from ..Protocols.client_protocol import *
 
+__memory__ = {}
+
 class Gen:
     __slots__ = ()
     def __init__(app):
@@ -40,7 +42,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "occupied",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit",)
 
     __should_be_reset__ = ("decompressor", "compressor", "has_sent_headers",)
 
@@ -71,9 +73,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     async def __aenter__(app):
         if not app.loop:
             app.loop = get_event_loop()
-            app.occupied = SharpEvent(False, evloop=app.loop)
-        else:
-            app.occupied.clear()
 
         if app.protocol: return app
 
@@ -82,13 +81,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     def conn(app, *a, **k): return app.prepare(*args, **kwargs)
 
     async def prepare(app, *args, **kwargs):
+        if app.close_on_exit != False:
+            app.close_on_exit = False
+
         if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
 
         if args: app.args = (*args, *app.args[len(args):])
         if kwargs: app.kwargs.update(kwargs)
-
-        if app.close_on_exit != False:
-            app.close_on_exit = False
 
         return await app.create_connection(*app.args, **app.kwargs)
 
@@ -101,8 +100,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 args = (app,)
 
             await func(*args) if iscoroutinefunction(func) else func(*args)
-
-        app.occupied.set()
 
         if not isinstance(exc_type, ServerDisconnected):
             if app.close_on_exit != False and (protocol := getattr(app, "protocol", None)):
@@ -321,13 +318,11 @@ class __Request__(metaclass=DynamicRequestResponse):
             return await getattr(instance, response_type)()
 
 Session.request = __Request__
-# Session.Multipart = Multipart
 
-class SessionPool:
-    __slots__ = ("sessions", "loop",)
-    def __init__(app, evloop = None):
-        app.sessions = {}
-        app.loop = evloop or ioConf.loop
+class __SessionPool__:
+    __slots__ = ("sessions", "loop", "max_conns",)
+    def __init__(app, evloop = None, max_conns = 100):
+        app.sessions, app.loop, app.max_conns = {}, evloop or ioConf.loop, max_conns
 
     async def release(app, session, context):
         async with context:
@@ -337,6 +332,12 @@ class SessionPool:
         host, port, path = ioConf.url_to_host(url, {})
 
         if not (instance := app.sessions.get(key := (host, port))):
+            if len(app.sessions) >= app.max_conns:
+                inst = app.sessions.pop(list(app.sessions.keys())[-1])
+                inst["session"].close_on_exit = True
+                await inst["session"].__aenter__()
+                await inst["session"].__aexit__()
+
             app.sessions[key] = (instance := {})
             instance["context"] = ioCondition()
 
@@ -348,6 +349,43 @@ class SessionPool:
             await instance["context"].wait()
 
         return instance["session"]
+
+class SessionPool:
+    __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory",)
+    def __init__(app, *args, max_conns = 100, connection_made_callback = None, pool_memory = None, **kwargs):
+        app.max_conns, app.connection_made_callback, app.pool_memory = max_conns, connection_made_callback, pool_memory
+
+        app.pool, app.args, app.kwargs = app.get_pool(), args, kwargs
+
+    def get_pool(app):
+        if (pool_memory := app.pool_memory) is None and (pool_memory := __memory__.get("SessionPool", None)) is None:
+            __memory__["SessionPool"] = (pool_memory := {})
+
+        if not (pool := pool_memory.get("pool")):
+            pool_memory["pool"] = (pool := __SessionPool__(max_conns=app.max_conns))
+
+        return pool
+
+    async def __aenter__(app):
+        app.session = await app.pool.get(*app.args, **app.kwargs)
+
+        if app.connection_made_callback: app.connection_made_callback()
+
+        await app.session.__aenter__()
+        session = await app.session.prepare(*app.args, **app.kwargs)
+
+        return session
+
+    async def __aexit__(app, *args, **kwargs):
+        return await app.session.__aexit__(*args, **kwargs)
+        
+class createSessionPool:
+    __slots__ = ("pool", "pool_memory",)
+    def __init__(app):
+        app.pool_memory = {}
+
+    def SessionPool(app, *a, **k):
+        return SessionPool(*a, pool_memory = app.pool_memory, **k)
 
 if __name__ == "__main__":
     pass

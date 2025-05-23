@@ -424,8 +424,29 @@ def read_safe_sync(_type = bytes, *a, **k):
 
         return bytes(data)
 
+class __plog__:
+    def __init__(app): pass
 
-frmt_log = lambda *logs: "<[%s]>:\n    %s\n\n" % ((now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], ", ".join([str(log) for log in logs]))
+    def __getattr__(app, name):
+        if name in logger.colors._dict:
+            def dynamic_method(*args):
+                return app.__log__(*args, logger_ = logger.__getattr__(name))
+
+            setattr(app, name, dynamic_method)
+            return dynamic_method
+
+        return getattr(logger, name)
+
+    def __log__(app, name: (int, str, None) = None, *logs, sepr = "    ", logger_=None):
+        frmt, indent = "", 0
+    
+        for log in logs:
+            indent += 1
+            frmt += "\n%s%s" % (sepr*indent, log)
+
+        return logger_("<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
+
+plog = __plog__()
 
 if __name__ == "__main__":
     pass

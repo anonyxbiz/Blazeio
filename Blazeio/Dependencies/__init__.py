@@ -239,6 +239,8 @@ class Default_logger:
         'magenta': '\033[35m',
         'cyan': '\033[36m',
         'white': '\033[37m',
+        'green': '\033[32m',
+        'red': '\033[38;5;1m',
         'gray': '\033[90m',
         'b_red': '\033[91m',
         'b_green': '\033[92m',

@@ -343,7 +343,7 @@ class Parsers:
 
         await app.protocol.push(app.gen_payload(method, headers, app.path))
 
-    async def handle_chunked(app, *args, **kwargs):
+    async def handle_chunked(app):
         end, buff = False, bytearray()
         read, size, idx = 0, False, -1
 
@@ -365,9 +365,7 @@ class Parsers:
 
             read += len(chunk)
 
-            if read <= size:
-                pass
-            else:
+            if read > size:
                 excess_chunk_size = read - size
                 chunk_size = len(chunk) - excess_chunk_size
 
