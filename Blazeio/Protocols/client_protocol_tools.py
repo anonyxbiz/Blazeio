@@ -359,15 +359,14 @@ class Parsers:
                 if size == 0: end = True
 
                 if len(buff) >= size:
-                    chunk, buff = buff, bytearray()
+                    chunk, buff = buff, buff[len(buff):]
                 else:
-                    chunk, buff = buff[:size], bytearray()
+                    chunk, buff = buff[:size], buff[len(buff):]
 
             read += len(chunk)
 
             if read > size:
-                excess_chunk_size = read - size
-                chunk_size = len(chunk) - excess_chunk_size
+                chunk_size = len(chunk) - (read - size)
 
                 chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
                 

@@ -59,27 +59,25 @@ class ExtraToolset:
                 if size == 0: end = True
 
                 if len(buff) >= size:
-                    chunk, buff = buff, bytearray()
+                    chunk, buff = buff, buff[len(buff):]
                 else:
-                    chunk, buff = buff[:size], bytearray()
+                    chunk, buff = buff[:size], buff[len(buff):]
 
             read += len(chunk)
 
-            if read <= size:
-                pass
-            else:
-                excess_chunk_size = read - size
-                chunk_size = len(chunk) - excess_chunk_size
+            if read > size:
+                chunk_size = len(chunk) - (read - size)
 
                 chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
-                
+
                 app.prepend(__buff__)
 
                 read, size = 0, False
-
+            
             yield chunk
 
             if end: break
+
 
     async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
         if secure: secure = "Secure; "
