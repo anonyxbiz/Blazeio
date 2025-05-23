@@ -1,11 +1,8 @@
 import Blazeio as io
-from argparse import ArgumentParser
 
-parser = ArgumentParser()
-parser.add_argument("-port", "--port", default = 8080)
-args = parser.parse_args()
+scope = io.DotDict()
 
-web = io.App("0.0.0.0", int(args.port), __log_requests__=0)
+scope.web = None
 
 io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
 
@@ -60,7 +57,9 @@ class App:
 
             if tasks: await io.gather(*tasks)
 
-async def add_to_proxy(host = "test.localhost", port = web.ServerConfig.port, proxy_port = 80):
+async def add_to_proxy(host = "test.localhost", port = None, proxy_port = 80):
+    port = port or scope.web.ServerConfig.port
+
     try:
         async with io.Session("http://localhost:%d/$add_host" % proxy_port, "post", io.Rvtools.headers, json = {"host": host, "srv": "http://localhost:%d" % port}) as session:
             await session.aread(1)
@@ -68,5 +67,13 @@ async def add_to_proxy(host = "test.localhost", port = web.ServerConfig.port, pr
         pass
         
 if __name__ == "__main__":
-    web.attach(App())
-    web.runner()
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument("-port", "--port", default = 8080)
+    args = parser.parse_args()
+    
+    scope.web = io.App("0.0.0.0", int(args.port), __log_requests__=0)
+
+    scope.web.attach(App())
+    scope.web.runner()
