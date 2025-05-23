@@ -24,7 +24,7 @@ class App:
     async def add_host(app, r):
         host, srv = (json := await io.Request.get_json(r)).get("host"), json.get("srv")
 
-        json = {host + ":%d" % web.ServerConfig.port: srv}
+        json = {host + (":%d" % web.ServerConfig.port) if web.ServerConfig.port not in (80, 443) else "": srv}
 
         app.hosts.update(json)
 
