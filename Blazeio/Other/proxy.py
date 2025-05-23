@@ -28,6 +28,8 @@ class App:
 
         app.hosts.update(json)
 
+        await io.plog.cyan("add_host", "added: %s" % io.dumps(json, indent=1))
+
         raise io.Abort("Added", 200)
 
     async def __main_handler__(app, r):
@@ -58,9 +60,9 @@ class App:
 
             if tasks: await io.gather(*tasks)
 
-async def add_to_proxy(host = "test.localhost", port = web.ServerConfig.port):
+async def add_to_proxy(host = "test.localhost", port = web.ServerConfig.port, proxy_port = 80):
     try:
-        async with io.Session("http://localhost:8080/$add_host", "post", io.Rvtools.headers, json = {"host": host, "srv": "http://localhost:%d" % port}) as session:
+        async with io.Session("http://localhost:%d/$add_host" % proxy_port, "post", io.Rvtools.headers, json = {"host": host, "srv": "http://localhost:%d" % port}) as session:
             await session.aread(1)
     except:
         pass
