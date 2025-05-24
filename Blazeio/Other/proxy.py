@@ -112,7 +112,8 @@ class App:
 
 class Proxy:
     @classmethod
-    async def add_to_proxy(app, host, port, proxy_port = 8080, in_try = False):
+    async def add_to_proxy(app, host, port, proxy_port = None, in_try = False):
+        proxy_port = 8080 if io.debug_mode else 80
         if not in_try:
             try:
                 return await app.add_to_proxy(host, port, proxy_port, True)
