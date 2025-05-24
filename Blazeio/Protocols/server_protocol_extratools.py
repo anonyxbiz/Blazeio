@@ -1,4 +1,5 @@
 from ..Dependencies import *
+from ..Dependencies.alts import DictView, plog
 from ..Modules.request import *
 from ..Modules.streaming import *
 from ..Modules.server_tools import *
@@ -11,9 +12,6 @@ class ExtraToolset:
     prepare_http_header_end = b"\r\n\r\n"
     handle_chunked_endsig =  b"0\r\n\r\n"
     handle_chunked_sepr1 = b"\r\n"
-
-    def __init__(app):
-        pass
 
     async def write_chunked(app, data):
         if app.encoder: data = await app.encoder(data)
@@ -78,7 +76,6 @@ class ExtraToolset:
 
             if end: break
 
-
     async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
         if secure: secure = "Secure; "
         else: secure = ""
@@ -103,35 +100,35 @@ class ExtraToolset:
             if app.current_length >= app.content_length: break
 
     async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True):
-        await app.writer(b'HTTP/1.1 %s %s\r\nServer: Blazeio\r\n' % (str(status).encode(), StatusReason.reasons.get(status, "Unknown").encode()))
+        payload = ('HTTP/1.1 %d %s\r\n' % (status, StatusReason.reasons.get(status, "Unknown"))).encode()
 
-        if app.__cookie__: await app.writer(app.__cookie__)
+        if app.__cookie__: payload += app.__cookie__
+
+        await app.writer(payload)
+        
+        headers_view = DictView(headers)
 
         app.__is_prepared__ = True
         app.__status__ = status
 
-        for key, val in headers.items():
-            if not hasattr(app, "encoder"):
-                if key.capitalize() == "Content-encoding" and encode_resp:
-                    app.encoder = getattr(app, val, None)
+        if (val := headers_view.get(key := "Server")):
+            headers[str(headers_view._capitalized.get(key))] = "Blazeio"
+        else:
+            headers[key] = "Blazeio"
 
-            if not hasattr(app, "write"):
-                if key.capitalize() == "Transfer-encoding":
-                    app.write = app.write_chunked
+        if (val := headers_view.get("Content-encoding")) and encode_resp:
+            app.encoder = getattr(app, val, None)
+        else:
+            app.encoder = None
 
-                elif key.capitalize() == "Content-length":
-                    app.write = app.write_raw
+        if headers_view.get("Transfer-encoding") == "chunked":
+            app.write = app.write_chunked
+        elif headers_view.get("Content-length"):
+            app.write = app.write_raw
+        else:
+            app.write = app.write_raw
 
-            if isinstance(val, list):
-                for hval in val: await app.writer(b"%s: %s\r\n" % (str(key).encode(), str(hval).encode()))
-                continue
-
-            await app.writer(b"%s: %s\r\n" % (str(key).encode(), str(val).encode()))
-
-        await app.writer(b"\r\n")
-
-        if not hasattr(app, "write"): app.write = app.write_raw
-        if not hasattr(app, "encoder"): app.encoder = None
+        await app.writer(ioConf.headers_to_http_bytes(headers))
 
     async def write_raw(app, data: (bytes, bytearray)):
         if app.encoder: data = await app.encoder(data)

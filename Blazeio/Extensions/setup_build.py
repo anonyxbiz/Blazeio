@@ -1,4 +1,4 @@
-version = "1.1.9.5"
+version = "1.2.2.0"
 
 from argparse import ArgumentParser
 parser = ArgumentParser(prog="Setup", description = "Setup")

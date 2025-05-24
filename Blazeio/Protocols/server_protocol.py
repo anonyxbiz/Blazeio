@@ -6,16 +6,16 @@ class BlazeioPayloadUtils:
     non_bodied_methods = {"GET", "HEAD", "OPTIONS"}
     async def transporter(app):
         await app.on_client_connected(app)
-        await app.close()
+        app.close()
 
-    async def control(app, duration=0):
-        await sleep(duration)
+    def control(app, duration=0):
+        return sleep(duration)
 
-    async def close(app):
+    def close(app):
         app.transport.close()
 
 class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUtils, ExtraToolset):
-    __slots__ = ('on_client_connected','__stream__','__is_buffer_over_high_watermark__','__is_at_eof__','__is_alive__','transport','method','tail','path','headers','__is_prepared__','__status__','content_length','current_length','__perf_counter__','ip_host','ip_port','identifier','__cookie__','__miscellaneous__','__timeout__','__buff__','__buff__memory__','store','transfer_encoding','pull','write','encoder','encoder_obj','__evt__','__overflow_evt__','cancel', 'cancel_on_disconnect')
+    __slots__ = ('on_client_connected','__stream__','__is_buffer_over_high_watermark__','__is_at_eof__','__is_alive__','transport','method','tail','path','headers','__is_prepared__','__status__','content_length','current_length','__perf_counter__','ip_host','ip_port','identifier','__cookie__','__miscellaneous__','__timeout__','__buff__','__buff__memory__','store','transfer_encoding','pull','write','encoder','encoder_obj','__evt__','__overflow_evt__','cancel', 'cancel_on_disconnect',)
     
     def __init__(app, on_client_connected, evloop, INBOUND_CHUNK_SIZE=None):
         app.on_client_connected = on_client_connected
@@ -40,13 +40,12 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__evt__ = SharpEvent(False, evloop)
         app.__overflow_evt__ = SharpEvent(False, evloop)
-        app.cancel = None
         app.cancel_on_disconnect = True
 
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
-        app.cancel = lambda cancel = (task := loop.create_task(app.transporter())).cancel: cancel()
+        app.cancel = (task := loop.create_task(app.transporter())).cancel
 
     async def request(app):
         while True:

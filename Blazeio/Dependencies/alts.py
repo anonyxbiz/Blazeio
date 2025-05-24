@@ -403,10 +403,7 @@ async def traceback_logger(e, *args):
     if isinstance(e, Exception): tb = e.__traceback__
     else: tb = e
 
-    try:
-        await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(tb)[-1], "".join([*args])))
-    except:
-        await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(e)[-1], "".join([*args])))
+    await plog.b_red(str(type(e))[8:-2], *("Exception occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(tb)[-1], "".join([*args, str(e)]))).split("\n"))
 
 def read_safe_sync(_type = bytes, *a, **k):
     with open(*a, **k) as fd:
@@ -437,9 +434,9 @@ class __plog__:
 
         return getattr(logger, name)
 
-    def __log__(app, name: (int, str, None) = None, *logs, sepr = "    ", logger_=None):
+    def __log__(app, name: (int, str, None) = None, *logs, sepr = "  ", logger_=None):
         frmt, indent = "", 0
-    
+
         for log in logs:
             indent += 1
             frmt += "\n%s%s" % (sepr*indent, log)

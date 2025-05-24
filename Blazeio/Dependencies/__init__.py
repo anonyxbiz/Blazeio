@@ -43,7 +43,7 @@ debug_mode = environ.get("BlazeioDev", None)
 main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
-    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync", "loop")
+    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync", "loop", "headers_to_http_bytes")
 
     def __init__(app):
         for bound in ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE"):
@@ -59,20 +59,12 @@ ioConf = __ioConf__()
 
 def c_extension_importer():
     try:
-        from Blazeio_iourllib import url_to_host
-        ioConf.url_to_host = url_to_host
-    except ImportError as e:
-        print(e)
-
-    try:
-        from client_payload_gen import gen_payload
-        ioConf.gen_payload = gen_payload
-    except ImportError as e:
-        print(e)
-
-    try:
         from c_request_util import url_decode_sync, url_encode_sync, get_params_sync
-        for i in (url_decode_sync, url_encode_sync, get_params_sync): setattr(ioConf, i.__name__, i)
+        from client_payload_gen import gen_payload
+        from Blazeio_iourllib import url_to_host
+        from server_tools_header_to_payload import headers_to_http_bytes
+
+        for i in (url_decode_sync, url_encode_sync, get_params_sync, headers_to_http_bytes, gen_payload, url_to_host): setattr(ioConf, i.__name__, i)
     except ImportError as e:
         print(e)
 

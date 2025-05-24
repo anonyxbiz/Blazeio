@@ -42,3 +42,11 @@ class ClientGotInTrouble(BlazeioException):
 
     def __str__(app) -> str:
         return app.message
+
+class Protocoltimeout(BlazeioException):
+    __slots__ = ('message')
+    def __init__(app, message="Protocol timed out..."):
+        app.message = str(message)
+
+    def __str__(app) -> str:
+        return app.message
