@@ -95,7 +95,7 @@ class App:
 
     async def proxy(app, r: io.BlazeioProtocol, remote: str):
         task = None
-        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False) as resp:
+        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
             if r.method not in r.non_bodied_methods:
                 task = io.create_task(app.puller(r, resp))
 
