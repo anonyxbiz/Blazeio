@@ -2,6 +2,8 @@ from ..Dependencies import *
 from ..Modules.request import *
 
 ssl_context = create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = CERT_NONE
 
 class __Rvtools__:
     __slots__ = ()

@@ -134,8 +134,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             proxy = None
 
         method = method.upper()
-
-        app.host, app.port, app.path = ioConf.url_to_host(url, app.params)
+        
+        if not host and not port and not path:
+            app.host, app.port, app.path = ioConf.url_to_host(url, app.params)
 
         normalized_headers = DictView(stdheaders)
 
@@ -187,12 +188,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 normalized_headers["Content-length"] = str(len(content))
 
         if proxy: await app.proxy_config(stdheaders, proxy)
-        ssl = ssl_context if app.port == 443 else None
+        ssl = ssl_context if app.port == 443 else kwargs.get("ssl", None)
+
         if app.proxy_port:
             ssl = ssl_context if app.proxy_port == 443 else None
 
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
-        
+
         if not app.protocol and not connect_only:
             transport, app.protocol = await app.loop.create_connection(
                 lambda: BlazeioClientProtocol(evloop=app.loop, **kwargs),

@@ -1,17 +1,115 @@
 import Blazeio as io
+from os import getcwd, mkdir
 
 scope = io.DotDict()
 
 io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
 
-class App:
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log",)
+class Sslproxy:
+    __slots__ = ()
+    ssl_configs = {"certfile": "proxytest.cert", "keyfile": "proxytest.pem"}
+    cert_dir = io.path.join(getcwd(), "cert_dir")
+    ssl_contexts = {}
 
-    def __init__(app, blazeio_proxy_hosts: str = "blazeio_proxy_hosts.txt", timeout: float = float(60*10), log: bool = False):
+    def __init__(app): pass
+
+    def sni_callback(app, ssl_socket, server_name, ssl_context):
+        if not server_name:
+            server_name = "hook.localhost"
+
+        if server_name and (server := app.hosts.get(server_name)) is not None:
+            if not (ctx := server.get("ssl_context")) or not (ctx := app.ssl_contexts.get(ctx)):
+                if not all([(certfile := server.get("certfile")), (keyfile := server.get("keyfile"))]) or not all([io.path.exists(certfile), io.path.exists(keyfile)]):
+                    if not io.path.exists(app.cert_dir): mkdir(app.cert_dir)
+
+                    if certfile and not io.path.exists(certfile):
+                        certfile = io.path.join(app.cert_dir, certfile)
+
+                    if keyfile and not io.path.exists(keyfile):
+                        keyfile = io.path.join(app.cert_dir, keyfile)
+                    
+                    if not certfile and not keyfile:
+                        certfile, keyfile = io.path.join(app.cert_dir, server_name + ".cert"), io.path.join(app.cert_dir, server_name + ".pem")
+
+                    scope.web.setup_ssl(server_name, None, ssl_data := dict(certfile=certfile, keyfile=keyfile))
+                    server.update(ssl_data)
+
+                ctx = io.create_default_context(io.Purpose.CLIENT_AUTH)
+                ctx.load_cert_chain(certfile, keyfile)
+                
+                app.ssl_contexts[server_name] = ctx
+                server["ssl_context"] = server_name
+
+            ssl_socket.context = ctx
+            ssl_socket.context.server_hostname = server_name
+
+    def configure_ssl(app):
+        context = io.create_default_context(io.Purpose.CLIENT_AUTH)
+    
+        context.sni_callback = app.sni_callback
+
+        return context
+
+class Transporters:
+    __slots__ = ()
+    def __init__(app): pass
+
+    async def puller(app, r, resp):
+        async for chunk in r.pull():
+            await resp.write(chunk)
+
+        await resp.eof()
+
+    async def no_tls_transporter(app, r: io.BlazeioProtocol, remote: str):
+        task = None
+        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
+            if r.method not in r.non_bodied_methods:
+                task = io.create_task(app.puller(r, resp))
+
+            await resp.prepare_http()
+
+            await r.prepare(resp.headers, resp.status_code, encode_resp=False)
+
+            async for chunk in resp.pull():
+                await r.write(chunk)
+
+            await r.eof()
+
+            if task: await task
+
+    async def tls_transporter(app, r: io.BlazeioProtocol, remote: str):
+        task = None
+        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
+            if r.method not in r.non_bodied_methods:
+                task = io.create_task(app.puller(r, resp))
+
+            await resp.prepare_http()
+
+            await r.prepare(resp.headers, resp.status_code, encode_resp=False)
+            
+            buff = bytearray()
+
+            async for chunk in resp.pull():
+                buff.extend(chunk)
+                if len(buff) >= io.ioConf.OUTBOUND_CHUNK_SIZE:
+                    w, buff = await r.write(buff), buff[len(buff):]
+
+            await r.eof(buff)
+
+            if task: await task
+
+class App(Sslproxy, Transporters):
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter")
+
+    def __init__(app, blazeio_proxy_hosts: str = "blazeio_proxy_hosts.txt", timeout: float = float(60*10), log: bool = False, proxy_port = None):
         app.blazeio_proxy_hosts = blazeio_proxy_hosts
-        app.hosts = {}
+        app.hosts = {
+            "hook.localhost": {},
+        }
+
         app.tasks = []
         app.log = log
+        app.transporter = app.no_tls_transporter
         app.protocols = {}
         app.protocol_count = 0
         app.host_update_event = io.SharpEvent(True, io.ioConf.loop)
@@ -22,12 +120,6 @@ class App:
         app.tasks.append(io.ioConf.loop.create_task(app.update_mem_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.protocol_manager()))
 
-    async def puller(app, r, resp):
-        async for chunk in r.pull():
-            await resp.write(chunk)
-        
-        await resp.eof()
-
     async def update_file_db(app):
         while await app.host_update_event.wait():
             async with io.async_open(app.blazeio_proxy_hosts, "wb") as f:
@@ -37,17 +129,17 @@ class App:
         if not io.path.exists(app.blazeio_proxy_hosts): return
 
         async with io.async_open(app.blazeio_proxy_hosts, "rb") as f:
-            app.hosts = io.loads(await f.read())
+            app.hosts.update(io.loads(await f.read()))
 
         await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=1))
 
-    async def add_host(app, r):
-        json = {(json := await io.Request.get_json(r)).get("host"): json.get("srv")}
+    async def remote_webhook(app, r):
+        json = await io.Request.get_json(r)
 
         app.hosts.update(json)
         app.host_update_event.set()
 
-        await io.plog.cyan("add_host", "added: %s" % io.dumps(json, indent=1))
+        await io.plog.cyan("remote_webhook", "added: %s" % io.dumps(app.hosts, indent=1))
 
         raise io.Abort("Added", 200)
 
@@ -73,13 +165,15 @@ class App:
     async def __main_handler__(app, r: io.BlazeioProtocol):
         await io.Request.prepare_http_request(r)
         
-        if (host := r.headers.get("Host", "")).startswith("localhost") and r.tail == "/$add_host":
+        host = r.headers.get("Host", "")
+
+        if "Remote_webhook" in r.headers:
             if r.ip_host != "127.0.0.1":
                 raise io.Abort("Server could not be found", 503) # return generic response
 
-            return await app.add_host(r)
+            return await app.remote_webhook(r)
 
-        if not (remote := app.hosts.get(host)):
+        if not (srv := app.hosts.get(host[:host.rfind(":")])) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
         app.protocol_count += 1
@@ -89,38 +183,22 @@ class App:
         try:
             app.protocols[r.identifier] = r
             app.protocol_update_event.set()
-            await app.proxy(r, remote)
+            await app.transporter(r, remote)
         finally:
             app.protocols.pop(r.identifier)
 
-    async def proxy(app, r: io.BlazeioProtocol, remote: str):
-        task = None
-        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
-            if r.method not in r.non_bodied_methods:
-                task = io.create_task(app.puller(r, resp))
-
-            await resp.prepare_http()
-
-            await r.prepare(resp.headers, resp.status_code, encode_resp=False)
-
-            async for chunk in resp.pull():
-                await r.write(chunk)
-
-            await r.eof()
-
-            if task: await task
-
 class Proxy:
     @classmethod
-    async def add_to_proxy(app, host, port, proxy_port = None, in_try = False):
-        proxy_port = 8080 if io.debug_mode else 80
+    async def add_to_proxy(app, host, port, certfile = None, keyfile = None, proxy_port = None, in_try = False):
+        proxy_port = proxy_port or (8080 if io.debug_mode else proxy_port or 80)
+
         if not in_try:
             try:
-                return await app.add_to_proxy(host, port, proxy_port, True)
+                return await app.add_to_proxy(host, port, certfile, keyfile, proxy_port, in_try = True)
             except Exception as e:
                 return await io.traceback_logger(e)
 
-        async with io.Session("http://localhost:%d/$add_host" % proxy_port, "post", io.Rvtools.headers, json = {"host": host, "srv": "http://localhost:%d" % port}) as session:
+        async with io.Session(host = "127.0.0.1", port = proxy_port, path = "/", method = "post", headers = {"Remote_webhook": "Remote_webhook"}, json = {host[:host.rfind(":")]: {"remote": "http://localhost:%d" % port, "certfile": certfile, "keyfile": keyfile}}, ssl = io.ssl_context if keyfile else None) as session:
             await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
 add_to_proxy = Proxy.add_to_proxy
@@ -130,9 +208,18 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("-port", "--port", default = 8080)
-    args = parser.parse_args()
-    
-    scope.web = io.App("0.0.0.0", int(args.port), __log_requests__=0)
+    parser.add_argument("-ssl", "--ssl", default = False)
 
-    scope.web.attach(App())
-    scope.web.runner()
+    args = parser.parse_args()
+
+    scope.web = io.App("0.0.0.0", proxy_port := int(args.port), __log_requests__=0)
+
+    scope.web.attach(app := App(proxy_port = proxy_port))
+
+    if args.ssl:
+        app.transporter = app.tls_transporter
+        conf = dict(ssl=app.configure_ssl())
+    else:
+        conf = dict()
+
+    scope.web.runner(**conf)

@@ -36,7 +36,10 @@ class ExtraToolset:
         if app.write == app.write_chunked:
             method = app.write_chunked_eof
         else:
-            method = None
+            if args and args[0]:
+                method = app.write_raw
+            else:
+                method = None
 
         if method is not None: await method(*args)
 

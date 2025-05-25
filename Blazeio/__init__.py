@@ -325,7 +325,7 @@ class App(Handler, OOP_RouteDef):
 
         return func
 
-    def setup_ssl(app, HOST: str, PORT: int, ssl_data: dict):
+    def setup_ssl(app, HOST: str, PORT: (int, None) = None, ssl_data: dict = {}):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
         if not certfile or not keyfile: 
             raise Err("certfile and keyfile paths are required.")
