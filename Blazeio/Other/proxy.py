@@ -4,7 +4,7 @@ from pathlib import Path
 
 scope = io.DotDict()
 
-io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 4096, 4096
+io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
 
 class Pathops:
     __slots__ = ("parent",)
@@ -113,13 +113,7 @@ class Transporters:
 
     async def tls_transporter(app, r: io.BlazeioProtocol, remote: str, srv: dict):
         task = None
-        if not (cache := srv.get("cache", {})):
-            srv["cache"] = cache
-
-        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False, host = cache.get("host", None), port = cache.get("port", None), path = r.tail) as resp:
-            if not cache:
-                srv["cache"]["host"], srv["cache"]["port"] = resp.host, resp.port
-
+        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
             if r.method not in r.non_bodied_methods:
                 task = io.create_task(app.puller(r, resp))
 
@@ -137,7 +131,7 @@ class Transporters:
                 buff.extend(chunk)
 
                 if len(buff) >= app.tls_record_size:
-                    _, buff = await r.write(buff), bytearray()
+                    _, buff = await r.write(buff), buff[len(buff):]
                 else:
                     continue
 
