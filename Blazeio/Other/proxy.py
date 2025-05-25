@@ -4,7 +4,7 @@ from pathlib import Path
 
 scope = io.DotDict()
 
-io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
+io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 4096, 4096
 
 class Pathops:
     __slots__ = ("parent",)
