@@ -91,7 +91,7 @@ class Transporters:
 
             async for chunk in resp.pull():
                 buff.extend(chunk)
-                if len(buff) >= io.ioConf.OUTBOUND_CHUNK_SIZE:
+                if len(buff) >= 1024:
                     w, buff = await r.write(buff), buff[len(buff):]
 
             await r.eof(buff)
