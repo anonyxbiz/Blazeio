@@ -172,8 +172,11 @@ class App(Sslproxy, Transporters):
                 raise io.Abort("Server could not be found", 503) # return generic response
 
             return await app.remote_webhook(r)
+        
+        if (idx := host.rfind(":")) != -1:
+            host = host[:idx]
 
-        if not (srv := app.hosts.get(host[:host.rfind(":")])) or not (remote := srv.get("remote")):
+        if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
         app.protocol_count += 1
@@ -198,7 +201,10 @@ class Proxy:
             except Exception as e:
                 return await io.traceback_logger(e)
 
-        async with io.Session(host = "127.0.0.1", port = proxy_port, path = "/", method = "post", headers = {"Remote_webhook": "Remote_webhook"}, json = {host[:host.rfind(":")]: {"remote": "http://localhost:%d" % port, "certfile": certfile, "keyfile": keyfile}}, ssl = io.ssl_context if keyfile else None) as session:
+        if (idx := host.rfind(":")) != -1:
+            host = host[:idx]
+
+        async with io.Session(host = "127.0.0.1", port = proxy_port, path = "/", method = "post", headers = {"Remote_webhook": "Remote_webhook"}, json = {host: {"remote": "http://localhost:%d" % port, "certfile": certfile, "keyfile": keyfile}}, ssl = io.ssl_context if keyfile else None) as session:
             await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
 add_to_proxy = Proxy.add_to_proxy
