@@ -44,7 +44,7 @@ class Sslproxy:
 
         if server_name and (server := app.hosts.get(server_name)) is not None:
             if not (ctx := server.get("ssl_context")) or not (ctx := app.ssl_contexts.get(ctx)):
-                if not all([(certfile := server.get("certfile")), (keyfile := server.get("keyfile"))]) or not all([io.path.exists(str(certfile)), io.path.exists(str(keyfile))]):
+                if not all([(certfile := server.get("certfile")), (keyfile := server.get("keyfile"))]) or not all([io.path.exists(certfile), io.path.exists(keyfile)]):
                     if certfile and not io.path.exists(certfile):
                         certfile = io.path.join(app.cert_dir, certfile)
 
