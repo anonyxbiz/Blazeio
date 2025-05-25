@@ -134,8 +134,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             proxy = None
 
         method = method.upper()
-        
-        if not host and not port and not path:
+
+        if not host and not port:
             app.host, app.port, app.path = ioConf.url_to_host(url, app.params)
 
         normalized_headers = DictView(stdheaders)
