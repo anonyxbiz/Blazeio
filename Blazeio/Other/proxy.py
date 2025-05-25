@@ -63,7 +63,7 @@ class Sslproxy:
 
                 ctx.options |= io.OP_NO_COMPRESSION
                 ctx.set_ecdh_curve('prime256v1')
-                ctx.post_handshake_auth = False
+                # ctx.post_handshake_auth = False
 
                 app.ssl_contexts[server_name] = ctx
                 server["ssl_context"] = server_name
@@ -76,7 +76,7 @@ class Sslproxy:
     
         context.sni_callback = app.sni_callback
 
-        context.post_handshake_auth = False
+        # context.post_handshake_auth = False
         context.options |= io.OP_NO_COMPRESSION
         context.set_ecdh_curve('prime256v1')
         
