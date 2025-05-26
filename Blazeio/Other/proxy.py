@@ -119,8 +119,6 @@ class Transporters:
 
             if not resp.is_prepared():
                 await resp.prepare_http()
-            
-            await io.plog.debug("tls_transporter", io.dumps(resp.response_headers, indent=1))
 
             await r.prepare(resp.response_headers, resp.status_code, encode_resp=False)
             
