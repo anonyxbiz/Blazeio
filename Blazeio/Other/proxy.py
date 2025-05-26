@@ -95,12 +95,18 @@ class Transporters:
         await resp.eof()
 
     async def no_tls_transporter(app, r: io.BlazeioProtocol, remote: str, srv: dict):
-        task = None
-        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
-            if r.method not in r.non_bodied_methods:
-                task = io.create_task(app.puller(r, resp))
+        if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter()
 
-            await resp.prepare_http()
+        async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
+            if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter() - r.store.analytics.ttfb
+
+            if r.method not in r.non_bodied_methods:
+                r.store.task = io.create_task(app.puller(r, resp))
+
+            if not resp.is_prepared():
+                await resp.prepare_http()
+
+            if r.store.track_metrics: resp.headers.update({"Blazeio.Other.proxy.analytics.%s" % key: val for key, val in r.store.analytics.json().items()})
 
             await r.prepare(resp.headers, resp.status_code, encode_resp=False)
 
@@ -109,7 +115,7 @@ class Transporters:
 
             await r.eof()
 
-            if task: await task
+            if r.store.task: await r.store.task
 
     async def tls_transporter(app, r: io.BlazeioProtocol, remote: str, srv: dict):
         if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter()
