@@ -225,6 +225,24 @@ class Parsers:
     def __init__(app): pass
 
     def is_prepared(app): return True if app.status_code and app.handler else False
+    
+    def gen_headers(app, headers):
+        while headers:
+            if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
+            else: header, headers = headers, b""
+
+            if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
+
+            key, value = header[:idx].decode().lower(), header[idx + len(app.prepare_http_sepr2):].decode()
+
+            if key in app.response_headers:
+                if not isinstance(app.response_headers[key], list):
+                    app.response_headers[key] = [app.response_headers[key]]
+
+                app.response_headers[key].append(value)
+                continue
+
+            app.response_headers[key] = value
 
     async def prepare_http(app):
         if app.is_prepared(): return True
@@ -260,25 +278,8 @@ class Parsers:
             headers = headers[idx + len(app.prepare_http_sepr1):]
         else:
             raise Err("Unknown Server Protocol")
-
-        while headers:
-            await sleep(0)
-
-            if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
-            else: header, headers = headers, b""
-
-            if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
-
-            key, value = header[:idx].decode().lower(), header[idx + len(app.prepare_http_sepr2):].decode()
-
-            if key in app.response_headers:
-                if not isinstance(app.response_headers[key], list):
-                    app.response_headers[key] = [app.response_headers[key]]
-
-                app.response_headers[key].append(value)
-                continue
-
-            app.response_headers[key] = value
+        
+        app.gen_headers(headers)
 
         app.received_len, app.content_length = 0, int(app.response_headers.get('content-length', 0))
 

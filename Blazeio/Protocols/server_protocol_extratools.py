@@ -13,6 +13,18 @@ class ExtraToolset:
     handle_chunked_endsig =  b"0\r\n\r\n"
     handle_chunked_sepr1 = b"\r\n"
 
+    def headers_to_http_bytes(app, headers):
+        payload = b""
+        for key in headers:
+            if isinstance(val := headers[key], list):
+                for hval in val:
+                    payload += b"%s: %s\r\n" % (str(key).encode(), str(hval).encode())
+                continue
+    
+            payload += b"%s: %s\r\n" % (str(key).encode(), str(val).encode())
+    
+        return payload + b"\r\n"
+
     async def write_chunked(app, data):
         if app.encoder: data = await app.encoder(data)
 
@@ -131,7 +143,7 @@ class ExtraToolset:
         else:
             app.write = app.write_raw
 
-        await app.writer(ioConf.headers_to_http_bytes(headers))
+        await app.writer(app.headers_to_http_bytes(headers))
 
     async def write_raw(app, data: (bytes, bytearray)):
         if app.encoder: data = await app.encoder(data)

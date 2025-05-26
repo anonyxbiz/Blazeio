@@ -117,9 +117,12 @@ class Transporters:
             if r.method not in r.non_bodied_methods:
                 task = io.create_task(app.puller(r, resp))
 
-            await resp.prepare_http()
+            if not resp.is_prepared():
+                await resp.prepare_http()
+            
+            await io.plog.debug("tls_transporter", io.dumps(resp.response_headers, indent=1))
 
-            await r.prepare(resp.headers, resp.status_code, encode_resp=False)
+            await r.prepare(resp.response_headers, resp.status_code, encode_resp=False)
             
             buff = bytearray()
 

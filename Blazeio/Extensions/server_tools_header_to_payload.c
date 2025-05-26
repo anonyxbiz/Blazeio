@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define STACK_ALLOC_THRESHOLD 2048
+#define STACK_ALLOC_THRESHOLD 4096
 
 typedef struct {
     const char *str;
@@ -49,11 +49,11 @@ static Py_ssize_t calculate_total_size_and_extract(
 
     // Second pass: extract strings and calculate size
     pos = 0;
-    Py_ssize_t i = 0;
+    Py_ssize_t total_entries_so_far = 0;
     Py_ssize_t size = 0;
 
     while (PyDict_Next(headers, &pos, &key, &value)) {
-        const char *key_str = PyUnicode_AsUTF8AndSize(key, &header_entries[i].key.len);
+        const char *key_str = PyUnicode_AsUTF8AndSize(key, &header_entries[total_entries_so_far].key.len);
         if (!key_str) {
             PyMem_Free(header_entries);
             PyErr_SetString(PyExc_TypeError, "Header keys must be strings");
@@ -64,7 +64,7 @@ static Py_ssize_t calculate_total_size_and_extract(
             Py_ssize_t list_size = PyList_Size(value);
             for (Py_ssize_t j = 0; j < list_size; j++) {
                 PyObject *item = PyList_GetItem(value, j);
-                const char *value_str = PyUnicode_AsUTF8AndSize(item, &header_entries[i].value.len);
+                const char *value_str = PyUnicode_AsUTF8AndSize(item, &header_entries[total_entries_so_far].value.len);
                 
                 if (!value_str) {
                     PyMem_Free(header_entries);
@@ -72,14 +72,15 @@ static Py_ssize_t calculate_total_size_and_extract(
                     return 0;
                 }
                 
-                header_entries[i].key.str = key_str;  // Same key for all list items
-                header_entries[i].value.str = value_str;
+                header_entries[total_entries_so_far].key.str = key_str;
+                header_entries[total_entries_so_far].value.str = value_str;
                 
-                size += header_entries[i].key.len + header_entries[i].value.len + 4; // ": \r\n"
-                i++;
+                size += header_entries[total_entries_so_far].key.len + 
+                        header_entries[total_entries_so_far].value.len + 4; // ": \r\n"
+                total_entries_so_far++;
             }
         } else {
-            const char *value_str = PyUnicode_AsUTF8AndSize(value, &header_entries[i].value.len);
+            const char *value_str = PyUnicode_AsUTF8AndSize(value, &header_entries[total_entries_so_far].value.len);
             
             if (!value_str) {
                 PyMem_Free(header_entries);
@@ -87,11 +88,12 @@ static Py_ssize_t calculate_total_size_and_extract(
                 return 0;
             }
             
-            header_entries[i].key.str = key_str;
-            header_entries[i].value.str = value_str;
+            header_entries[total_entries_so_far].key.str = key_str;
+            header_entries[total_entries_so_far].value.str = value_str;
             
-            size += header_entries[i].key.len + header_entries[i].value.len + 4; // ": \r\n"
-            i++;
+            size += header_entries[total_entries_so_far].key.len + 
+                    header_entries[total_entries_so_far].value.len + 4; // ": \r\n"
+            total_entries_so_far++;
         }
     }
 

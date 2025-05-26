@@ -64,9 +64,8 @@ def c_extension_importer():
         from c_request_util import url_decode_sync, url_encode_sync, get_params_sync
         from client_payload_gen import gen_payload
         from Blazeio_iourllib import url_to_host
-        from server_tools_header_to_payload import headers_to_http_bytes
 
-        for i in (url_decode_sync, url_encode_sync, get_params_sync, headers_to_http_bytes, gen_payload, url_to_host): setattr(ioConf, i.__name__, i)
+        for i in (url_decode_sync, url_encode_sync, get_params_sync, gen_payload, url_to_host): setattr(ioConf, i.__name__, i)
     except ImportError as e:
         print(e)
 

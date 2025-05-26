@@ -11,9 +11,9 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.1.9.2"
+version = "2.1.9.3"
 
-exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util", "server_tools_header_to_payload")
+exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util")
 
 ext_modules = []
 
