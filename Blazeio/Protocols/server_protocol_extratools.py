@@ -18,12 +18,12 @@ class ExtraToolset:
         for key in headers:
             if isinstance(val := headers[key], list):
                 for hval in val:
-                    payload += b"%s: %s\r\n" % (str(key).encode(), str(hval).encode())
+                    payload += b"%s: %s%s" % (str(key).encode(), str(hval).encode(), app.prepare_http_sepr1)
                 continue
     
-            payload += b"%s: %s\r\n" % (str(key).encode(), str(val).encode())
+            payload += b"%s: %s%s" % (str(key).encode(), str(val).encode(), app.prepare_http_sepr1)
     
-        return payload + b"\r\n"
+        return payload + app.prepare_http_sepr1
 
     async def write_chunked(app, data):
         if app.encoder: data = await app.encoder(data)
@@ -127,7 +127,7 @@ class ExtraToolset:
         app.__status__ = status
 
         if (val := headers_view.get(key := "Server")):
-            headers[str(headers_view._capitalized.get(key))] = "Blazeio"
+            headers[str(headers_view._capitalized.get(key))] = ["Blazeio", val]
         else:
             headers[key] = "Blazeio"
 

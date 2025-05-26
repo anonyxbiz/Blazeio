@@ -73,15 +73,15 @@ c_extension_importer()
 
 class DotDict:
     __slots__ = ("_dict",)
-    def __init__(app, dictionary: (dict, None) = None):
-        app._dict = dictionary or {}
+    def __init__(app, dictionary: (dict, None) = None, **kw):
+        app._dict = dictionary or kw or {}
 
     def __getattr__(app, name):
         if name == "_dict": return app._dict
         if name in app._dict:
             return app._dict[name]
         else:
-            return getattr(app._dict, name)
+            return getattr(app._dict, name, None)
 
     def __contains__(app, key):
         if key in app._dict:
@@ -101,12 +101,8 @@ class DotDict:
         if key == "_dict": return app._dict
         return app._dict[key]
 
-    async def token_urlsafe(app, *args, **kwargs):
-        while (token := token_urlsafe(*args, **kwargs)) in app._dict:
-            await sleep(0)
-
-        app._dict[token] = None
-        return token
+    def json(app):
+        return app._dict
 
 class SharpEvent:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
