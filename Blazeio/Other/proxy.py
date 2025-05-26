@@ -234,6 +234,8 @@ class App(Sslproxy, Transporters):
         
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
+        r.headers["Original_host"] = host
+        r.headers["ip_port"] = str(r.ip_port)
 
         app.protocol_count += 1
         r.identifier = (app.protocol_count, remote)
