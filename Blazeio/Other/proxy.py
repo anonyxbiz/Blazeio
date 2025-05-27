@@ -1,6 +1,7 @@
 import Blazeio as io
 from os import mkdir, access as os_access, R_OK as os_R_OK, W_OK as os_W_OK, X_OK as os_X_OK, makedirs
 from pathlib import Path
+from ssl import TLSVersion
 
 scope = io.DotDict()
 
@@ -58,12 +59,8 @@ class Sslproxy:
 
                     server.update(ssl_data)
 
-                ctx = io.create_default_context(io.Purpose.CLIENT_AUTH)
+                ctx = ssl_context
                 ctx.load_cert_chain(certfile, keyfile)
-
-                ctx.options |= io.OP_NO_COMPRESSION
-                ctx.set_ecdh_curve('prime256v1')
-                ctx.post_handshake_auth = False
 
                 app.ssl_contexts[server_name] = ctx
                 server["ssl_context"] = server_name
@@ -78,8 +75,11 @@ class Sslproxy:
 
         context.post_handshake_auth = False
         context.options |= io.OP_NO_COMPRESSION
-        context.set_ecdh_curve('prime256v1')
-        
+
+        context.set_ecdh_curve("prime256v1")
+        context.minimum_version = TLSVersion.TLSv1_3
+        context.session_tickets = True
+
         return context
 
 class Transporters:
