@@ -277,7 +277,12 @@ class WebhookClient:
 
     def get_state(app):
         with open(app.conf, "rb") as f:
-            return io.loads(f.read())
+            state = io.loads(f.read())
+
+        with open(state.get("blazeio_proxy_hosts"), "rb") as f:
+            state["hosts"] = io.loads(f.read())
+
+        return state 
 
     async def add_to_proxy(app, host, port, certfile = None, keyfile = None, in_try = False, **kw):
         if not in_try:
@@ -288,17 +293,16 @@ class WebhookClient:
 
         if (idx := host.rfind(":")) != -1:
             host = host[:idx]
+            
+        host_data = {"remote": "http://localhost:%d" % port, "certfile": certfile, "keyfile": keyfile}
 
         state = app.get_state()
 
+        if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
+
         async with io.Session.post("http://127.0.0.1:%d/" % int(state.get("Blazeio.Other.proxy.port")), {"Remote_webhook": "Remote_webhook", "Content-type": "application/json", "Transfer-encoding": "chunked", "route": "remote_webhook"}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None) as session:
             await session.eof(io.dumps({
-                host: {
-                    "remote": "http://localhost:%d" % port,
-                    "certfile": certfile,
-                    "keyfile": keyfile
-                    
-                }
+                host: host_data
             }).encode())
 
             await io.plog.cyan("Proxy.add_to_proxy", await session.text())
