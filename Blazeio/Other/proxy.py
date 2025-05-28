@@ -59,7 +59,14 @@ class Sslproxy:
 
                     server.update(ssl_data)
 
-                ctx = ssl_context
+                ctx = io.create_default_context(io.Purpose.CLIENT_AUTH)
+                ctx.post_handshake_auth = False
+                ctx.options |= io.OP_NO_COMPRESSION
+        
+                ctx.set_ecdh_curve("prime256v1")
+                ctx.minimum_version = TLSVersion.TLSv1_3
+                ctx.session_tickets = True
+
                 ctx.load_cert_chain(certfile, keyfile)
 
                 app.ssl_contexts[server_name] = ctx
