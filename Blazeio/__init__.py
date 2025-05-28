@@ -108,17 +108,17 @@ class Handler:
 
             await app.__main_handler__(r)
 
-        except Abort as e: await e.text()
-        except (Err, ServerGotInTrouble) as e:
-            await Log.warning(r, e)
+        except Abort as e:
+            try: await e.text()
+            except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
+        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
         except (ClientDisconnected, Eof): pass
         except KeyboardInterrupt: raise
-        except (ConnectionResetError, BrokenPipeError, CancelledError): pass
-        except Exception as e:
-            await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
+        except (ConnectionResetError, BrokenPipeError, CancelledError) as e: pass
+        except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
 
         if app.ServerConfig.__log_requests__:
-            await Log.debug(r, f"Completed with status {r.__status__} in {perf_counter() - r.__perf_counter__:.4f} seconds")
+            await Log.debug(r, "Completed with status %s in %s seconds" % (str(r.__status__), round(perf_counter() - r.__perf_counter__, 4)))
 
 class OOP_RouteDef:
     def __init__(app):

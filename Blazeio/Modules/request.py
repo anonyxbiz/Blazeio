@@ -51,7 +51,10 @@ class Request:
     max_cache_len = 10
 
     @classmethod
-    async def get_cookie(app, r, val: str):
+    async def get_cookie(app, r, val: str = ""):
+        if not isinstance(r, BlazeioProtocol):
+            val, r = r, Context.r_sync()
+
         val += "="
         if not val in (cookie := r.headers.get("Cookie", "")):
             return None
@@ -66,7 +69,10 @@ class Request:
         return cookie
 
     @classmethod
-    def get_cookie_sync(app, r, val: str):
+    def get_cookie_sync(app, r, val: str = ""):
+        if not isinstance(r, BlazeioProtocol):
+            val, r = r, Context.r_sync()
+
         val += "="
         if not val in (cookie := r.headers.get("Cookie", "")):
             return None
@@ -79,7 +85,6 @@ class Request:
             if (idx := cookie.find(cookie_end)) != -1: cookie = cookie[:idx]
 
         return cookie
-
 
     @classmethod
     async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
@@ -272,10 +277,10 @@ class Request:
         return r
 
     @classmethod
-    async def body_or_params(app, r=None):
-        if r is None: r = await Context.r()
+    async def body_or_params(app, r: (BlazeioProtocol, None) = None):
+        if not r: r = Context.r_sync()
 
-        if r.method in ["GET", "OPTIONS", "HEAD"]:
+        if r.method in r.non_bodied_methods:
             return app.get_params_sync(r)
         else:
             return await app.get_json(r)
@@ -283,16 +288,15 @@ class Request:
     @classmethod
     async def bop(app):
         r = Context.r_sync()
-        if r.method in ["GET", "OPTIONS", "HEAD"]:
+        if r.method in r.non_bodied_methods:
             return app.get_params_sync(r)
         else:
             return await app.get_json(r)
 
     @classmethod
-    async def form_data(app, r = None):
-        if not r: r = await Context.r()
-        data = bytearray()
-        json_data = defaultdict(str)
+    async def form_data(app, r: (BlazeioProtocol, None) = None):
+        if not r: r = Context.r_sync()
+        data, json_data = bytearray(), {}
 
         async for chunk in r.pull():
             data.extend(chunk)
@@ -304,11 +308,11 @@ class Request:
                     r.current_length -= len(__buff__)
                     break
         
-        # await p(data)
-
+        return app.format_form_data(json_data, data)
+    
+    @classmethod
+    def format_form_data(app, json_data, data):
         while (idx := data.find(app.form_data_spec[0])) != -1 and (idx2 := data.find(app.form_data_spec[1])) != -1 and (idx3 := data.find(app.form_data_spec[2])) != -1:
-            await sleep(0)
-
             form_name, form_value = data[idx + len(app.form_data_spec[0]):idx2][1:-1], data[idx2 + len(app.form_data_spec[1]):]
 
             data, form_value = form_value[form_value.find(app.form_data_spec[2]) + len(app.form_data_spec[2]):], form_value[:form_value.find(app.form_data_spec[2])]
@@ -318,9 +322,8 @@ class Request:
         filename = (filename := data[data.find(app.form_filename[0]) + len(app.form_filename[0]):])[:filename.find(app.form_filename[1])][1:-1]
 
         json_data["file"] = filename.decode("utf-8")
-        
-        # await p(json_data)
-        return dict(json_data)
+
+        return json_data
 
     @classmethod
     async def get_form_data(app, r):

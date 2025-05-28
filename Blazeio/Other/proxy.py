@@ -59,13 +59,7 @@ class Sslproxy:
 
                     server.update(ssl_data)
 
-                ctx = io.create_default_context(io.Purpose.CLIENT_AUTH)
-                ctx.post_handshake_auth = False
-                ctx.options |= io.OP_NO_COMPRESSION
-        
-                ctx.set_ecdh_curve("prime256v1")
-                ctx.minimum_version = TLSVersion.TLSv1_3
-                ctx.session_tickets = True
+                ctx = app.context()
 
                 ctx.load_cert_chain(certfile, keyfile)
 
@@ -74,19 +68,20 @@ class Sslproxy:
 
             ssl_socket.context = ctx
             ssl_socket.context.server_hostname = server_name
-
-    def configure_ssl(app):
-        context = io.create_default_context(io.Purpose.CLIENT_AUTH)
     
-        context.sni_callback = app.sni_callback
-
+    def context(app):
+        context = io.create_default_context(io.Purpose.CLIENT_AUTH)
         context.post_handshake_auth = False
         context.options |= io.OP_NO_COMPRESSION
 
         context.set_ecdh_curve("prime256v1")
         context.minimum_version = TLSVersion.TLSv1_3
         context.session_tickets = True
+        return context
 
+    def configure_ssl(app):
+        context = app.context()
+        context.sni_callback = app.sni_callback
         return context
 
 class Transporters:

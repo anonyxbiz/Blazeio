@@ -1,4 +1,5 @@
 # Dependencies.__init___.py
+from ..Itools import *
 from ..Exceptions import *
 from ..Protocols import *
 from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, InvalidStateError
@@ -8,7 +9,7 @@ from collections import deque, defaultdict, OrderedDict
 from collections.abc import AsyncIterable
 
 from sys import exit, stdout as sys_stdout
-from datetime import datetime as dt, UTC
+from datetime import datetime as dt, UTC, timedelta
 
 from inspect import signature as sig, stack
 from typing import Callable, Any, Optional, Union
@@ -23,12 +24,11 @@ from threading import Thread
 from html import escape
 
 from traceback import extract_tb, format_exc
-from ssl import create_default_context, SSLError, Purpose, CERT_NONE
+from ssl import create_default_context, Purpose, PROTOCOL_TLS_SERVER, OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_TLSv1, OP_NO_TLSv1_1, OP_NO_COMPRESSION, CERT_NONE, SSLError
 
 from contextlib import asynccontextmanager
-from base64 import b64encode
+from base64 import b64encode, b64decode
 
-from secrets import token_urlsafe
 from string import ascii_lowercase as string_ascii_lowercase, ascii_uppercase as string_ascii_uppercase
 
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
@@ -38,7 +38,6 @@ from psutil import Process as psutilProcess
 
 try: from ujson import dumps, loads, JSONDecodeError
 except: from json import dumps, loads, JSONDecodeError
-from ssl import create_default_context, Purpose, PROTOCOL_TLS_SERVER, OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_TLSv1, OP_NO_TLSv1_1, OP_NO_COMPRESSION, CERT_NONE, SSLError
 
 debug_mode = environ.get("BlazeioDev", None)
 
@@ -70,39 +69,6 @@ def c_extension_importer():
         print(e)
 
 c_extension_importer()
-
-class DotDict:
-    __slots__ = ("_dict",)
-    def __init__(app, dictionary: (dict, None) = None, **kw):
-        app._dict = dictionary or kw or {}
-
-    def __getattr__(app, name):
-        if name == "_dict": return app._dict
-        if name in app._dict:
-            return app._dict[name]
-        else:
-            return getattr(app._dict, name, None)
-
-    def __contains__(app, key):
-        if key in app._dict:
-            return True
-        return False
-
-    def __setitem__(app, key, value):
-        app._dict[key] = value
-
-    def __setattr__(app, key, value):
-        if key in app.__slots__:
-            object.__setattr__(app, key, value)
-        else:
-            app._dict[key] = value
-
-    def __getitem__(app, key):
-        if key == "_dict": return app._dict
-        return app._dict[key]
-
-    def json(app):
-        return app._dict
 
 class SharpEvent:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")

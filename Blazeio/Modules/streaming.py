@@ -1,4 +1,5 @@
 from ..Dependencies import *
+from .reasons import *
 
 class Context:
     @classmethod
@@ -16,7 +17,7 @@ class Context:
 class Prepare:
     @classmethod
     async def text(app, headers: dict={}, status:int = 206, content_type: str = "text/plain; charset=utf-8"):
-        r = await Context.r()
+        r = Context.r_sync()
         headers = dict(headers)
         headers["Content-Type"] = content_type
 
@@ -24,51 +25,52 @@ class Prepare:
 
     @classmethod
     async def json(app, headers: dict={}, status:int = 206, content_type: str = "application/json; charset=utf-8"):
-        r = await Context.r()
+        r = Context.r_sync()
         headers = dict(headers)
         headers["Content-Type"] = content_type
 
         await r.prepare(headers, status)
 
-class Deliver:
-    @classmethod
-    async def json(app, r, data: dict = {}, status: int = 200, headers: dict = {}, indent: int = 4, content_type: str = "application/json; charset=utf-8"):
-        headers = dict(headers)
-        headers["Content-Type"] = content_type
+class __Deliver__:
+    content_types = {
+        "text": "text/plain; charset=utf-8",
+        "json": "application/json; charset=utf-8",
+    }
+
+    def __init__(app):
+        pass
+
+    async def deliver(app, r, data: (str, bytes, bytearray, memoryview, None, dict) = None, status: int = 200, headers: (dict, None) = None, path: (str, None) = None, content_type: (str, None) = None):
+        headers = headers or {}
+        if isinstance(data, str):
+            data = data.encode()
+        elif isinstance(data, bytearray):
+            data = bytes(data)
+        elif isinstance(data, memoryview):
+            data = bytes(data)
+        elif isinstance(data, dict):
+            data = dumps(data).encode()
+
+        headers["Content-type"] = content_type
+
+        if path:
+            status = 302 if status == 200 else status
+            headers["Location"] = path
+
         await r.prepare(headers, status)
-        await r.write(bytearray(dumps(data, indent=indent), "utf-8"))
+        await r.write(data)
 
-    @classmethod
-    async def text(app, r, data, status=200, headers={}, content_type: str = "text/plain; charset=utf-8"):
-        headers = dict(headers)
-        headers["Content-Type"] = content_type
-        await r.prepare(headers, status)
-        await r.write(bytearray(data, "utf-8"))
+    def __getattr__(app, name):
+        def method(*a, **kw):
+            if not isinstance(a[0], BlazeioProtocol):
+                a = (Context.r_sync(), *a)
 
-    @classmethod
-    async def redirect(app, r, path, status=302, headers={}, reason=None):
-        headers["Location"] = path
-        await r.prepare(headers, status=status)
+            return app.deliver(*a, **kw, content_type = app.content_types.get(name))
 
-    @classmethod
-    async def HTTP_301(app, r, path, status=301, headers={}, reason=None):
-        headers["Location"] = path
-        await r.prepare(headers, status=status, reason=reason)
+        setattr(app, name, method)
+        return method
 
-    @classmethod
-    async def HTTP_302(app, r, path, status=302, headers={}, reason=None):
-        headers["Location"] = path
-        await r.prepare(headers, status=status, reason=reason)
-
-    @classmethod
-    async def HTTP_307(app, r, path, status=307, headers={}, reason=None):
-        headers["Location"] = path
-        await r.prepare(headers, status=status, reason=reason)
-
-    @classmethod
-    async def HTTP_308(app, r, path, status=308, headers={}, reason=None):
-        headers["Location"] = path
-        await r.prepare(headers, status=status, reason=reason)
+Deliver = __Deliver__()
 
 class Abort(BlazeioException):
     __slots__ = (
@@ -83,7 +85,7 @@ class Abort(BlazeioException):
         app.args = args
         app.r = Context.r_sync()
 
-    async def text(app):
+    async def text_(app):
         message = app.args[0] if len(app.args) >= 1 else "Something went wrong"
         status = app.args[1] if len(app.args) >= 2 else 403
         headers = app.args[2] if len(app.args) >= 3 else {}
@@ -95,6 +97,13 @@ class Abort(BlazeioException):
             await app.r.write(message.encode())
         except Err:
             return
+
+    def text(app):
+        message = (app.args[0] if len(app.args) >= 1 else "Something went wrong").encode()
+        status = app.args[1] if len(app.args) >= 2 else 403
+        headers = app.args[2] if len(app.args) >= 3 else None
+
+        return Deliver.text(app.r, memoryview(message), status, headers or {})
 
 class Eof(Exception):
     __slots__ = (
