@@ -10,6 +10,7 @@ Blazeio/Other/__pycache__
 Blazeio/Exceptions/__pycache__
 Blazeio/Extensions/__pycache__
 Blazeio/Protocols/__pycache__
+Blazeio/Itools/__pycache__
 Blazeio/Extensions/uninstall.py
 c_request_util.egg-info
 client_payload_gen.egg-info
