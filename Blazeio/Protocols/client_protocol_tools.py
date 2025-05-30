@@ -25,6 +25,9 @@ class __Rvtools__:
 
     def __init__(app): pass
 
+    def dh(app, url: str):
+        return {'accept': '*/*', 'accept-language': 'en-US,en;q=0.9', 'origin': url, 'priority': 'u=1, i', 'referer': url, 'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"%s"' % os_name, 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'cors', 'sec-fetch-site': 'same-origin', 'user-agent': 'BlazeI/O', 'connection': 'keep-alive'}
+
 Rvtools = __Rvtools__()
 
 class Async:
@@ -347,7 +350,7 @@ class Parsers:
 
                 break
 
-        await app.protocol.push(app.gen_payload(method, headers, app.path))
+        await app.protocol.push(ioConf.gen_payload(method, headers, app.path))
 
     async def handle_chunked(app):
         end, buff = False, bytearray()
@@ -379,8 +382,8 @@ class Parsers:
                 app.protocol.prepend(__buff__)
 
                 read, size = 0, False
-            
-            yield chunk
+
+            if chunk: yield chunk
 
             if end: break
 
@@ -417,7 +420,10 @@ class Pushtools:
         if app.write == app.write_chunked:
             method = app.write_chunked_eof
         else:
-            method = None
+            if args and args[0]:
+                method = app.write_raw
+            else:
+                method = None
 
         if method is not None: await method(*args)
 

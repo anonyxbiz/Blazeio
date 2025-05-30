@@ -77,12 +77,12 @@ class Simpleserve:
         app = cls()
         await app.initialize(*args, **kwargs)
 
-        if all([kwargs.get("encode", None), app.content_type in app.compressable]):
+        if kwargs.get("encode", None) and app.content_type in app.compressable:
             if (encoding := app.r.headers.get("Accept-encoding")):
-                if "gzip" in encoding:
-                     app.headers["Content-encoding"] = "gzip"
-                elif "br" in encoding:
-                     app.headers["Content-encoding"] = "br"
+                for encoder in ("gzip", "br"):
+                    if encoder in encoding:
+                        app.headers["Content-encoding"] = encoder
+                        break
 
         await app.r.prepare(app.headers, app.status)
 
@@ -98,20 +98,6 @@ class Simpleserve:
                 if app.start >= app.end: break
                 app.start += len(chunk)
                 f.seek(app.start)
-
-    async def pull_(app):
-        buffer = bytearray(app.CHUNK_SIZE)
-
-        with open(app.file, "rb") as f:
-            view = memoryview(buffer)
-            f.seek(app.start)
-            f.readinto(view)
-
-            while (chunk := view[:app.CHUNK_SIZE]):
-                yield bytes(chunk)
-                await sleep(0)
-
-                f.readinto(view)
 
 if __name__ == "__main__":
     pass

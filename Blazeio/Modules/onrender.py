@@ -12,7 +12,7 @@ class RenderFreeTierPatch:
             app.task = loop.create_task(app.keep_alive_render())
     
     async def _hello_world(app, r):
-        await Deliver.text(r, "Hello World")
+        await Deliver.text("Hello World")
 
     async def keep_alive_render(app):
         await Log.debug("keep_alive_render initiating...")

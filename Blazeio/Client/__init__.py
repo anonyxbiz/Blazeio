@@ -67,8 +67,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
         return method
-    
-    def is_occupied(app): return not app.occupied.is_set()
 
     async def __aenter__(app):
         if not app.loop:
@@ -148,6 +146,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             multipart = Multipart(**multipart)
             stdheaders.update(multipart.headers)
             content = multipart.pull()
+        
+        if "protocol_instance" in kwargs:
+            protocol_instance = kwargs.pop("protocol_instance")
+        else:
+            protocol_instance = BlazeioClientProtocol
 
         if stream_file:
             normalized_headers["Content-length"] = str(os_path.getsize(stream_file[0]))
@@ -197,18 +200,18 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if not app.protocol and not connect_only:
             transport, app.protocol = await app.loop.create_connection(
-                lambda: BlazeioClientProtocol(evloop=app.loop, **kwargs),
+                lambda: protocol_instance(evloop=app.loop, **kwargs),
                 host=remote_host,
                 port=remote_port,
                 ssl=ssl,
             )
         elif not app.protocol and connect_only:
             transport, app.protocol = await app.loop.create_connection(
-                lambda: BlazeioClientProtocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in BlazeioClientProtocol.__slots__}),
+                lambda: protocol_instance(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in protocol_instance.__slots__}),
                 host=app.host,
                 port=app.port,
                 ssl=ssl if not kwargs.get("ssl") else kwargs.get("ssl"),
-                **{a:b for a,b in kwargs.items() if a not in BlazeioClientProtocol.__slots__ and a not in app.__slots__ and a != "ssl"}
+                **{a:b for a,b in kwargs.items() if a not in protocol_instance.__slots__ and a not in app.__slots__ and a != "ssl"}
             )
 
             return app

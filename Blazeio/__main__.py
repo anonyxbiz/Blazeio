@@ -45,8 +45,24 @@ class App:
             if save:
                 await resp.save(save)
             else:
-                async for chunk in resp.pull():
-                    await log.info(chunk.decode())
+                if not resp.is_prepared(): await resp.prepare_http()
+                
+                buff, filename, fd = bytearray(), None, None
+                if (ext := "html") in resp.content_type.lower():
+                    title_s, title_e, title = b"<title", b"</title", None
+
+                    async for chunk in resp.pull():
+                        if not fd: buff.extend(chunk)
+                        if not fd and (idx := buff.find(title_s)) != -1:
+                            title = (title := buff[idx + len(title_s) + 1:])[:title.find(title_e)].decode()
+                            filename = title + ".%s" % ext
+                            fd = await async_open(filename, "wb").__aenter__()
+                            await fd.write(bytes(buff))
+                        elif fd:
+                            await fd.write(chunk)
+
+                else:
+                    async for chunk in resp.pull(): await log.info(chunk.decode())
 
             await log.debug("<%s@%s%s> completed request in <%s's>." % (resp.args[1].lower(), resp.host, resp.path, str(perf_counter() - start)))
 

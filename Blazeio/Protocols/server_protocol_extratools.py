@@ -150,8 +150,8 @@ class ExtraToolset:
 
         return await app.writer(data)
 
-    async def br(app, data: (bytes, bytearray)):
-        return await to_thread(brotlicffi_compress, bytes(data))
+    def br(app, data: (bytes, bytearray)):
+        return to_thread(brotlicffi_compress, bytes(data))
 
     async def gzip(app, data: (bytes, bytearray)):
         encoder = compressobj(wbits=31)

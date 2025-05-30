@@ -165,6 +165,7 @@ class SrvConfig:
     __health_check_freq__: int = 30
     __log_requests__: bool = False
     INBOUND_CHUNK_SIZE: (None, int) = None
+    server_protocol = BlazeioServerProtocol
 
     def __init__(app): pass
 
@@ -275,6 +276,8 @@ class App(Handler, OOP_RouteDef):
     def __getattr__(app, name):
         if name == "route":
             app.route = Add_Route(app)
+        else:
+            return app.ServerConfig.__dict__.get(name)
 
         return getattr(app, name)
 
@@ -366,8 +369,10 @@ class App(Handler, OOP_RouteDef):
 
         await app.configure_server_handler()
 
+        protocol = app.ServerConfig.server_protocol
+
         app.server = await app.event_loop.create_server(
-            lambda: BlazeioServerProtocol(app.handle_client, app.event_loop, ioConf.INBOUND_CHUNK_SIZE),
+            lambda: protocol(app.handle_client, app.event_loop, ioConf.INBOUND_CHUNK_SIZE),
             host,
             port,
             **kwargs
