@@ -1,4 +1,5 @@
 from ..Dependencies import *
+from ..Dependencies.alts import DictView, plog, memarray
 from .streaming import *
 
 class HTTPParser:
@@ -14,7 +15,7 @@ class HTTPParser:
             r.headers[key.decode("utf-8").capitalize()] = val.decode("utf-8")
 
     @classmethod
-    async def header_parser(app, r, data: bytearray):
+    async def header_parser(app, r, data):
         r.headers = {}
         while (idx := data.find(app.h_s)):
             if idx == -1:
@@ -254,7 +255,7 @@ class Request:
     @classmethod
     async def prepare_http_request(app, r, server=None):
         if not server: server = app
-        __buff__ = bytearray()
+        __buff__ = memarray()
 
         async for chunk in r.request():
             __buff__.extend(chunk)
@@ -296,7 +297,7 @@ class Request:
     @classmethod
     async def form_data(app, r: (BlazeioProtocol, None) = None):
         if not r: r = Context.r_sync()
-        data, json_data = bytearray(), {}
+        data, json_data = memarray(), {}
 
         async for chunk in r.pull():
             data.extend(chunk)

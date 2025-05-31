@@ -52,6 +52,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     not_stated = "response_headers"
 
     __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
+    
+    known_ext_types = (ServerDisconnected, ConnectionRefusedError, KeyboardInterrupt, CancelledError, RuntimeError)
+
+    known_ext_types_str = (*(i.__name__ for i in known_ext_types), *(str(i) for i in known_ext_types))
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
@@ -90,6 +94,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
+        known = isinstance(exc_type, (app.known_ext_types)) or str(exc_type) in app.known_ext_types_str
+
         if (on_exit_callback := app.kwargs.get("on_exit_callback")):
             func = on_exit_callback[0]
             if len(on_exit_callback) > 1:
@@ -99,15 +105,14 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
             await func(*args) if iscoroutinefunction(func) else func(*args)
 
-        if not isinstance(exc_type, ServerDisconnected):
-            if app.close_on_exit != False and (protocol := getattr(app, "protocol", None)):
-                protocol.transport.close()
-
+        if not known:
             if exc_type or exc_value or traceback:
-                if all([not i in str(exc_value) and not i in str(exc_type) for i in ("KeyboardInterrupt","Client has disconnected.", "CancelledError")]):
-                    await log.critical("\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(traceback)[-1], exc_value))
-
-        if app.close_on_exit == False: return True
+                await plog.b_red(app.__class__.__name__, "\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\nexc_type: %s.\ntext: %s.\n" % (*extract_tb(traceback)[-1], str(exc_type), exc_value))
+        
+        if not isinstance(exc_type, CancelledError):
+            if app.close_on_exit == False: return True
+        
+        if (protocol := getattr(app, "protocol", None)): protocol.transport.close()
 
         return False
 

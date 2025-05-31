@@ -1,5 +1,6 @@
 from ..Dependencies import *
 from ..Modules.request import *
+from ..Dependencies.alts import DictView, plog, memarray
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
@@ -252,22 +253,22 @@ class Parsers:
 
     async def prepare_http(app):
         if app.is_prepared(): return True
-        buff, headers, idx, valid = bytearray(), None, -1, False
+        buff, headers, idx, valid = memarray(), None, -1, False
 
         async for chunk in app.protocol.pull():
             buff.extend(chunk)
             if not valid:
                 if len(buff) < 4: continue
                 if (ido := buff.find(app.http_startswith)) != -1:
-                    buff = buff[ido:]
+                    buff = memarray(buff[ido:])
                     valid = True
                 else:
-                    buff = buff[len(buff)-4:]
+                    buff = memarray(buff[len(buff)-4:])
                     continue
 
             if (idx := buff.find(app.prepare_http_header_end)) == -1: continue
 
-            headers, buff = buff[:idx], buff[idx + len(app.prepare_http_header_end):]
+            headers, buff = buff[:idx], memarray(buff[idx + len(app.prepare_http_header_end):])
             break
 
         if buff: app.protocol.prepend(buff)
@@ -324,9 +325,9 @@ class Parsers:
         return True
 
     async def prepare_connect(app, method, headers):
-        buff, idx = bytearray(), -1
+        buff, idx = memarray(), -1
 
-        async for chunk in app.protocol.ayield(app.timeout):
+        async for chunk in app.protocol.pull():
             buff.extend(chunk)
 
             if (idx := buff.rfind(app.prepare_http_sepr1)) != -1: break
@@ -353,7 +354,7 @@ class Parsers:
         await app.protocol.push(ioConf.gen_payload(method, headers, app.path))
 
     async def handle_chunked(app):
-        end, buff = False, bytearray()
+        end, buff = False, memarray()
         read, size, idx = 0, False, -1
 
         async for chunk in app.protocol.pull():
@@ -363,22 +364,21 @@ class Parsers:
 
                 if not (s := buff[:idx]): continue
 
-                size, buff = int(s, 16), buff[idx + len(app.handle_chunked_sepr1):]
+                size, buff = int(s, 16), memarray(buff[idx + len(app.handle_chunked_sepr1):])
 
                 if size == 0: end = True
 
                 if len(buff) >= size:
-                    chunk, buff = buff, buff[len(buff):]
+                    chunk, buff = buff, memarray(buff[len(buff):])
                 else:
-                    chunk, buff = buff[:size], buff[len(buff):]
+                    chunk, buff = buff[:size], memarray(buff[len(buff):])
 
             read += len(chunk)
 
             if read > size:
                 chunk_size = len(chunk) - (read - size)
 
-                chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
-                
+                chunk, __buff__ = chunk[:chunk_size], chunk[chunk_size + 2:]
                 app.protocol.prepend(__buff__)
 
                 read, size = 0, False
@@ -502,7 +502,7 @@ class Pulltools(Parsers):
     async def brotli(app):
         if not app.decompressor: app.decompressor = await to_thread(Decompressor)
 
-        buff = bytearray()
+        buff = memarray()
 
         async for chunk in app.handler():
             buff.extend(chunk)
@@ -516,7 +516,7 @@ class Pulltools(Parsers):
     async def gzip(app):
         if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
 
-        buff = bytearray()
+        buff = memarray()
 
         async for chunk in app.handler():
             buff.extend(chunk)

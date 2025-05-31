@@ -1,5 +1,5 @@
 from ..Dependencies import *
-from ..Dependencies.alts import DictView, plog
+from ..Dependencies.alts import DictView, plog, memarray
 from ..Modules.request import *
 from ..Modules.streaming import *
 from ..Modules.server_tools import *
@@ -57,7 +57,7 @@ class ExtraToolset:
 
     async def handle_chunked(app, *args, **kwargs):
         if app.headers is None: await app.reprepare()
-        end, buff = False, bytearray()
+        end, buff = False, memarray()
         read, size, idx = 0, False, -1
 
         async for chunk in app.request():

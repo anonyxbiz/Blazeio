@@ -112,7 +112,7 @@ class Handler:
             try: await e.text()
             except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
-        except (ClientDisconnected, Eof): pass
+        except (ClientDisconnected, Eof, ServerDisconnected): pass
         except KeyboardInterrupt: raise
         except (ConnectionResetError, BrokenPipeError, CancelledError) as e: pass
         except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)

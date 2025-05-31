@@ -445,5 +445,19 @@ class __plog__:
 
 plog = __plog__()
 
+class memarray(bytearray):
+    __slots__ = ()
+    def __getitem__(app, key):
+        if isinstance(key, slice):
+            return bytes(memoryview(app)[key])
+        return super().__getitem__(key)
+
+    def __setitem__(app, key, value):
+        if isinstance(key, slice):
+            memoryview(app)[key] = memoryview(value)
+            return
+
+        return super().__setitem__(key, value)
+
 if __name__ == "__main__":
     pass
