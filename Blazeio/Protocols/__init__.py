@@ -5,7 +5,7 @@ class BlazeioProtocol:
     __slots__ = ()
     def buffer_updated(app, nbytes):
         app.transport.pause_reading()
-        app.__stream__.append(app.__buff__memory__[:nbytes])
+        app.__stream__.append(bytes(app.__buff__memory__[:nbytes]))
         app.__evt__.set()
 
     def get_buffer(app, sizehint):
@@ -35,7 +35,7 @@ class BlazeioProtocol:
 
     def prepend(app, data):
         if app.transport.is_reading(): app.transport.pause_reading()
-        app.__stream__.appendleft(memoryview(data))
+        app.__stream__.appendleft(data)
         app.__evt__.set()
 
     async def buffer_overflow_manager(app):

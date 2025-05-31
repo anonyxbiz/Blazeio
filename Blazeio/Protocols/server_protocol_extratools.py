@@ -67,21 +67,21 @@ class ExtraToolset:
 
                 if not (s := buff[:idx]): continue
 
-                size, buff = int(s, 16), buff[idx + len(app.handle_chunked_sepr1):]
+                size, buff = int(s, 16), memarray(buff[idx + len(app.handle_chunked_sepr1):])
 
                 if size == 0: end = True
 
                 if len(buff) >= size:
-                    chunk, buff = buff, buff[len(buff):]
+                    chunk, buff = buff, memarray(buff[len(buff):])
                 else:
-                    chunk, buff = buff[:size], buff[len(buff):]
+                    chunk, buff = buff[:size], memarray(buff[len(buff):])
 
             read += len(chunk)
 
             if read > size:
                 chunk_size = len(chunk) - (read - size)
 
-                chunk, __buff__ = chunk[:chunk_size], bytearray(chunk[chunk_size + 2:])
+                chunk, __buff__ = chunk[:chunk_size], memarray(chunk[chunk_size + 2:])
 
                 app.prepend(__buff__)
 

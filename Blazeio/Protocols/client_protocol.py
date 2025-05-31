@@ -42,7 +42,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         while True:
             await app.ensure_reading()
             while app.__stream__:
-                yield bytes(app.__stream__.popleft())
+                yield app.__stream__.popleft()
             else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
