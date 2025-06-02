@@ -152,10 +152,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             stdheaders.update(multipart.headers)
             content = multipart.pull()
         
-        if "protocol_instance" in kwargs:
-            protocol_instance = kwargs.pop("protocol_instance")
+        if "client_protocol" in kwargs:
+            client_protocol = kwargs.pop("client_protocol")
         else:
-            protocol_instance = BlazeioClientProtocol
+            client_protocol = BlazeioClientProtocol
 
         if stream_file:
             normalized_headers["Content-length"] = str(os_path.getsize(stream_file[0]))
@@ -205,18 +205,18 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if not app.protocol and not connect_only:
             transport, app.protocol = await app.loop.create_connection(
-                lambda: protocol_instance(evloop=app.loop, **kwargs),
+                lambda: client_protocol(evloop=app.loop, **kwargs),
                 host=remote_host,
                 port=remote_port,
                 ssl=ssl,
             )
         elif not app.protocol and connect_only:
             transport, app.protocol = await app.loop.create_connection(
-                lambda: protocol_instance(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in protocol_instance.__slots__}),
+                lambda: client_protocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in client_protocol.__slots__}),
                 host=app.host,
                 port=app.port,
                 ssl=ssl if not kwargs.get("ssl") else kwargs.get("ssl"),
-                **{a:b for a,b in kwargs.items() if a not in protocol_instance.__slots__ and a not in app.__slots__ and a != "ssl"}
+                **{a:b for a,b in kwargs.items() if a not in client_protocol.__slots__ and a not in app.__slots__ and a != "ssl"}
             )
 
             return app

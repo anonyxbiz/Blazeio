@@ -575,12 +575,11 @@ class Pulltools(Parsers):
         return await func()
 
     async def send_file(app, file_path: str, chunk_size: (bool, int) = None):
-        if not chunk_size: chunk_size = OUTBOUND_CHUNK_SIZE
+        if not chunk_size: chunk_size = ioConf.OUTBOUND_CHUNK_SIZE
 
         async with async_open(file_path, "rb") as f:
             while (chunk := await f.read(chunk_size)): await app.write(chunk)
-            await sleep(0)
-    
+
     async def drain_pipe(app):
         async for chunk in app.pull(): pass
 
