@@ -509,7 +509,7 @@ class Pulltools(Parsers):
 
             if len(buff) >= 1024:
                 yield await to_thread(app.decompressor.decompress, bytes(buff))
-                buff = buff[len(buff):]
+                buff = memarray(buff[len(buff):])
 
         if buff: yield await to_thread(app.decompressor.decompress, bytes(buff))
 
@@ -523,7 +523,7 @@ class Pulltools(Parsers):
 
             if len(buff) >= 1024:
                 yield app.decompressor.decompress(bytes(buff))
-                buff = buff[len(buff):]
+                buff = memarray(buff[len(buff):])
 
         if buff: yield app.decompressor.decompress(bytes(buff))
 

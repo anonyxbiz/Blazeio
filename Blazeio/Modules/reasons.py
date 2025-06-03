@@ -1,14 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
 class StatusReason:
     reasons = {
         100: "Continue",

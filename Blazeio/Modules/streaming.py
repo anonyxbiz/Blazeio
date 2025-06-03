@@ -40,7 +40,7 @@ class __Deliver__:
     def __init__(app):
         pass
 
-    async def deliver(app, r, data: (str, bytes, bytearray, memoryview, None, dict) = None, status: int = 200, headers: (dict, None) = None, path: (str, None) = None, content_type: (str, None) = None):
+    async def deliver(app, r, data: (str, bytes, bytearray, memoryview, None, dict) = None, status: int = 200, headers: (dict, None) = None, path: (str, None) = None, content_type: (str, None) = None, indent: int = 0):
         headers = headers or {}
         if isinstance(data, str):
             data = data.encode()
@@ -49,7 +49,7 @@ class __Deliver__:
         elif isinstance(data, memoryview):
             data = bytes(data)
         elif isinstance(data, dict):
-            data = dumps(data).encode()
+            data = dumps(data, indent=indent).encode()
 
         headers["Content-type"] = content_type
 
@@ -65,7 +65,7 @@ class __Deliver__:
             if not isinstance(a[0], BlazeioProtocol):
                 a = (Context.r_sync(), *a)
 
-            return app.deliver(*a, **kw, content_type = app.content_types.get(name))
+            return app.deliver(*a, **kw, content_type = app.content_types.get(name, name.replace("_", "/")))
 
         setattr(app, name, method)
         return method
@@ -136,6 +136,26 @@ class FileIO:
         async with async_open(file_path, mode) as f:
             async for chunk in r.pull():
                 if chunk: await f.write(chunk)
+
+class Enterchunked:
+    __slots__ = ("a", "k")
+
+    def __init__(app, *a, **k):
+        if not a or not isinstance(a[0], BlazeioProtocol):
+            a = (Context.r_sync(), *a)
+
+        if len(a) < 2:
+            a = (*a, {})
+
+        app.a, app.k = a, k
+
+    async def __aenter__(app):
+        app.a[1]["transfer-encoding"] = "chunked"
+        await app.a[0].prepare(*app.a[1:], **app.k)
+        return app
+
+    async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
+        await app.a[0].eof()
 
 if __name__ == "__main__":
     pass

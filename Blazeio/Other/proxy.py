@@ -223,7 +223,7 @@ class App(Sslproxy, Transporters):
     def is_web_hook(app, r):
         if "Remote_webhook" in r.headers:
             if r.ip_host != "127.0.0.1":
-                raise io.Abort("Malicious request thwarted!", 503)
+                raise io.Abort("Unauthorized", 503)
 
             return True
 

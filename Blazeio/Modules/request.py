@@ -2,6 +2,8 @@ from ..Dependencies import *
 from ..Dependencies.alts import DictView, plog, memarray
 from .streaming import *
 
+URL_DECODE_MAP = {"%20": " ", "%21": "!", "%22": '"', "%23": "#", "%24": "$", "%25": "%", "%26": "&", "%27": "'", "%28": "(", "%29": ")", "%2A": "*", "%2B": "+", "%2C": ",", "%2D": "-", "%2E": ".", "%2F": "/", "%30": "0", "%31": "1", "%32": "2", "%33": "3", "%34": "4", "%35": "5", "%36": "6", "%37": "7", "%38": "8", "%39": "9", "%3A": ":", "%3B": ";", "%3C": "<", "%3D": "=", "%3E": ">", "%3F": "?", "%40": "@", "%41": "A", "%42": "B", "%43": "C", "%44": "D", "%45": "E", "%46": "F", "%47": "G", "%48": "H", "%49": "I", "%4A": "J", "%4B": "K", "%4C": "L", "%4D": "M", "%4E": "N", "%4F": "O", "%50": "P", "%51": "Q", "%52": "R", "%53": "S", "%54": "T", "%55": "U", "%56": "V", "%57": "W", "%58": "X", "%59": "Y", "%5A": "Z", "%5B": "[", "%5C": "\\", "%5D": "]", "%5E": "^", "%5F": "_", "%60": "`", "%61": "a", "%62": "b", "%63": "c", "%64": "d", "%65": "e", "%66": "f", "%67": "g", "%68": "h", "%69": "i", "%6A": "j", "%6B": "k", "%6C": "l", "%6D": "m", "%6E": "n", "%6F": "o", "%70": "p", "%71": "q", "%72": "r", "%73": "s", "%74": "t", "%75": "u", "%76": "v", "%77": "w", "%78": "x", "%79": "y", "%7A": "z", "%7B": "{", "%7C": "|", "%7D": "}", "%7E": "~", "%25": "%", "%3A": ":"}
+
 class HTTPParser:
     header_key_val = b': '
     h_s = b'\r\n'
@@ -27,7 +29,7 @@ class HTTPParser:
             await app.make(r, header)
 
 class Request:
-    URL_DECODE_MAP = {"%20": " ", "%21": "!", "%22": '"', "%23": "#", "%24": "$", "%25": "%", "%26": "&", "%27": "'", "%28": "(", "%29": ")", "%2A": "*", "%2B": "+", "%2C": ",", "%2D": "-", "%2E": ".", "%2F": "/", "%30": "0", "%31": "1", "%32": "2", "%33": "3", "%34": "4", "%35": "5", "%36": "6", "%37": "7", "%38": "8", "%39": "9", "%3A": ":", "%3B": ";", "%3C": "<", "%3D": "=", "%3E": ">", "%3F": "?", "%40": "@", "%41": "A", "%42": "B", "%43": "C", "%44": "D", "%45": "E", "%46": "F", "%47": "G", "%48": "H", "%49": "I", "%4A": "J", "%4B": "K", "%4C": "L", "%4D": "M", "%4E": "N", "%4F": "O", "%50": "P", "%51": "Q", "%52": "R", "%53": "S", "%54": "T", "%55": "U", "%56": "V", "%57": "W", "%58": "X", "%59": "Y", "%5A": "Z", "%5B": "[", "%5C": "\\", "%5D": "]", "%5E": "^", "%5F": "_", "%60": "`", "%61": "a", "%62": "b", "%63": "c", "%64": "d", "%65": "e", "%66": "f", "%67": "g", "%68": "h", "%69": "i", "%6A": "j", "%6B": "k", "%6C": "l", "%6D": "m", "%6E": "n", "%6F": "o", "%70": "p", "%71": "q", "%72": "r", "%73": "s", "%74": "t", "%75": "u", "%76": "v", "%77": "w", "%78": "x", "%79": "y", "%7A": "z", "%7B": "{", "%7C": "|", "%7D": "}", "%7E": "~", "%25": "%", "%3A": ":"}
+    URL_DECODE_MAP = URL_DECODE_MAP
 
     alphas = set([*string_ascii_lowercase, string_ascii_uppercase, *[str(i) for i in range(9)]])
 
@@ -88,14 +90,12 @@ class Request:
         return cookie
 
     @classmethod
-    async def get_json(app, r, sepr = b'\r\n\r\n', sepr2 = b"{", sepr3 = b"}"):
-        temp = bytearray()
-
+    async def get_json(app, r):
+        temp = memarray(r.content_length)
         async for chunk in r.pull():
-            temp.extend(chunk)
+            temp[r.current_length-len(chunk):r.current_length] = chunk
 
-        try: return loads(temp.decode("utf-8"))
-
+        try: return loads(temp[:r.content_length].decode("utf-8"))
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod
@@ -104,7 +104,6 @@ class Request:
         for k, v in app.URL_DECODE_MAP_ITEMS:
             while (idx := value.find(k)) != -1:
                 value = value[:idx] + v + value[idx + len(k):]
-                await sleep(0)
 
         return value
 
@@ -115,7 +114,6 @@ class Request:
         for k, v in app.URL_ENCODE_MAP_ITEMS:
             while (idx := value.find(k)) != -1:
                 value = value[:idx] + v + value[idx + len(k):]
-                await sleep(0)
 
         return value
 
@@ -204,8 +202,6 @@ class Request:
         idx = 0
 
         while True:
-            await sleep(0)
-
             if (idx := params.find(y)) != -1:
                 key, value = params[:idx], params[idx + 1:]
 

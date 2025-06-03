@@ -17,8 +17,6 @@ class Handler:
     def __init__(app): pass
 
     async def log_request(app, r):
-        if not app.ServerConfig.__log_requests__: return
-
         r.__perf_counter__ = perf_counter()
 
         await Log.info(r,
@@ -59,7 +57,7 @@ class Handler:
     async def serve_route_with_middleware(app, r):
         await Request.prepare_http_request(r, app)
 
-        await app.log_request(r)
+        if app.ServerConfig.__log_requests__: await app.log_request(r)
 
         if app.before_middleware: await app.before_middleware.get("func")(r)
 
@@ -75,7 +73,7 @@ class Handler:
 
     async def serve_route_no_middleware(app, r):
         await Request.prepare_http_request(r, app)
-        await app.log_request(r)
+        if app.ServerConfig.__log_requests__: await app.log_request(r)
 
         if route := app.declared_routes.get(r.path): await route.get("func")(r)
 
@@ -300,15 +298,18 @@ class App(Handler, OOP_RouteDef):
 
         if not route_name: route_name = str(func.__name__)
 
+        if route_name == "__main_handler__":
+            app.__main_handler__ = func
+            return func
+
         if not route_name.endswith("_middleware"):
             if (route := params.get("route")) is None:
                 i, x = "_", "/"
                 while (idx := route_name.find(i)) != -1:
-                    timedotsleep(0)
                     route_name = route_name[:idx] + x + route_name[idx + len(i):]
             else:
                 route_name = route
-        
+
         data = {
             "func": func,
             "params": params,
