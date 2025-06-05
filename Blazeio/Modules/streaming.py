@@ -48,7 +48,7 @@ class __Deliver__:
             data = bytes(data)
         elif isinstance(data, memoryview):
             data = bytes(data)
-        elif isinstance(data, dict):
+        elif isinstance(data, (dict, list)):
             data = dumps(data, indent=indent).encode()
 
         headers["Content-type"] = content_type
@@ -85,19 +85,6 @@ class Abort(BlazeioException):
         app.args = args
         app.r = Context.r_sync()
 
-    async def text_(app):
-        message = app.args[0] if len(app.args) >= 1 else "Something went wrong"
-        status = app.args[1] if len(app.args) >= 2 else 403
-        headers = app.args[2] if len(app.args) >= 3 else {}
-
-        headers["Content-Type"] = "text/plain; charset=utf-8"
-        
-        try:
-            await app.r.prepare(headers, status)
-            await app.r.write(message.encode())
-        except Err:
-            return
-
     def text(app):
         message = (app.args[0] if len(app.args) >= 1 else "Something went wrong").encode()
         status = app.args[1] if len(app.args) >= 2 else 403
@@ -105,22 +92,9 @@ class Abort(BlazeioException):
 
         return Deliver.text(app.r, memoryview(message), status, headers or {})
 
-class Eof(Exception):
-    __slots__ = (
-        'args',
-        'r',
-    )
-
-    def __init__(
-        app,
-        *args
-    ):
-        app.args = args
-        app.r = Context.r_sync()
-
-    async def text(app):
-        message = app.args[0] if len(app.args) >= 1 else "Something went wrong"
-        await app.r.write(message.encode())
+class Eof(BlazeioException):
+    __slots__ = ()
+    def __init__(app): pass
 
 class __Payload__:
     __slots__ = ()

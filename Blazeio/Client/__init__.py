@@ -53,9 +53,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
     
-    known_ext_types = (ServerDisconnected, ConnectionRefusedError, KeyboardInterrupt, CancelledError, RuntimeError)
-
-    known_ext_types_str = (*(i.__name__ for i in known_ext_types), *(str(i) for i in known_ext_types))
+    known_ext_types = (BlazeioException, ConnectionRefusedError, KeyboardInterrupt, CancelledError, RuntimeError)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
@@ -94,7 +92,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
-        known = isinstance(exc_type, (app.known_ext_types)) or str(exc_type) in app.known_ext_types_str
+        known = isinstance(exc_value, (app.known_ext_types))
 
         if (on_exit_callback := app.kwargs.get("on_exit_callback")):
             func = on_exit_callback[0]
@@ -108,10 +106,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if not known:
             if exc_type or exc_value or traceback:
                 await plog.b_red(app.__class__.__name__, "\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\nexc_type: %s.\ntext: %s.\n" % (*extract_tb(traceback)[-1], str(exc_type), exc_value))
-        
-        if not isinstance(exc_type, CancelledError):
+
+        if isinstance(exc_value, BlazeioException):
+            raise exc_value
+
+        if not isinstance(exc_value, CancelledError):
             if app.close_on_exit == False: return True
-        
+
         if (protocol := getattr(app, "protocol", None)): protocol.transport.close()
 
         return False
@@ -223,8 +224,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         payload = ioConf.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path, str(app.port))
 
-        if body:
-            payload = payload + body
+        if body: payload += body
 
         await app.protocol.push(payload)
 
@@ -330,9 +330,9 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns",)
-    def __init__(app, evloop = None, max_conns = 100):
-        app.sessions, app.loop, app.max_conns = {}, evloop or ioConf.loop, max_conns
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts",)
+    def __init__(app, evloop = None, max_conns = 100, max_contexts = 2):
+        app.sessions, app.loop, app.max_conns, app.max_contexts = {}, evloop or ioConf.loop, max_conns, max_contexts
 
     async def release(app, session, context):
         async with context:
@@ -341,29 +341,45 @@ class __SessionPool__:
     async def get(app, url, *a, **k):
         host, port, path = ioConf.url_to_host(url, {})
 
-        if not (instance := app.sessions.get(key := (host, port))):
+        if not (instances := app.sessions.get(key := (host, port))):
             if len(app.sessions) >= app.max_conns:
                 inst = app.sessions.pop(list(app.sessions.keys())[-1])
                 inst["session"].close_on_exit = True
+
                 await inst["session"].__aenter__()
                 await inst["session"].__aexit__()
 
-            app.sessions[key] = (instance := {})
+            app.sessions[key] = (instances := [(instance := {})])
             instance["context"] = ioCondition()
 
             k.update(dict(on_exit_callback = (app.release, instance["context"]) ))
 
             instance["session"] = Session(url, *a, **k)
+        else:
+            for instance in instances:
+                if instance["context"].event.is_set(): break
+                else: instance = None
+    
+            if not instance:
+                if len(instances) < app.max_contexts:
+                    app.sessions[key].append(instance := {})
+                    instance["context"] = ioCondition()
+                    k.update(dict(on_exit_callback = (app.release, instance["context"]) ))
+                    instance["session"] = Session(url, *a, **k)
+                else:
+                    instance = instances[-1]
 
-        async with instance["context"]:
-            await instance["context"].wait()
+        if instance["session"].protocol:
+            if not instance["session"].protocol.transport.is_closing():
+                async with instance["context"]:
+                    await instance["context"].wait()
 
         return instance["session"]
 
 class SessionPool:
-    __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory",)
-    def __init__(app, *args, max_conns = 100, connection_made_callback = None, pool_memory = None, **kwargs):
-        app.max_conns, app.connection_made_callback, app.pool_memory = max_conns, connection_made_callback, pool_memory
+    __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
+    def __init__(app, *args, max_conns = 100, max_contexts = 1, connection_made_callback = None, pool_memory = None, **kwargs):
+        app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
 
         app.pool, app.args, app.kwargs = app.get_pool(), args, kwargs
 
@@ -372,7 +388,7 @@ class SessionPool:
             __memory__["SessionPool"] = (pool_memory := {})
 
         if not (pool := pool_memory.get("pool")):
-            pool_memory["pool"] = (pool := __SessionPool__(max_conns=app.max_conns))
+            pool_memory["pool"] = (pool := __SessionPool__(max_conns=app.max_conns, max_contexts=app.max_contexts))
 
         return pool
 
@@ -390,12 +406,14 @@ class SessionPool:
         return await app.session.__aexit__(*args, **kwargs)
         
 class createSessionPool:
-    __slots__ = ("pool", "pool_memory",)
-    def __init__(app):
-        app.pool_memory = {}
+    __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts",)
+    def __init__(app, max_conns: int = 100, max_contexts: int = 1):
+        app.pool_memory, app.max_conns, app.max_contexts = {}, max_conns, max_contexts
+    
+    def Session(app, *a, **k): return app.SessionPool(*a, **k)
 
     def SessionPool(app, *a, **k):
-        return SessionPool(*a, pool_memory = app.pool_memory, **k)
+        return SessionPool(*a, max_conns = app.max_conns, max_contexts = app.max_contexts, pool_memory = app.pool_memory, **k)
 
 if __name__ == "__main__":
     pass
