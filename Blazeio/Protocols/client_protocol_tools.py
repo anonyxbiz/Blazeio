@@ -40,7 +40,6 @@ class Async:
         while a in data[idx_inc:] and (idx := data.find(a)) != -1:
             idx_inc += idx + len(a)
 
-            await sleep(0)
             if data[idx:idx + len(a)] == b: break
             data = data[:idx] + b + data[idx + len(a):]
 
@@ -50,19 +49,16 @@ class Async:
     async def ite(app, data: (dict, list)):
         if isinstance(data, dict):
             for key, item in data.items():
-                await sleep(0)
                 yield (key, item)
 
         elif isinstance(data, list):
             for item in data:
-                await sleep(0)
                 yield item
 
     @classmethod
     async def cont(app, data: list):
         conted = ""
         for item in data:
-            await sleep(0)
             conted += item
 
         return conted

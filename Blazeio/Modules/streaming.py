@@ -94,7 +94,7 @@ class Abort(BlazeioException):
 
 class Eof(BlazeioException):
     __slots__ = ()
-    def __init__(app): pass
+    def __init__(app, *args): pass
 
 class __Payload__:
     __slots__ = ()

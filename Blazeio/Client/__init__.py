@@ -345,7 +345,8 @@ class __SessionPool__:
             if len(app.sessions) >= app.max_conns:
                 inst = app.sessions.pop(list(app.sessions.keys())[-1])
                 inst["session"].close_on_exit = True
-
+                
+                await inst["context"].wait()
                 await inst["session"].__aenter__()
                 await inst["session"].__aexit__()
 
