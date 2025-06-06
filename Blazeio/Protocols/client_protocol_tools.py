@@ -579,5 +579,63 @@ class Pulltools(Parsers):
     async def drain_pipe(app):
         async for chunk in app.pull(): pass
 
+    async def aread_partial(app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
+        buff, started = bytearray(), 0
+
+        async for chunk in app.pull():
+            buff.extend(chunk)
+
+            if not started:
+                if (idx := buff.find(start)) == -1:
+                    buff = buff[-len(start):]
+                    continue
+
+                started = 1
+
+                if not cont:
+                    idx += len(start)
+
+                buff = buff[idx:]
+
+            if (ide := buff.find(end)) == -1: continue
+
+            if cont:
+                ide += len(end)
+
+            buff = buff[:ide]
+            break
+
+        if decode:
+            buff = buff.decode()
+
+        return buff
+
+    async def stream_partial(app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
+        buff, started, ended = bytearray(), 0, 0
+
+        async for chunk in app.pull():
+            if not started:
+                buff.extend(chunk)
+                if (idx := buff.find(start)) == -1:
+                    buff = buff[-len(start):]
+                    continue
+                
+                started = 1
+
+                if not cont:
+                    idx += len(start)
+
+                chunk, buff = bytes(memoryview(buff)[idx:]), None
+
+            if (ide := chunk.find(end)) != -1:
+                ended = 1
+                if cont:
+                    ide += len(end)
+                chunk = chunk[:ide]
+            
+            yield chunk
+
+            if ended: break
+
 if __name__ == "__main__":
     pass
