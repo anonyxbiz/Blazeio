@@ -579,7 +579,9 @@ class Pulltools(Parsers):
     async def drain_pipe(app):
         async for chunk in app.pull(): pass
 
-    async def aread_partial(app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
+class Extractors:
+    @classmethod
+    async def aread_partial(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
         buff, started = bytearray(), 0
 
         async for chunk in app.pull():
@@ -610,7 +612,8 @@ class Pulltools(Parsers):
 
         return buff
 
-    async def stream_partial(app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
+    @classmethod
+    async def stream_partial(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
         buff, started, ended = bytearray(), 0, 0
 
         async for chunk in app.pull():
