@@ -117,6 +117,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         return False
 
+    def form_urlencode(app, form: dict):
+        return "&".join(["%s=%s" % (key, form[key]) for key in form]).encode()
+
     async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
@@ -137,7 +140,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
             proxy = None
 
-        method = method.upper()
+        if method:
+            method = method.upper()
 
         if not host and not port:
             app.host, app.port, app.path = ioConf.url_to_host(url, app.params)
@@ -152,7 +156,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             multipart = Multipart(**multipart)
             stdheaders.update(multipart.headers)
             content = multipart.pull()
-        
+
         if "client_protocol" in kwargs:
             client_protocol = kwargs.pop("client_protocol")
         else:
@@ -179,15 +183,22 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]):
                 normalized_headers["Host"] = app.host
 
+        if "urlencoded_form" in kwargs:
+            body = app.form_urlencode(kwargs.pop("urlencoded_form"))
+            normalized_headers["Content-length"] = str(len(body))
+
+            if not "Content-type" in normalized_headers:
+                normalized_headers["Content-type"] = "application/x-www-form-urlencoded"
+
         if json:
             body = dumps(json).encode()
-            if not 'Content-type' in normalized_headers:
+            if not "Content-type" in normalized_headers:
                 normalized_headers["Content-type"] = "application/json"
-
-            if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
         if body:
             normalized_headers["Content-length"] = str(len(body))
+
+        if "Content-length" in normalized_headers:
             if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
 
         if (content is not None or body is not None) and not "Content-length" in stdheaders and not "Transfer-encoding" in stdheaders and method not in {"GET", "HEAD", "OPTIONS", "CONNECT", "DELETE"}:
@@ -337,8 +348,17 @@ class __SessionPool__:
     async def release(app, session, context):
         async with context:
             context.notify(1)
+    
+    def create_instance(app, url, *args, **kwargs):
+        instance = {}
+        instance["context"] = ioCondition()
+        kwargs.update(dict(on_exit_callback = (app.release, instance["context"])))
 
-    async def get(app, url, *a, **k):
+        instance["session"] = Session(url, *args, **kwargs)
+
+        return instance
+
+    async def get(app, url, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
 
         if not (instances := app.sessions.get(key := (host, port))):
@@ -350,30 +370,23 @@ class __SessionPool__:
                 await inst["session"].__aenter__()
                 await inst["session"].__aexit__()
 
-            app.sessions[key] = (instances := [(instance := {})])
-            instance["context"] = ioCondition()
-
-            k.update(dict(on_exit_callback = (app.release, instance["context"]) ))
-
-            instance["session"] = Session(url, *a, **k)
+            app.sessions[key] = (instances := [])
+            instances.append(instance := app.create_instance(url, *args, **kwargs))
         else:
             for instance in instances:
                 if instance["context"].event.is_set(): break
                 else: instance = None
-    
+
             if not instance:
                 if len(instances) < app.max_contexts:
-                    app.sessions[key].append(instance := {})
-                    instance["context"] = ioCondition()
-                    k.update(dict(on_exit_callback = (app.release, instance["context"]) ))
-                    instance["session"] = Session(url, *a, **k)
+                    instances.append(instance := app.create_instance(url, *args, **kwargs))
                 else:
-                    instance = instances[-1]
+                    waiters = [i["context"].waiter_count for i in instances]
+                    instance = instances[waiters.index(min(waiters))]
 
-        if instance["session"].protocol:
-            if not instance["session"].protocol.transport.is_closing():
-                async with instance["context"]:
-                    await instance["context"].wait()
+        if (not instance["session"].protocol) or (instance["session"].protocol and not instance["session"].protocol.transport.is_closing()):
+            async with instance["context"]:
+                await instance["context"].wait()
 
         return instance["session"]
 
@@ -408,9 +421,9 @@ class SessionPool:
         
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts",)
-    def __init__(app, max_conns: int = 100, max_contexts: int = 1):
+    def __init__(app, max_conns: int = 100, max_contexts: int = 2):
         app.pool_memory, app.max_conns, app.max_contexts = {}, max_conns, max_contexts
-    
+
     def Session(app, *a, **k): return app.SessionPool(*a, **k)
 
     def SessionPool(app, *a, **k):
