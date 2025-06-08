@@ -371,11 +371,15 @@ class App(Handler, OOP_RouteDef):
         await app.configure_server_handler()
 
         protocol = app.ServerConfig.server_protocol
+        
+        if not "sock" in kwargs:
+            args = (host, port)
+        else:
+            args = ()
 
         app.server = await app.event_loop.create_server(
             lambda: protocol(app.handle_client, app.event_loop, ioConf.INBOUND_CHUNK_SIZE),
-            host,
-            port,
+            *args,
             **kwargs
         )
 
