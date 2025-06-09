@@ -44,7 +44,7 @@ debug_mode = environ.get("BlazeioDev", None)
 main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
-    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync", "loop", "headers_to_http_bytes")
+    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync", "loop", "headers_to_http_bytes", "ServerConfig",)
 
     def __init__(app):
         for bound in ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE"):
@@ -232,7 +232,12 @@ class Default_logger:
 
         if add_new_line and not "\n" in log: log += "\n"
 
-        sys_stdout.write("\r%s%s" % (color,log))
+        if not log.startswith("\\"):
+            prec = "\r"
+        else:
+            prec = ""
+
+        sys_stdout.write("%s%s%s" % (prec, color, log))
 
     async def __log__(app, *args, **kwargs):
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs)), app.loop))
@@ -392,13 +397,13 @@ class __ReMonitor__:
             await app.cancel(Payload, task, "BlazeioHealth:: Task [%s] diconnected." % task.get_name())
             return True
 
-    async def cancel(app, Payload, task, msg: str = ""):
+    async def cancel(app, Payload, task, msg: (None, str) = None):
         try: task.cancel()
         except CancelledError: pass
-        except KeyboardInterrupt as e: raise e
+        except KeyboardInterrupt: raise
         except Exception as e: await Log.warning("Blazeio", str(e))
 
-        if msg != "": await Log.warning(Payload, msg)
+        if msg: await Log.warning(Payload, msg)
 
     async def inspect_task(app, task):
         coro = task.get_coro()
@@ -429,12 +434,9 @@ class __ReMonitor__:
     async def analyze_protocols(app):
         for task in all_tasks(loop=app.event_loop):
             if task is not current_task():
-                try:
-                    await app.inspect_task(task)
-                except AttributeError:
-                    pass
-                except KeyboardInterrupt as e: raise e
-                except Exception as e:
-                    await Log.critical(e)
+                try: await app.inspect_task(task)
+                except AttributeError: pass
+                except KeyboardInterrupt: raise
+                except Exception as e: await Log.critical(e)
 
 ReMonitor = __ReMonitor__()

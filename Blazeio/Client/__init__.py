@@ -53,7 +53,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
     
-    known_ext_types = (BlazeioException, ConnectionRefusedError, KeyboardInterrupt, CancelledError, RuntimeError)
+    known_ext_types = (BlazeioException, ConnectionRefusedError, KeyboardInterrupt, CancelledError, RuntimeError, OSError)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)

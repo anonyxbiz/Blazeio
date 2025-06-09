@@ -496,7 +496,7 @@ class Pulltools(Parsers):
             return chunk
 
     async def brotli(app):
-        if not app.decompressor: app.decompressor = await to_thread(Decompressor)
+        if not app.decompressor: app.decompressor = Decompressor()
 
         buff = memarray()
 
@@ -504,10 +504,15 @@ class Pulltools(Parsers):
             buff.extend(chunk)
 
             if len(buff) >= 1024:
-                yield await to_thread(app.decompressor.decompress, bytes(buff))
+                if len(buff) >= 102400:
+                    chunk = await to_thread(app.decompressor.decompress, bytes(buff))
+                else:
+                    chunk = app.decompressor.decompress(bytes(buff))
+
+                yield chunk
                 buff = memarray(buff[len(buff):])
 
-        if buff: yield await to_thread(app.decompressor.decompress, bytes(buff))
+        if buff: yield app.decompressor.decompress(bytes(buff))
 
     async def gzip(app):
         if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)

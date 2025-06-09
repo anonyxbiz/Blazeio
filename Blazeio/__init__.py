@@ -239,7 +239,9 @@ class App(Handler, OOP_RouteDef):
     event_loop = loop
     REQUEST_COUNT = 0
     declared_routes = OrderedDict()
-    ServerConfig = SrvConfig()
+    
+    ioConf.ServerConfig = SrvConfig()
+    ServerConfig = ioConf.ServerConfig
     on_exit = deque()
     is_server_running = SharpEvent(False, loop)
 
@@ -402,7 +404,7 @@ class App(Handler, OOP_RouteDef):
         except CancelledError: pass
         except Exception: raise
 
-    async def exit(app, e, exception_handled = False):
+    async def exit(app, e, exception_handled = False, terminate = True):
         warn = lambda _log: Log.warning("<Blazeio.exit>", ":: %s" % str(_log))
 
         if not exception_handled:
@@ -411,13 +413,14 @@ class App(Handler, OOP_RouteDef):
             finally:
                 await warn("Exited.")
                 await log.flush()
-                return main_process.terminate()
+                return None if not terminate else main_process.terminate()
 
         if isinstance(e, KeyboardInterrupt):
             await warn("KeyboardInterrupt Detected, Shutting down gracefully.")
             app.server.close()
 
-        else: await traceback_logger(e)
+        else:
+            await traceback_logger(e)
 
         for callback in app.on_exit:
             callback.run()
