@@ -53,7 +53,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
     
-    known_ext_types = (BlazeioException, ConnectionRefusedError, KeyboardInterrupt, CancelledError, RuntimeError, OSError)
+    known_ext_types = (BlazeioException, KeyboardInterrupt, CancelledError, RuntimeError, str)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
@@ -70,13 +70,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         return method
 
-    async def __aenter__(app):
+    async def __aenter__(app, create_connection = True):
         if not app.loop:
             app.loop = get_event_loop()
 
         if app.protocol: return app
 
-        return await app.create_connection(*app.args, **app.kwargs)
+        return await app.create_connection(*app.args, **app.kwargs) if create_connection else create_connection
 
     def conn(app, *a, **k): return app.prepare(*args, **kwargs)
 
@@ -92,7 +92,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs)
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
-        known = isinstance(exc_value, (app.known_ext_types))
+        known = isinstance(exc_value, app.known_ext_types)
 
         if (on_exit_callback := app.kwargs.get("on_exit_callback")):
             func = on_exit_callback[0]
@@ -120,7 +120,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, form[key]) for key in form]).encode()
 
-    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, **kwargs):
+    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
             if (val := __locals__.get(key, NotImplemented)) == NotImplemented: continue
@@ -152,7 +152,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if i in normalized_headers and i not in stdheaders:
                 stdheaders[i] = normalized_headers.pop(i)
 
-        if (multipart := kwargs.get("multipart")):
+        if multipart:
             multipart = Multipart(**multipart)
             stdheaders.update(multipart.headers)
             content = multipart.pull()
@@ -183,25 +183,18 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if not all([h in normalized_headers for h in ["Host", "Authority", ":authority", "X-forwarded-host"]]):
                 normalized_headers["Host"] = app.host
 
-        if "urlencoded_form" in kwargs:
-            body = app.form_urlencode(kwargs.pop("urlencoded_form"))
-            normalized_headers["Content-length"] = str(len(body))
-
-            if not "Content-type" in normalized_headers:
-                normalized_headers["Content-type"] = "application/x-www-form-urlencoded"
+        if form_urlencoded:
+            body = app.form_urlencode(form_urlencoded)
+            normalized_headers["Content-type"] = "application/x-www-form-urlencoded"
 
         if json:
             body = dumps(json).encode()
-            if not "Content-type" in normalized_headers:
-                normalized_headers["Content-type"] = "application/json"
+            normalized_headers["Content-type"] = "application/json"
 
         if body:
             normalized_headers["Content-length"] = str(len(body))
 
-        if "Content-length" in normalized_headers:
-            if (i := "Transfer-encoding") in normalized_headers: normalized_headers.pop(i)
-
-        if (content is not None or body is not None) and not "Content-length" in stdheaders and not "Transfer-encoding" in stdheaders and method not in {"GET", "HEAD", "OPTIONS", "CONNECT", "DELETE"}:
+        if (content is not None or body is not None) and not "Content-length" in normalized_headers and not "Transfer-encoding" in normalized_headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT", "DELETE"}:
             if not isinstance(content, (bytes, bytearray)):
                 normalized_headers["Transfer-encoding"] = "chunked"
             else:
@@ -212,6 +205,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if app.proxy_port:
             ssl = ssl_context if app.proxy_port == 443 else None
+
+        if "Content-length" in normalized_headers and normalized_headers.get(i := "Transfer-encoding"):
+            normalized_headers.pop(i)
 
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
 
@@ -240,7 +236,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         await app.protocol.push(payload)
 
         if not app.write:
-            if "Transfer-encoding" in stdheaders: app.write = app.write_chunked
+            if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
             else:
                 app.write = app.push
 
@@ -365,9 +361,8 @@ class __SessionPool__:
             if len(app.sessions) >= app.max_conns:
                 inst = app.sessions.pop(list(app.sessions.keys())[-1])
                 inst["session"].close_on_exit = True
-                
                 await inst["context"].wait()
-                await inst["session"].__aenter__()
+                await inst["session"].__aenter__(create_connection = False)
                 await inst["session"].__aexit__()
 
             app.sessions[key] = (instances := [])
@@ -411,13 +406,17 @@ class SessionPool:
 
         if app.connection_made_callback: app.connection_made_callback()
 
-        await app.session.__aenter__()
-        session = await app.session.prepare(*app.args, **app.kwargs)
+        await app.session.__aenter__(create_connection = False)
 
-        return session
+        return await app.session.prepare(*app.args, **app.kwargs)
+    
+    async def exit(app):
+        return await sleep(0)
 
     async def __aexit__(app, *args, **kwargs):
-        return await app.session.__aexit__(*args, **kwargs)
+        await app.session.__aexit__(*args, **kwargs)
+
+        return await app.exit()
         
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts",)

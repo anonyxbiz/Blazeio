@@ -36,7 +36,11 @@ class DictView:
         return False
 
     def __setitem__(app, key, value):
-        if key in app._capitalized: app._dict.pop(app._capitalized[key])
+        if key in app._capitalized:
+            app.pop(key)
+        else:
+            app._capitalized[key.capitalize()] = key
+
         app._dict[key] = value
 
     def __getitem__(app, key):
@@ -422,6 +426,11 @@ def read_safe_sync(_type = bytes, *a, **k):
         return bytes(data)
 
 class __plog__:
+    lines = {
+        "<line_1>": "\033[1;1H"
+    }
+    line_sepr = ("<", "line_", ">")
+
     def __init__(app): pass
 
     def __getattr__(app, name):
@@ -441,7 +450,12 @@ class __plog__:
             indent += 1
             frmt += "\n%s%s" % (sepr*indent, log)
 
-        return logger_("<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
+        if name.startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1 and (line := app.lines.get(name[:ide + 1])):
+            name = name[ide + 1:]
+        else:
+            line = ""
+
+        return logger_(line + "<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
 
 plog = __plog__()
 
