@@ -316,6 +316,9 @@ class Parsers:
                     app.kwargs["cookies"][key] = val
 
         if app.follow_redirects and app.status_code in app.http_redirect_status_range and (location := app.response_headers.get("location", None)):
+            if location.startswith("/"):
+                location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
+
             return await app.prepare(location)
 
         return True
