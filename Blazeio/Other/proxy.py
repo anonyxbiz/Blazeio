@@ -300,11 +300,7 @@ class WebhookClient:
 
         if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
 
-        async with io.Session.post("http://127.0.0.1:%d/" % int(state.get("Blazeio.Other.proxy.port")), {"Remote_webhook": "Remote_webhook", "Content-type": "application/json", "Transfer-encoding": "chunked", "route": "remote_webhook"}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None) as session:
-            await session.eof(io.dumps({
-                host: host_data
-            }).encode())
-
+        async with io.Session.post("http://127.0.0.1:%d/" % int(state.get("Blazeio.Other.proxy.port")), {"Remote_webhook": "Remote_webhook", "Content-type": "application/json", "Transfer-encoding": "chunked", "route": "remote_webhook"}, json = {host: host_data}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None) as session:
             await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
 whclient = WebhookClient()
