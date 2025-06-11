@@ -426,9 +426,8 @@ def read_safe_sync(_type = bytes, *a, **k):
         return bytes(data)
 
 class __plog__:
-    lines = {
-        "<line_1>": "\033[1;1H"
-    }
+    lines = {"<line_%d>" % i: "\033[%d;1H" % i for i in range(1,2)}
+
     line_sepr = ("<", "line_", ">")
 
     def __init__(app): pass
@@ -450,12 +449,16 @@ class __plog__:
             indent += 1
             frmt += "\n%s%s" % (sepr*indent, log)
 
-        if name.startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1 and (line := app.lines.get(name[:ide + 1])):
+        if name.startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
+            if not (line := app.lines.get(name[:ide + 1])):
+                lineno = int(name[idb + len(app.line_sepr[1]):ide])
+                app.lines[line] = (line := "\033[%d;1H" % lineno)
+
             name = name[ide + 1:]
         else:
             line = ""
 
-        return logger_(line + "<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
+        return logger_(line + ("<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt)))
 
 plog = __plog__()
 
