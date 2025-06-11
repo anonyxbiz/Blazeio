@@ -221,7 +221,9 @@ class App(Sslproxy, Transporters):
                 app.protocols.pop(r.identifier)
     
     def is_web_hook(app, r):
-        if r.ip_host != "127.0.0.1" or not "Remote_webhook" in r.headers: raise io.Abort("Unauthorized", 503)
+        if r.ip_host != "127.0.0.1":
+            if not "Remote_webhook" in r.headers: raise io.Abort("Unauthorized", 503)
+
         return True
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
