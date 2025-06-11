@@ -456,10 +456,19 @@ class Pulltools(Parsers):
         return data if not decode else data.decode()
 
     async def read_exactly(app, size: int, decode=False):
-        data = bytearray()
+        data, point = memarray(size), 0
         async for chunk in app.pull():
-            data.extend(chunk)
-            if len(data) >= size: break
+            len_ = len(chunk)
+            rem = (size-point)
+
+            if len_ > rem:
+                chunk = chunk[:rem]
+                len_ = len(chunk)
+
+            data[point: point + len_] = chunk
+
+            point += len_
+            if point >= size: break
 
         return data if not decode else data.decode()
 
@@ -472,7 +481,6 @@ class Pulltools(Parsers):
     async def find(app, *args):
         data, start, end, cont = args
         while (idx := data.find(start)) != -1:
-            await sleep(0)
             data = data[idx + len(start):]
 
             if (ids := data.find(end)) != -1:

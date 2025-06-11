@@ -449,7 +449,7 @@ class __plog__:
             indent += 1
             frmt += "\n%s%s" % (sepr*indent, log)
 
-        if name.startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
+        if str(name).startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
             if not (line := app.lines.get(name[:ide + 1])):
                 lineno = int(name[idb + len(app.line_sepr[1]):ide])
                 app.lines[line] = (line := "\033[%d;1H" % lineno)

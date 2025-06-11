@@ -10,7 +10,7 @@ parser = ArgumentParser(prog="Blazeio", description = "Blazeio is a cutting-edge
 
 parser.add_argument('url', type=str)
 
-for query, _type, _help in (("save", str, "filepath"), ("method", str, "http request method")):
+for query, _type, _help in (("save", str, "filepath"), ("write", str, "filepath"), ("method", str, "http request method")):
     parser.add_argument('-%s' % query, '--%s' % query, type = _type, required = False, help = _help.capitalize())
 
 args = parser.parse_args()
@@ -18,15 +18,13 @@ args = parser.parse_args()
 class App:
     def __init__(app): pass
 
-    async def fetch(app, url: str, method: (None, str) = None, save: (None, str) = None):
-        if "," in url:
-            return [await app.fetch(i, method, save) for i in url.split(",")]
-
+    async def fetch(app, url: str, method: (None, str) = None, save: (None, str) = None, write: (None, str) = None):
         if not url[:5].lower().startswith("http"): url = "https://%s" % url
 
         headers = {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
+            'accept-encoding': 'gzip, br',
             'origin': url,
             'priority': 'u=1, i',
             'referer': url,
@@ -44,9 +42,9 @@ class App:
         async with Session(url, method or "get", headers, follow_redirects = True) as resp:
             if save:
                 await resp.save(save)
-            else:
+            elif write:
                 if not resp.is_prepared(): await resp.prepare_http()
-                
+
                 buff, filename, fd = bytearray(), None, None
                 if (ext := "html") in resp.content_type.lower():
                     title_s, title_e, title = b"<title", b"</title", None
@@ -60,9 +58,11 @@ class App:
                             await fd.write(bytes(buff))
                         elif fd:
                             await fd.write(chunk)
-
-                else:
-                    async for chunk in resp.pull(): await log.info(chunk.decode())
+            else:
+                async for chunk in resp.pull():
+                    try: chunk = chunk.decode()
+                    except: pass
+                    await log.info(chunk)
 
             await log.debug("<%s@%s%s> completed request in <%s's>." % (resp.args[1].lower(), resp.host, resp.path, str(perf_counter() - start)))
 
