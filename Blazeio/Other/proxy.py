@@ -221,11 +221,8 @@ class App(Sslproxy, Transporters):
                 app.protocols.pop(r.identifier)
     
     def is_web_hook(app, r):
-        if "Remote_webhook" in r.headers:
-            if r.ip_host != "127.0.0.1":
-                raise io.Abort("Unauthorized", 503)
-
-            return True
+        if r.ip_host != "127.0.0.1" or not "Remote_webhook" in r.headers: raise io.Abort("Unauthorized", 503)
+        return True
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
         r.store = io.DotDict(track_metrics = app.track_metrics)
@@ -247,7 +244,7 @@ class App(Sslproxy, Transporters):
                 host = host[:idx]
 
         if r.store.track_metrics: r.store.analytics.host_resolution = io.perf_counter() - r.store.analytics.host_resolution
-        
+
         if app.is_web_hook(r): return await getattr(app, r.headers.get("route", "remote_webhook"))(r)
 
         if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
