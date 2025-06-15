@@ -307,11 +307,11 @@ if __name__ == "__main__":
 
     scope.web.attach(app := App(proxy_port = proxy_port))
 
+    conf = io.DotDict()
+
     if args.ssl:
         app.transporter = app.tls_transporter
-        conf = io.DotDict(ssl=app.configure_ssl())
-    else:
-        conf = io.DotDict()
+        conf.ssl = app.configure_ssl()
 
     state = app.json()
     
