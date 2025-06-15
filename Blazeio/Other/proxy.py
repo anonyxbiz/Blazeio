@@ -327,7 +327,7 @@ if __name__ == "__main__":
     conf.sock.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
     
     if args.ssl:
-        conf.sock.setsockopt(IPPROTO_TCP, IPPROTO_TCP, 1)
+        conf.sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
 
     conf.sock.bind((proxy_host, proxy_port))
     scope.web.runner(**conf._dict)
