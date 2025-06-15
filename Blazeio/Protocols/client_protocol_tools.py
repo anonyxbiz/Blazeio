@@ -448,14 +448,14 @@ class Pulltools(Parsers):
             pass
 
     async def aread(app, decode=False):
-        data = bytearray()
         if not app.is_prepared(): await app.prepare_http()
 
         if app.handler == app.protocol.pull: return
 
-        async for chunk in app.pull():
-            data.extend(chunk)
+        if app.content_length: return await app.read_exactly(app.content_length, decode)
 
+        data = bytearray()
+        async for chunk in app.pull(): data.extend(chunk)
         return data if not decode else data.decode()
 
     async def read_exactly(app, size: int, decode=False):

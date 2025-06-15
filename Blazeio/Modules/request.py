@@ -90,12 +90,32 @@ class Request:
         return cookie
 
     @classmethod
-    async def get_json(app, r):
-        temp = memarray(r.content_length)
+    async def read_exactly(app, r, size: int, decode=False):
+        data, point = memarray(size), 0
         async for chunk in r.pull():
-            temp[r.current_length-len(chunk):r.current_length] = chunk
+            len_ = len(chunk)
+            rem = (size-point)
 
-        try: return loads(temp[:r.content_length].decode("utf-8"))
+            if len_ > rem:
+                chunk = chunk[:rem]
+                len_ = len(chunk)
+
+            data[point: point + len_] = chunk
+
+            point += len_
+            if point >= size: break
+
+        return data if not decode else data.decode()
+
+    @classmethod
+    async def get_json(app, r):
+        if r.content_length:
+            payload = await app.read_exactly(r, r.content_length)
+        else:
+            payload = bytearray()
+            async for chunk in r.pull(): payload.extend(chunk)
+
+        try: return loads(payload.decode("utf-8"))
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod

@@ -52,6 +52,7 @@ class __Deliver__:
             data = dumps(data, indent=indent).encode()
 
         headers["Content-type"] = content_type
+        headers["Content-length"] = str(len(data))
 
         if path:
             status = 302 if status == 200 else status

@@ -2,6 +2,7 @@ import Blazeio as io
 from os import mkdir, access as os_access, R_OK as os_R_OK, W_OK as os_W_OK, X_OK as os_X_OK, makedirs
 from pathlib import Path
 from ssl import TLSVersion
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEPORT, IPPROTO_TCP, TCP_NODELAY
 
 scope = io.DotDict()
 
@@ -36,12 +37,13 @@ class Sslproxy:
     makedirs(cert_dir, exist_ok=True)
 
     ssl_contexts = {}
+    server_name = "hook.localhost"
 
     def __init__(app): pass
 
     def sni_callback(app, ssl_socket, server_name, ssl_context):
         if not server_name:
-            server_name = "hook.localhost"
+            server_name = app.server_name
 
         if server_name and (server := app.hosts.get(server_name)) is not None:
             if not (ctx := server.get("ssl_context")) or not (ctx := app.ssl_contexts.get(ctx)):
@@ -97,13 +99,9 @@ class Transporters:
         await resp.eof()
 
     async def no_tls_transporter(app, r: io.BlazeioProtocol, remote: str, srv: dict):
-        if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter()
-
         async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
-            if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter() - r.store.analytics.ttfb
-
             if r.method not in r.non_bodied_methods:
-                r.store.task = io.create_task(app.puller(r, resp))
+                r.store = io.create_task(app.puller(r, resp))
 
             if not resp.is_prepared():
                 await resp.prepare_http()
@@ -117,31 +115,28 @@ class Transporters:
 
             await r.eof()
 
-            if r.store.task: await r.store.task
+            if r.store: await r.store
 
     async def tls_transporter(app, r: io.BlazeioProtocol, remote: str, srv: dict):
-        if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter()
-
         async with io.Session(remote + r.tail, r.method, r.headers, decode_resp=False, add_host = False) as resp:
-            if r.store.track_metrics: r.store.analytics.ttfb = io.perf_counter() - r.store.analytics.ttfb
-
             if r.method not in r.non_bodied_methods:
-                r.store.task = io.create_task(app.puller(r, resp))
+                r.store = io.create_task(app.puller(r, resp))
 
             if not resp.is_prepared():
                 await resp.prepare_http()
 
-            if r.store.track_metrics: resp.headers.update({"Blazeio.Other.proxy.analytics.%s" % key: val for key, val in r.store.analytics.json().items()})
-
             await r.prepare(resp.headers, resp.status_code, encode_resp=False)
 
-            buff = bytearray()
+            buff = None
 
             async for chunk in resp.pull():
                 if not buff and len(chunk) >= app.tls_record_size:
                     await r.write(chunk)
                     continue
-                
+
+                if buff is None:
+                    buff = bytearray()
+
                 buff.extend(chunk)
 
                 if len(buff) >= app.tls_record_size:
@@ -151,7 +146,7 @@ class Transporters:
 
             await r.eof(buff)
 
-            if r.store.task: await r.store.task
+            if r.store: await r.store
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics")
@@ -193,14 +188,12 @@ class App(Sslproxy, Transporters):
         await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=1))
 
     async def remote_webhook(app, r):
-        json = await io.Request.get_json(r)
-
-        app.hosts.update(json)
+        app.hosts.update(json := await io.Request.get_json(r))
         app.host_update_event.set()
 
-        await io.plog.cyan("remote_webhook", "added: %s" % io.dumps(app.hosts, indent=1))
+        await io.plog.cyan("remote_webhook", "added: %s" % io.dumps(json, indent=1))
 
-        raise io.Abort("Added", 200)
+        raise io.Eof(await io.Deliver.json(json))
 
     async def logger(app, r, i):
         await io.plog.cyan("%s:%d | %s@%s%s" % (r.ip_host, r.ip_port, r.method.upper(), i[-1], r.tail), ", ".join(["(%s=%s)" % (i, str(getattr(r, i, ""))[:100]) for i in r.__slots__]))
@@ -220,36 +213,26 @@ class App(Sslproxy, Transporters):
                 r.cancel(str(io.Protocoltimeout()))
                 app.protocols.pop(r.identifier)
     
-    def is_web_hook(app, r):
+    def is_web_hook(app, r, host: str):
         if r.ip_host == "127.0.0.1":
-            if not "Remote_webhook" in r.headers: raise io.Abort("Unauthorized", 503)
+            if host != app.server_name: return False
         else:
             return False
 
         return True
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
-        r.store = io.DotDict(track_metrics = app.track_metrics)
-
-        if r.store.track_metrics: r.store.analytics = io.DotDict(prepare_http_request = io.perf_counter())
-
+        r.store = None
         await io.Request.prepare_http_request(r)
 
-        if r.store.track_metrics: r.store.analytics.prepare_http_request = io.perf_counter() - r.store.analytics.prepare_http_request
-
-        if r.store.track_metrics: r.store.analytics.host_resolution = io.perf_counter()
-
         if app.transporter == app.tls_transporter and (ssl_object := r.transport.get_extra_info("ssl_object")):
-            # Extract host from the one set by the sni_callback, this can be sometimes used for high perfomance networking as you dont need to parse the request, just connecting to the host and proxying data directly
             host = ssl_object.context.server_hostname
         else:
             host = r.headers.get("Host", "")
             if (idx := host.rfind(":")) != -1:
                 host = host[:idx]
 
-        if r.store.track_metrics: r.store.analytics.host_resolution = io.perf_counter() - r.store.analytics.host_resolution
-
-        if app.is_web_hook(r): return await getattr(app, r.headers.get("route", "remote_webhook"))(r)
+        if app.is_web_hook(r, host): return await getattr(app, r.headers.get("route", "remote_webhook"))(r)
 
         if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
@@ -304,7 +287,7 @@ class WebhookClient:
 
         if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
 
-        async with io.Session.post("http://127.0.0.1:%d/" % int(state.get("Blazeio.Other.proxy.port")), {"Remote_webhook": "Remote_webhook", "Content-type": "application/json", "Transfer-encoding": "chunked", "route": "remote_webhook"}, json = {host: host_data}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None) as session:
+        async with io.Session.post("https://127.0.0.1:%d/" % int(state.get("Blazeio.Other.proxy.port")), {"host": state.get("server_name"), "route": "remote_webhook"}, json = {host: host_data}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None) as session:
             await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
 whclient = WebhookClient()
@@ -316,27 +299,35 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("-port", "--port", default = 8080)
-    parser.add_argument("-ssl", "--ssl", default = False)
+    parser.add_argument("-ssl", "--ssl", action = "store_true")
 
     args = parser.parse_args()
 
-    scope.web = io.App("0.0.0.0", proxy_port := int(args.port), __log_requests__=0)
+    scope.web = io.App(proxy_host := "0.0.0.0", proxy_port := int(args.port))
 
     scope.web.attach(app := App(proxy_port = proxy_port))
 
     if args.ssl:
         app.transporter = app.tls_transporter
-        conf = dict(ssl=app.configure_ssl())
+        conf = io.DotDict(ssl=app.configure_ssl())
     else:
-        conf = dict()
-    
+        conf = io.DotDict()
+
     state = app.json()
     
     state.update({
         "Blazeio.Other.proxy.port": proxy_port,
-        "Blazeio.Other.proxy.ssl": args.ssl
+        "Blazeio.Other.proxy.ssl": args.ssl,
+        "server_name": app.server_name
     })
 
     whclient.save_state(state)
 
-    scope.web.runner(**conf)
+    conf.sock = socket(AF_INET, SOCK_STREAM)
+    conf.sock.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+    
+    if args.ssl:
+        conf.sock.setsockopt(IPPROTO_TCP, IPPROTO_TCP, 1)
+
+    conf.sock.bind((proxy_host, proxy_port))
+    scope.web.runner(**conf._dict)
