@@ -418,7 +418,6 @@ class App(Handler, OOP_RouteDef):
         if isinstance(e, KeyboardInterrupt):
             await warn("KeyboardInterrupt Detected, Shutting down gracefully.")
             app.server.close()
-
         else:
             await traceback_logger(e)
 
