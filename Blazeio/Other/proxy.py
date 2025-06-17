@@ -326,7 +326,7 @@ class WebhookClient:
 
         ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
 
-        async with io.Session.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
+        async with io.Session.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": scope.server_name, "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
             await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
 scope.whclient = WebhookClient()
