@@ -361,7 +361,7 @@ if __name__ == "__main__":
     
     state.update({
         "Blazeio.Other.proxy.port": args.port,
-        "Blazeio.Other.proxy.ssl": args.ssl,
+        "Blazeio.Other.proxy.ssl": True if args.ssl else False,
         "server_name": scope.server_name
     })
 
