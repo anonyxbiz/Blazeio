@@ -164,6 +164,7 @@ class SrvConfig:
     __log_requests__: bool = False
     INBOUND_CHUNK_SIZE: (None, int) = None
     server_protocol = BlazeioServerProtocol
+    sock = None
 
     def __init__(app): pass
 
@@ -430,10 +431,24 @@ class App(Handler, OOP_RouteDef):
         await warn("Event loop wiped, ready to exit.")
 
     def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))
+    
+    def sock(app, *args, **kwargs):
+        if not (sock := app.ServerConfig.sock):
+            app.ServerConfig.sock = (sock := socket(AF_INET, SOCK_STREAM, *args, **kwargs))
+            sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+
+        return sock
 
     def runner(app, host: (None, str) = None, port: (None, int) = None, **kwargs):
+        if not host: host = app.ServerConfig.host
+        if not port: port = app.ServerConfig.port
+
         if not kwargs.get("backlog"):
             kwargs["backlog"] = 5000
+
+        if app.ServerConfig.sock:
+            app.ServerConfig.sock.bind((host, port))
+            kwargs["sock"] = app.ServerConfig.sock
 
         try:
             app.event_loop.run_until_complete(app.run(host, port, **kwargs))
