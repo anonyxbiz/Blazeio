@@ -166,8 +166,7 @@ class App(Sslproxy, Transporters):
             setattr(app, key, __locals__[key])
 
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
-        
-        print(scope.HOME)
+
         app.transporter = app.no_tls_transporter
 
         app.tasks.append(io.ioConf.loop.create_task(app.update_file_db()))
@@ -305,9 +304,10 @@ class WebhookClient:
     def get_state(app):
         with open(app.conf, "rb") as f:
             state = io.loads(f.read())
-
-        with open(state.get("blazeio_proxy_hosts"), "rb") as f:
-            state["hosts"] = io.loads(f.read())
+        
+        if io.path.exists(state.get("blazeio_proxy_hosts")):
+            with open(state.get("blazeio_proxy_hosts"), "rb") as f:
+                state["hosts"] = io.loads(f.read())
 
         return state 
 
@@ -323,7 +323,8 @@ class WebhookClient:
         host_data = {"remote": "http://%s:%d" % (hostname, port), "certfile": certfile, "keyfile": keyfile}
 
         state = app.get_state()
-
+        if state.get("hosts"):
+            pass
         # if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
 
         ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
