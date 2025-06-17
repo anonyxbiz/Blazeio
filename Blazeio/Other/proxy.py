@@ -322,7 +322,7 @@ class WebhookClient:
 
         state = app.get_state()
 
-        if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
+        # if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
 
         ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
 
