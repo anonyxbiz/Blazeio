@@ -5,7 +5,7 @@ from ssl import TLSVersion
 
 scope = io.DotDict(
     tls_record_size = 256,
-    server_name = "blazeio.other.proxy.localhost",
+    server_name = "blazeio_other_proxy.localhost",
     parent_dir = "Blazeio_Other_proxy"
 )
 
