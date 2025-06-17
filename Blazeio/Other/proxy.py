@@ -5,7 +5,7 @@ from ssl import TLSVersion
 
 scope = io.DotDict(
     tls_record_size = 256,
-    server_name = "blazeio_other_proxy.localhost",
+    server_name = "blazeio.other.proxy.localhost",
     parent_dir = "Blazeio_Other_proxy"
 )
 
@@ -324,8 +324,7 @@ class WebhookClient:
 
         state = app.get_state()
         if state.get("hosts"):
-            pass
-        # if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
+            if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return
 
         ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
 
@@ -373,4 +372,4 @@ if __name__ == "__main__":
     scope.web.sock().setsockopt(io.SOL_SOCKET, io.SO_REUSEPORT, 1)
     scope.web.sock().setsockopt(io.IPPROTO_TCP, io.TCP_NODELAY, 1)
 
-    scope.web.runner()
+    scope.web.runner(**conf._dict)
