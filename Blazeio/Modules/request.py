@@ -248,7 +248,7 @@ class Request:
                     r.path = r.tail[:idx2]
                 else:
                     r.path = r.tail
-                
+
                 if server.__server_config__["__http_request_auto_header_parsing__"]:
                     await HTTPParser.header_parser(r, chunk)
                 else:
@@ -281,7 +281,7 @@ class Request:
 
                 await app.set_method(r, server, __heading__)
                 
-                r.prepend(__buff__)
+                if __buff__: r.prepend(__buff__)
 
                 break
 
@@ -321,7 +321,9 @@ class Request:
                 if (ida := data.rfind(app.form_signal3)) != -1:
                     __buff__, data = data[ida + len(app.form_signal3):], data[:ida]
 
-                    r.prepend(b'' + __buff__)
+                    if __buff__:
+                        r.prepend(b'' + __buff__)
+
                     r.current_length -= len(__buff__)
                     break
         

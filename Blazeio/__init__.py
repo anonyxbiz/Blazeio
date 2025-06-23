@@ -107,7 +107,7 @@ class Handler:
             await app.__main_handler__(r)
 
         except Abort as e:
-            try: await e.text()
+            try: await e.text(r)
             except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
         except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
         except (ClientDisconnected, Eof, ServerDisconnected): pass
@@ -156,17 +156,16 @@ class OOP_RouteDef:
         return to_instantiate
 
 class SrvConfig:
-    HOST: str =  "0.0.0.0"
-    PORT: int = 8000
-    __timeout__: float = float(60*10)
-    __timeout_check_freq__: int = 30
-    __health_check_freq__: int = 30
-    __log_requests__: bool = False
-    INBOUND_CHUNK_SIZE: (None, int) = None
-    server_protocol = BlazeioServerProtocol
-    sock = None
-
-    def __init__(app): pass
+    def __init__(app):
+        app.HOST: str =  "0.0.0.0"
+        app.PORT: int = 8000
+        app.__timeout__: float = float(60*10)
+        app.__timeout_check_freq__: int = 30
+        app.__health_check_freq__: int = 30
+        app.__log_requests__: bool = False
+        app.INBOUND_CHUNK_SIZE: (None, int) = None
+        app.server_protocol = BlazeioServerProtocol
+        app.sock = None
 
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
@@ -240,9 +239,8 @@ class App(Handler, OOP_RouteDef):
     event_loop = loop
     REQUEST_COUNT = 0
     declared_routes = OrderedDict()
-    
+
     ioConf.ServerConfig = SrvConfig()
-    ServerConfig = ioConf.ServerConfig
     on_exit = deque()
     is_server_running = SharpEvent(False, loop)
 
@@ -255,6 +253,8 @@ class App(Handler, OOP_RouteDef):
     }
 
     def __init__(app, *args, **kwargs):
+        app.ServerConfig = SrvConfig()
+
         for i in app.__class__.__bases__: i.__init__(app)
         
         if len(args) >= 2:
@@ -368,13 +368,20 @@ class App(Handler, OOP_RouteDef):
         if not host: host = app.ServerConfig.host
         if not port: port = app.ServerConfig.port
 
+        if not kwargs.get("backlog"):
+            kwargs["backlog"] = 5000
+
+        if app.ServerConfig.sock:
+            app.ServerConfig.sock.bind((host, port))
+            kwargs["sock"] = app.ServerConfig.sock
+
         if (ssl_data := kwargs.get("ssl", None)) and isinstance(ssl_data, dict):
             kwargs["ssl"] = app.setup_ssl(host, port, ssl_data)
 
         await app.configure_server_handler()
 
         protocol = app.ServerConfig.server_protocol
-        
+
         if not "sock" in kwargs:
             args = (host, port)
         else:
@@ -440,16 +447,6 @@ class App(Handler, OOP_RouteDef):
         return sock
 
     def runner(app, host: (None, str) = None, port: (None, int) = None, **kwargs):
-        if not host: host = app.ServerConfig.host
-        if not port: port = app.ServerConfig.port
-
-        if not kwargs.get("backlog"):
-            kwargs["backlog"] = 5000
-
-        if app.ServerConfig.sock:
-            app.ServerConfig.sock.bind((host, port))
-            kwargs["sock"] = app.ServerConfig.sock
-
         try:
             app.event_loop.run_until_complete(app.run(host, port, **kwargs))
         except (KeyboardInterrupt, Exception) as e:

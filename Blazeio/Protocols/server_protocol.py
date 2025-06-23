@@ -46,6 +46,7 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         transport.pause_reading()
         app.transport = transport
         app.cancel = (task := loop.create_task(app.transporter())).cancel
+        task.__BlazeioServerProtocol__ = app
 
     async def request(app):
         while True:

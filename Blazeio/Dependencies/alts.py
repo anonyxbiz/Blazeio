@@ -476,5 +476,10 @@ class memarray(bytearray):
 
         return super().__setitem__(key, value)
 
+class timef:
+    @classmethod
+    def now(app, *args, **kwargs):
+        return (now := dt.now(*args, **kwargs)).strftime("%H:%M:%S:") + str(now.microsecond)[:2]
+
 if __name__ == "__main__":
     pass

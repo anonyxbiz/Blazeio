@@ -221,8 +221,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         elif not app.protocol and connect_only:
             transport, app.protocol = await app.loop.create_connection(
                 lambda: client_protocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in client_protocol.__slots__}),
-                host=app.host,
-                port=app.port,
+                host=remote_host,
+                port=remote_port,
                 ssl=ssl if not kwargs.get("ssl") else kwargs.get("ssl"),
                 **{a:b for a,b in kwargs.items() if a not in client_protocol.__slots__ and a not in app.__slots__ and a != "ssl"}
             )

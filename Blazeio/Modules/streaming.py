@@ -3,12 +3,16 @@ from .reasons import *
 
 class Context:
     @classmethod
-    async def r(app):
-        return current_task().get_coro().cr_frame.f_locals.get("app")
+    def _r(app):
+        return current_task().__BlazeioServerProtocol__
 
     @classmethod
     def r_sync(app):
-        return current_task().get_coro().cr_frame.f_locals.get("app")
+        return app._r()
+
+    @classmethod
+    async def r(app):
+        return app._r()
 
     @classmethod
     async def from_task(app, task):
@@ -63,7 +67,7 @@ class __Deliver__:
 
     def __getattr__(app, name):
         def method(*a, **kw):
-            if not isinstance(a[0], BlazeioProtocol):
+            if isinstance(a[0], (str, bytes, bytearray, memoryview, dict,)):
                 a = (Context.r_sync(), *a)
 
             return app.deliver(*a, **kw, content_type = app.content_types.get(name, name.replace("_", "/")))
@@ -84,9 +88,10 @@ class Abort(BlazeioException):
         *args
     ):
         app.args = args
-        app.r = Context.r_sync()
+        app.r = None
 
-    def text(app):
+    def text(app, r = None):
+        app.r = r or Context.r_sync()
         message = (app.args[0] if len(app.args) >= 1 else "Something went wrong").encode()
         status = app.args[1] if len(app.args) >= 2 else 403
         headers = app.args[2] if len(app.args) >= 3 else None
