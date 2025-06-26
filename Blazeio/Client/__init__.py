@@ -113,7 +113,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if not isinstance(exc_value, CancelledError):
             if app.close_on_exit == False: return True
 
-        if (protocol := getattr(app, "protocol", None)): protocol.transport.close()
+        if (protocol := getattr(app, "protocol", None)):
+            protocol.cancel()
 
         return False
 

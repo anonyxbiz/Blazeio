@@ -16,7 +16,6 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         '__overflow_evt__',
         '__perf_counter__',
         '__timeout__',
-        'cancel',
         'cancel_on_disconnect',
     )
 
@@ -25,7 +24,6 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         app.__timeout__: float = kwargs.get("__timeout__", 60.0)
         app.__is_at_eof__: bool = False
         app.cancel_on_disconnect = False
-        app.cancel = None
         app.__perf_counter__: int = perf_counter()
         app.__stream__: deque = deque()
         app.__buff__: bytearray = bytearray(app.__chunk_size__)
@@ -37,6 +35,9 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
+    
+    def cancel(app):
+        app.transport.close()
 
     async def pull(app):
         while True:

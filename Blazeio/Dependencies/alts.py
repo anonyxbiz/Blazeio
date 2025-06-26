@@ -136,16 +136,15 @@ class ioCondition:
         return int(n - app.waiter_count)
 
     async def __aexit__(app, exc_type, exc_value, tb):
-        if not app._lock_event.is_set():
+        if app.locked() or not app._lock_event.is_set():
             app.release()
 
     async def __aenter__(app):
         await app.acquire()
 
     async def acquire(app):
-        while app.is_locked:
+        while app.locked():
             await app._lock_event.wait()
-
         app.lock()
 
     async def wait(app):

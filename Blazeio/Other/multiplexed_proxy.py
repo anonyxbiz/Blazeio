@@ -92,50 +92,44 @@ class Transporters:
     async def puller(app, r, resp):
         async for chunk in r.pull():
             await resp.writer(chunk)
-
         await resp.__eof__()
-
-    async def pusher(app, r, resp):
-        async for chunk in resp.__pull__():
-            await r.writer(chunk)
 
     async def conn(app, srv):
         async with app.__conn__:
             if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
                 srv["conn"] = (conn := await io.Session(srv.get("remote"), client_protocol = BlazeioClientProtocol, connect_only = 1).__aenter__())
 
-            return conn
+        return conn
 
-    async def no_tls_transporter(app, r: io.BlazeioProtocol, resp: io.BlazeioProtocol, srv: dict):
-        task = None
-
-        if resp:
+    async def no_tls_transporter(app, r, srv: dict):
+        resp, task = (await app.conn(srv)).accept(), None
+        try:
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.get("port"))))
-
+    
             if r.method not in r.non_bodied_methods:
                 task = io.create_task(app.puller(r, resp))
-
-            if not task:
+            else:
                 await resp.__eof__()
-
-            async for chunk in resp.__pull__():
+    
+            async for chunk in resp.pull():
                 await r.writer(chunk)
 
             if task:
                 await task
 
-    async def tls_transporter(app, r: io.BlazeioProtocol, resp: io.BlazeioProtocol, srv: dict):
-        task = None
+        finally:
+            await resp.__close__()
 
-        async with resp:
+    async def tls_transporter(app, r, srv: dict):
+        resp, task = (await app.conn(srv)).accept(), None
+        try:
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.get("port"))))
 
             if r.method not in r.non_bodied_methods:
                 task = io.create_task(app.puller(r, resp))
+            else:
+                await resp.__eof__()
 
-            if not task:
-                await resp.eof()
-            
             buff = bytearray()
 
             async for chunk in resp.pull():
@@ -152,8 +146,12 @@ class Transporters:
 
             if buff:
                 await r.writer(buff)
+
             if task:
                 await task
+
+        finally:
+            await resp.__close__()
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics")
@@ -193,7 +191,7 @@ class App(Sslproxy, Transporters):
         async with io.async_open(app.blazeio_proxy_hosts, "rb") as f:
             app.hosts.update(io.loads(await f.read()))
 
-        # await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=1))
+        await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=1))
 
     async def _remote_webhook(app, r):
         app.hosts.update(json := await io.Request.get_json(r))
@@ -265,17 +263,11 @@ class App(Sslproxy, Transporters):
         r.identifier = (app.protocol_count, remote)
         r.__perf_counter__ = io.perf_counter()
 
-        conn = await app.conn(srv)
-        resp = conn.accept()
-
-        # await io.plog.cyan("server@%s" % r.tail, io.dumps(conn.state(), indent=4, escape_forward_slashes=False))
-
         try:
             app.protocols[r.identifier] = r
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
-            await app.transporter(r, resp, srv)
+            await app.transporter(r, srv)
         finally:
-            # await resp.__close__()
             app.protocols.pop(r.identifier)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
