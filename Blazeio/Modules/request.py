@@ -264,7 +264,8 @@ class Request:
                 r.pull = r.handle_chunked
             else:
                 r.content_length = 0
-                r.pull = r.handle_raw
+                if not hasattr(r, "pull"):
+                    r.pull = r.handle_raw
 
         return r
 

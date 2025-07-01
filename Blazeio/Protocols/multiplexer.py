@@ -3,7 +3,7 @@ from socket import IPPROTO_TCP, TCP_NODELAY
 
 class BlazeioMultiplexer:
     __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket",)
-    _data_bounds_ = (b"<::", b"::>", b"<::eof::>", b"<::__close_stream__::>", b"", b"<::ack::>",)
+    _data_bounds_ = (b"<::", b"::>", b"<::io_eof::>", b"<::io_close::>", b"", b"<::io_ack::>",)
 
     def __init__(app, protocol):
         app.protocol = protocol
@@ -34,7 +34,7 @@ class BlazeioMultiplexer:
         app.close()
 
     def clear_state(app):
-        app.__received_size, app.__expected_size, app.__current_stream_id = 0, NotImplemented, NotImplemented
+        app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream = 0, NotImplemented, NotImplemented, NotImplemented
 
     def state(app):
         return {key: str(value) if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
@@ -87,21 +87,25 @@ class BlazeioMultiplexer:
     def stream_id_gen(app):
         _id = app.__stream_id_count__
         app.__stream_id_count__ += 1
-        return b"%b{stream_%X}%b" % (app._data_bounds_[0], _id, app._data_bounds_[1])
+        return b"%bio_%X%b" % (app._data_bounds_[0], _id, app._data_bounds_[1])
 
     def enter_stream(app, _id: (None, bytes) = None, instance = None):
-        if not _id:
-            _id = app.stream_id_gen()
-
         if not instance:
             instance = Stream
 
-        app.__streams__[_id] = (stream := instance(_id, app))
+        if not _id:
+            _id = app.stream_id_gen()
 
+        app.__streams__[_id] = (stream := instance(_id, app))
         return stream
 
     def metadata(app, _id: (bytes, bytearray), _len: int):
         return b"%b%b%X%b" % (_id, app._data_bounds_[0], _len, app._data_bounds_[1])
+    
+    def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
+        __current_stream.received_size += len(chunk)
+        __current_stream.__stream__.append(chunk)
+        __current_stream.__evt__.set()
 
     async def __pull__(app):
         while True:
@@ -116,21 +120,16 @@ class BlazeioMultiplexer:
     async def update_streams(app):
         app.clear_state()
         async for chunk in app.__pull__():
-            if app.__expected_size is NotImplemented:
+            if app.__current_stream is NotImplemented:
                 app.__buff.extend(chunk)
                 if not app._set_stream(): continue
+                if not (bounds := app._parse_bounds()): continue
 
-                if not (ranges := app._parse_bounds()): continue
-                else: idx, idb = ranges
-
-                app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[idx + len(app._data_bounds_[0]):idb]), 16), app.__buff[idb + len(app._data_bounds_[1]):]
+                app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + len(app._data_bounds_[0]):bounds[1]]), 16), app.__buff[bounds[1] + len(app._data_bounds_[1]):]
 
                 chunk, _ = bytes(memoryview(app.__buff)[:]), app.__buff.clear()
 
-                if not (stream := app.__streams__.get(app.__current_stream_id)):
-                    stream = app.protocol.accept(app.__current_stream_id)
-
-                app.__current_stream = stream
+                app.__current_stream = app.__streams__.get(app.__current_stream_id) or app.protocol.create_stream(app.__current_stream_id)
 
                 if (_ := app._eof_check(chunk)) is not None:
                     chunk = _
@@ -152,18 +151,18 @@ class BlazeioMultiplexer:
                 if app.__expected_size and not app.__current_stream.__stream_closed__:
                     app.__current_stream.add_callback(app.__current_stream.__send_ack__())
 
+                app.update_stream(app.__current_stream, chunk)
                 app.clear_state()
-
-            app.__current_stream.received_size += len(chunk)
-            app.__current_stream.__stream__.append(chunk)
-            app.__current_stream.__evt__.set()
+            else:
+                app.update_stream(app.__current_stream, chunk)
 
 class Stream:
-    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "__tasks__")
+    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__")
     
     _chunk_size_base_ = 4096*2
 
     def __init__(app, _id: (bytes, bytearray), protocol):
+        app.clear_state()
         app.protocol = protocol
         app.transport = app.protocol.protocol.transport
         app.id = _id
@@ -171,28 +170,29 @@ class Stream:
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app._chunk_size_base_
-
         app.id_str = app.id.decode()
         app.__stream__ = io.deque()
         app.__prepends__ = io.deque()
         app.__stream_acks__ = io.deque()
-        app.__evt__ = io.SharpEvent(False, evloop = io.loop)
-        
-        app.__tasks__ = []
         app.__callbacks__ = io.deque()
+        app.__evt__ = io.SharpEvent(False, evloop = io.loop)
         app.__callback_added__ = io.SharpEvent(False, evloop = io.loop)
-        app.__tasks__.append(io.loop.create_task(app.manage_callbacks()))
-
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        app.clear_state()
+        app.callback_manager = io.loop.create_task(app.manage_callbacks())
+
+    def id_f(app):
+        if not hasattr(app, "__idf__"):
+            app.__idf__ = "%s%s|%s" % (app.id_str[:3], app.__class__.__name__, app.id_str[3:])
+
+        return app.__idf__
 
     def clear_state(app):
         app.received_size, app.sent_size, app.expected_size, app.eof_received, app._used, app.eof_sent, app._close_on_eof = 0, 0, 0, False, False, False, True
 
     def state(app):
-        return {key: str(value) if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
+        return {key: str(value)[:100] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
 
     def choose_stream(app):
         return app.__prepends__ or app.__stream__
@@ -206,10 +206,19 @@ class Stream:
         app.__callback_added__.set()
 
     def write_mux(app, data: (bytes, bytearray)):
-        if not app.transport.is_closing() and not app.__stream_closed__:
+        if app.can_write():
             return app.transport.write(app.protocol.metadata(app.id, len(data)) + bytes(data))
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
+
+    def can_write(app):
+        if app.transport.is_closing() or app.__stream_closed__: return False
+        return True
+
+    def stream_closed(app):
+        app.__stream_closed__ = True
+        app.__wait_closed__.set()
+        app.__callback_added__.set()
 
     async def wfc(app):
         while app.__callbacks__:
@@ -234,10 +243,9 @@ class Stream:
 
     async def __send_ack__(app):
         async with app.__busy_stream__: pass
-        await app.__writer__(app.protocol._data_bounds_[5], False, False)
+        if app.can_write(): await app.__writer__(app.protocol._data_bounds_[5], False, False)
 
     async def __eof__(app, data: (None, bytes, bytearray) = None):
-        if app.eof_sent: return
         if data: await app.__writer__(data)
 
         app.eof_sent = True
@@ -252,13 +260,12 @@ class Stream:
         while True:
             await app.ensure_reading()
             async with app.__busy_stream__:
-                while (__stream__ := app.choose_stream()):
-                    if not (chunk := __stream__.popleft()):
-                        if app.eof_received and not app.choose_stream(): return
-                    else:
-                        yield chunk
+                while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
+                    yield chunk
                 else:
-                    if app.__stream_closed__ and not app.__stream__:
+                    if app.eof_received and not app.choose_stream(): return
+
+                    if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
                         return
 
@@ -275,7 +282,7 @@ class Stream:
         app.__stream_acks__.popleft()
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True):
-        if app.transport.is_closing() or app.__stream_closed__: raise app.protocol.protocol.__stream_closed_exception__()
+        if not app.can_write(): raise app.protocol.protocol.__stream_closed_exception__()
 
         if not app._used: app._used = True
         async for chunk in app.__to_chunks__(memoryview(data)):
@@ -344,14 +351,14 @@ class BlazeioClientProtocol(io.BlazeioClientProtocol):
         for task in app.multiplexer.__tasks__: task.cancel()
         app.transport.close()
 
-    def accept(app, _id: (None, bytes) = None):
+    def create_stream(app, _id: (None, bytes) = None):
         return app.multiplexer.enter_stream(_id, Stream_Client)
 
     def stream_closed(app, stream):
         app.multiplexer.__streams__.pop(stream.id, None)
-        stream.__stream_closed__ = True
-        stream.__wait_closed__.set()
-        stream.__callback_added__.set()
+        stream.stream_closed()
+
+    def accept(app, *args): return app.create_stream(*args)
 
 class BlazeioServerProtocol(io.BlazeioServerProtocol):
     __slots__ = ("multiplexer", "transport")
@@ -362,7 +369,7 @@ class BlazeioServerProtocol(io.BlazeioServerProtocol):
         app.transport = transport
         app.multiplexer = BlazeioMultiplexer(app)
 
-    def accept(app, _id):
+    def create_stream(app, _id):
         app.multiplexer.__tasks__.append(task := io.loop.create_task(app.__transporter__(r := app.multiplexer.enter_stream(_id, Stream_Server))))
 
         task.__BlazeioServerProtocol__ = r
@@ -370,9 +377,7 @@ class BlazeioServerProtocol(io.BlazeioServerProtocol):
 
     def stream_closed(app, stream):
         app.multiplexer.__streams__.pop(stream.id, None)
-        stream.__stream_closed__ = True
-        stream.__wait_closed__.set()
-        stream.__callback_added__.set()
+        stream.stream_closed()
 
     async def __transporter__(app, r):
         try:
@@ -384,6 +389,8 @@ class BlazeioServerProtocol(io.BlazeioServerProtocol):
     def cancel(app):
         for task in app.multiplexer.__tasks__: task.cancel()
         app.close()
+    
+    def accept(app, *args): return app.create_stream(*args)
 
 if __name__ == "__main__":
     pass

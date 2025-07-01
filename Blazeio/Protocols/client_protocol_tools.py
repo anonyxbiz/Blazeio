@@ -290,7 +290,7 @@ class Parsers:
             app.handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
             app.handler = app.handle_raw
-        else:
+        elif not hasattr(app, "handler") or not app.handler:
             app.handler = app.protocol.pull
 
         if app.decode_resp:

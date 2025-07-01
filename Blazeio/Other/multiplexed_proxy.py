@@ -94,64 +94,79 @@ class Transporters:
             await resp.writer(chunk)
         await resp.__eof__()
 
+    def prepare(app, r, headers, *args, **kwargs):
+        headers = {key.capitalize(): val for key, val in headers.items()}
+
+        headers.update({"Blazeio.other.proxy.protocol.telemetry.%s" % key: val for key, val in r.store.telemetry._dict.items()})
+
+        if "Server" in headers:
+            headers["Blazeio.other.proxy.protocol.remote.server"] = headers.pop("Server")
+
+        return r.prepare(headers, *args, **kwargs)
+
+    async def eof(app, r, *args):
+        if r.store.task: await r.store.task
+        return await r.eof(*args)
+
     async def conn(app, srv):
         async with app.__conn__:
             if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
                 srv["conn"] = (conn := await io.Session(srv.get("remote"), client_protocol = BlazeioClientProtocol, connect_only = 1).__aenter__())
 
-        return conn
+        return conn.create_stream()
 
     async def no_tls_transporter(app, r, srv: dict):
-        resp, task = (await app.conn(srv)).accept(), None
-        try:
-            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.get("port"))))
-    
+        r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
+        async with io.Session(srv.get("remote") + r.tail, r.method, r.headers, decode_resp=False, add_host = False, use_protocol = await app.conn(srv)) as resp:
+            r.store.telemetry.ttc = r.store.telemetry.ttfb()
+
             if r.method not in r.non_bodied_methods:
-                task = io.create_task(app.puller(r, resp))
+                r.store.task = io.create_task(app.puller(r, resp))
             else:
                 await resp.__eof__()
-    
+
+            if not resp.is_prepared(): await resp.prepare_http()
+
+            r.store.telemetry.ttfb = r.store.telemetry.ttfb()
+
+            await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False)
+
             async for chunk in resp.pull():
-                await r.writer(chunk)
+                await r.write(chunk)
 
-            if task:
-                await task
-
-        finally:
-            await resp.__close__()
+            await app.eof(r)
 
     async def tls_transporter(app, r, srv: dict):
-        resp, task = (await app.conn(srv)).accept(), None
-        try:
-            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.get("port"))))
+        r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
+        async with io.Session(srv.get("remote") + r.tail, r.method, r.headers, decode_resp=False, add_host = False, use_protocol = await app.conn(srv)) as resp:
+            r.store.telemetry.ttc = r.store.telemetry.ttfb()
 
             if r.method not in r.non_bodied_methods:
-                task = io.create_task(app.puller(r, resp))
+                r.store.task = io.create_task(app.puller(r, resp))
             else:
                 await resp.__eof__()
 
-            buff = bytearray()
+            if not resp.is_prepared(): await resp.prepare_http()
+
+            r.store.telemetry.ttfb = r.store.telemetry.ttfb()
+
+            await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False)
+
+            r.store.buff = bytearray()
 
             async for chunk in resp.pull():
-                if not buff and len(chunk) >= scope.tls_record_size:
-                    await r.writer(chunk)
+                if not r.store.buff and len(chunk) >= scope.tls_record_size:
+                    await r.write(chunk)
                     continue
 
-                buff.extend(chunk)
+                r.store.buff.extend(chunk)
 
-                if len(buff) >= scope.tls_record_size:
-                    _, __ = await r.writer(buff), buff.clear()
+                if len(r.store.buff) >= scope.tls_record_size:
+                    _, r.store.buff = await r.write(r.store.buff), r.store.buff[len(r.store.buff):]
                 else:
                     continue
 
-            if buff:
-                await r.writer(buff)
-
-            if task:
-                await task
-
-        finally:
-            await resp.__close__()
+            await app.eof(r, r.store.buff)
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics")
@@ -211,7 +226,7 @@ class App(Sslproxy, Transporters):
                 val = str(val)
                 
             elif isinstance(val, dict):
-                val = {k: str(v) if not isinstance(v, (int, dict, str)) else v for k, v in val.items()}
+                val = {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}
 
             json[key] = val
 
@@ -244,11 +259,21 @@ class App(Sslproxy, Transporters):
         return True
 
     async def __main_handler__(app, r):
+        r.store = io.Dot_Dict()
+        r.store.telemetry = io.Dot_Dict()
+        
+        r.store.telemetry.prepare_http_request = lambda start = io.perf_counter(): (io.perf_counter() - start)
+
         await io.Request.prepare_http_request(r)
+
+        r.store.telemetry.prepare_http_request = r.store.telemetry.prepare_http_request()
+        r.store.telemetry.host_derivation = lambda start = io.perf_counter(): (io.perf_counter() - start)
 
         host = r.headers.get("Host", "")
         if (idx := host.rfind(":")) != -1:
             host = host[:idx]
+
+        r.store.telemetry.host_derivation = r.store.telemetry.host_derivation()
 
         if app.is_from_home(r, host):
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
@@ -268,7 +293,7 @@ class App(Sslproxy, Transporters):
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
             await app.transporter(r, srv)
         finally:
-            app.protocols.pop(r.identifier)
+            app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
 class WebhookClient:

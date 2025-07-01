@@ -140,7 +140,7 @@ class ExtraToolset:
             app.write = app.write_chunked
         elif headers_view.get("Content-length"):
             app.write = app.write_raw
-        else:
+        elif not hasattr(app, "write"):
             app.write = app.write_raw
 
         await app.writer(app.headers_to_http_bytes(headers))

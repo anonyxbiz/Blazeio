@@ -45,6 +45,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit",)
 
     __should_be_reset__ = ("decompressor", "compressor", "has_sent_headers",)
+    __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"),)
 
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS", "DELETE"
@@ -57,7 +58,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
-        app.loop = kwargs.pop("evloop", None)
+        for key, set_key in app.__from_kwargs__:
+            if key in kwargs:
+                setattr(app, set_key, kwargs.pop(key))
+
         app.args, app.kwargs = args, kwargs
 
     def __getattr__(app, name):
@@ -74,7 +78,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if not app.loop:
             app.loop = get_event_loop()
 
-        if app.protocol: return app
+        if app.protocol:
+            if isinstance(app.protocol, BlazeioClientProtocol):
+                return app
 
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else create_connection
 
@@ -114,7 +120,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if app.close_on_exit == False: return True
 
         if (protocol := getattr(app, "protocol", None)):
-            protocol.cancel()
+            if isinstance(protocol, BlazeioClientProtocol):
+                protocol.cancel()
+            else:
+                await protocol.__close__()
 
         return False
 
