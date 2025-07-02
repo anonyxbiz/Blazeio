@@ -72,8 +72,8 @@ class Request:
         return cookie
 
     @classmethod
-    def get_cookie_sync(app, r, val: str = ""):
-        if not isinstance(r, BlazeioProtocol):
+    def get_cookie_sync(app, r = None, val: str = ""):
+        if not r:
             val, r = r, Context.r_sync()
 
         val += "="

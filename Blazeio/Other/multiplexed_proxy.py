@@ -7,7 +7,7 @@ from Blazeio.Protocols.multiplexer import BlazeioClientProtocol, BlazeioServerPr
 scope = io.DotDict(
     tls_record_size = 256,
     server_name = "blazeio.other.multiplexed_proxy.localhost",
-    parent_dir = "Blazeio_Other_multiplexed_proxy",
+    parent_dir = "Blazeio_Other_Multiplexed_proxy",
     server_set = io.SharpEvent(False, io.loop),
 )
 
@@ -70,12 +70,11 @@ class Sslproxy:
     
     def context(app):
         context = io.create_default_context(io.Purpose.CLIENT_AUTH)
-        context.post_handshake_auth = False
+        context.post_handshake_auth = True
         context.options |= io.OP_NO_COMPRESSION
-
         context.set_ecdh_curve("prime256v1")
         context.minimum_version = TLSVersion.TLSv1_3
-        context.session_tickets = True
+        context.session_tickets = False
         return context
 
     def configure_ssl(app):
@@ -104,10 +103,6 @@ class Transporters:
 
         return r.prepare(headers, *args, **kwargs)
 
-    async def eof(app, r, *args):
-        if r.store.task: await r.store.task
-        return await r.eof(*args)
-
     async def conn(app, srv):
         async with app.__conn__:
             if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
@@ -131,10 +126,10 @@ class Transporters:
 
             await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False)
 
-            async for chunk in resp.pull():
-                await r.write(chunk)
+            async for chunk in resp.__pull__():
+                await r.writer(chunk)
 
-            await app.eof(r)
+            if r.store.task: await r.store.task
 
     async def tls_transporter(app, r, srv: dict):
         r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
@@ -154,19 +149,21 @@ class Transporters:
 
             r.store.buff = bytearray()
 
-            async for chunk in resp.pull():
+            async for chunk in resp.__pull__():
                 if not r.store.buff and len(chunk) >= scope.tls_record_size:
-                    await r.write(chunk)
+                    await r.writer(chunk)
                     continue
 
                 r.store.buff.extend(chunk)
 
                 if len(r.store.buff) >= scope.tls_record_size:
-                    _, r.store.buff = await r.write(r.store.buff), r.store.buff[len(r.store.buff):]
+                    _, _ = await r.writer(r.store.buff), r.store.buff.clear()
                 else:
                     continue
 
-            await app.eof(r, r.store.buff)
+            if r.store.buff: await r.writer(r.store.buff)
+
+            if r.store.task: await r.store.task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics")
@@ -259,6 +256,7 @@ class App(Sslproxy, Transporters):
         return True
 
     async def __main_handler__(app, r):
+        r.transport.set_write_buffer_limits(0)
         r.store = io.Dot_Dict()
         r.store.telemetry = io.Dot_Dict()
         

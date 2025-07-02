@@ -2,8 +2,12 @@ from ..Dependencies import *
 from .streaming import *
 from ..Client import Session
 
+is_on_render = lambda: environ.get("RENDER")
+
 class RenderFreeTierPatch:
     def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 60):
+        if not is_on_render(): return
+
         for method, value in locals().items():
             if method == app: continue
             setattr(app, method, value)
