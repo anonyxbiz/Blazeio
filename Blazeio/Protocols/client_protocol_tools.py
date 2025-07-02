@@ -450,7 +450,7 @@ class Pulltools(Parsers):
     async def aread(app, decode=False):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == app.protocol.pull: return
+        if app.handler == app.protocol.pull and app.protocol.__class__.__name__ == "BlazeioClientProtocol": return
 
         if app.content_length: return await app.read_exactly(app.content_length, decode)
 
@@ -575,7 +575,7 @@ class Pulltools(Parsers):
     async def data(app):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == app.protocol.pull: return
+        if app.handler == app.protocol.pull and app.protocol.__class__.__name__ == "BlazeioClientProtocol": return
 
         if app.handler == app.handle_raw and not app.content_length: return
 
