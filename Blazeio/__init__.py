@@ -319,7 +319,13 @@ class App(Handler, OOP_RouteDef):
             "len": len(route_name),
         }
 
-        app.declared_routes[route_name] = data
+        if route_name in app.declared_routes:
+            if not isinstance(app.declared_routes[route_name], Multirouter):
+                app.declared_routes[route_name] = Multirouter(route_name, app.declared_routes[route_name])
+
+            app.declared_routes[route_name].add(data)
+        else:
+            app.declared_routes[route_name] = data
 
         if route_name.startswith("/"):
             component = "route"
@@ -331,6 +337,11 @@ class App(Handler, OOP_RouteDef):
         loop.create_task(Log.info("Added %s => %s." % (component, route_name), None, color))
 
         return func
+    
+    def route_validator(app):
+        for route_name in app.declared_routes:
+            if isinstance(route := app.declared_routes[route_name], Multirouter):
+                app.declared_routes[route_name] = route.get_router()
 
     def setup_ssl(app, HOST: str, PORT: (int, None) = None, ssl_data: dict = {}, setup = True):
         certfile, keyfile = ssl_data.get("certfile"), ssl_data.get("keyfile")
@@ -365,6 +376,8 @@ class App(Handler, OOP_RouteDef):
         return ssl_context
 
     async def run(app, host: (None, str) = None, port: (None, int) = None, **kwargs):
+        app.route_validator()
+
         if not host: host = app.ServerConfig.host
         if not port: port = app.ServerConfig.port
 

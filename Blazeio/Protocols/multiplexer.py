@@ -26,8 +26,8 @@ class Utils:
         return _state
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_created_evt__")
-    _data_bounds_ = (b"<::", b"::>", b"<::io_eof::>", b"<::io_close::>", b"", b"<::io_ack::>",)
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_created_evt__", "__stream_opts")
+    _data_bounds_ = (b"<::", b"::>", b"<-io_eof->", b"<-io_close->", b"", b"<-io_ack->", b"<-create_stream->")
 
     def __init__(app, protocol):
         app.protocol = protocol
@@ -59,53 +59,57 @@ class BlazeioMultiplexer:
         app.protocol.cancel()
 
     def clear_state(app):
-        app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream = 0, NotImplemented, NotImplemented, NotImplemented
+        app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream, app.__stream_opts = 0, NotImplemented, NotImplemented, NotImplemented, NotImplemented
 
     def state(app):
         return Utils.gen_state(app)
 
-    def _parse_bounds(app):
-        if (idx := app.__buff.find(app._data_bounds_[0])) == -1 or (idb := app.__buff.find(app._data_bounds_[1])) == -1: return
+    def _parse_bounds(app, __buff: (bytes, bytearray, None) = None):
+        if __buff is None:
+            __buff = app.__buff
+
+        if (idx := __buff.find(app._data_bounds_[0])) == -1 or (idb := __buff.find(app._data_bounds_[1])) == -1: return
         return (idx, idb)
 
     def _set_stream(app, _point: int = 1):
-        if not (ranges := app._parse_bounds()):
-            return
-        else:
-            idx, idb = ranges
+        if not (bounds := app._parse_bounds()): return None
 
         if app.__current_stream_id is NotImplemented:
-            app.__current_stream_id, app.__buff = bytes(memoryview(app.__buff)[:idb + len(app._data_bounds_[_point])]), app.__buff[idb + len(app._data_bounds_[_point]):]
+            __current_stream_id, __buff = bytes(memoryview(app.__buff)[:bounds[1] + len(app._data_bounds_[_point])]), app.__buff[bounds[1] + len(app._data_bounds_[_point]):]
+
+            if not (bounds := app._parse_bounds(__buff)): return None
+
+            __stream_opts, __buff = bytes(memoryview(__buff)[bounds[0] + len(app._data_bounds_[0]):bounds[1]]), __buff[bounds[1] + len(app._data_bounds_[_point]):]
+
+            app.__current_stream_id, app.__buff, app.__stream_opts = __current_stream_id, __buff, __stream_opts
 
         return True
-    
+
     def _eof_check(app, chunk, _point: int = 2):
-        if app.__expected_size == len(app._data_bounds_[_point]) and bytes(memoryview(chunk)[:app.__expected_size]) == app._data_bounds_[_point]:
-            chunk = bytes(memoryview(chunk)[app.__expected_size:])
-            app.__expected_size -= len(app._data_bounds_[_point])
+        if app.__stream_opts == app._data_bounds_[_point]:
+            opts, remainder = memoryview(chunk)[:app.__expected_size], memoryview(chunk)[app.__expected_size:]
+            app.__expected_size -= len(opts)
             app.__current_stream.eof_received = True
-            return chunk
+            return bytes(remainder)
 
         return None
 
     def _stream_closure_check(app, chunk, _point: int = 3):
-        if app.__expected_size == len(app._data_bounds_[_point]) and bytes(memoryview(chunk)[:app.__expected_size]) == app._data_bounds_[_point]:
-            chunk = bytes(memoryview(chunk)[app.__expected_size:])
-            app.__expected_size -= len(app._data_bounds_[_point])
-
+        if app.__stream_opts == app._data_bounds_[_point]:
+            opts, remainder = memoryview(chunk)[:app.__expected_size], memoryview(chunk)[app.__expected_size:]
+            app.__expected_size -= len(opts)
             app.protocol.stream_closed(app.__current_stream)
-            return chunk
+            return bytes(remainder)
 
         return None
 
     def _stream_ack(app, chunk, _point: int = 5):
-        if app.__expected_size == len(app._data_bounds_[_point]) and (ack := bytes(memoryview(chunk)[:app.__expected_size])) == app._data_bounds_[_point]:
-            chunk = bytes(memoryview(chunk)[app.__expected_size:])
-            app.__expected_size -= len(app._data_bounds_[_point])
-
-            app.__current_stream.__stream_acks__.append(ack)
+        if app.__stream_opts == app._data_bounds_[_point]:
+            opts, remainder = memoryview(chunk)[:app.__expected_size], memoryview(chunk)[app.__expected_size:]
+            app.__expected_size -= len(opts)
+            app.__current_stream.__stream_acks__.append(bytes(opts))
             app.__current_stream.__stream_ack__.set()
-            return chunk
+            return bytes(remainder)
 
         return None
 
@@ -123,12 +127,11 @@ class BlazeioMultiplexer:
 
         app.__streams__[_id] = (stream := instance(_id, app))
 
-        # app.__stream_created_evt__.set()
         return stream
 
-    def metadata(app, _id: (bytes, bytearray), _len: int):
-        return b"%b%b%X%b" % (_id, app._data_bounds_[0], _len, app._data_bounds_[1])
-    
+    def metadata(app, _id: (bytes, bytearray), _len: int, __stream_opts: (bytes, bytearray, None) = None):
+        return b"%b%b%b%X%b" % (_id, app._data_bounds_[0] + (__stream_opts or b"") + app._data_bounds_[1], app._data_bounds_[0], _len, app._data_bounds_[1])
+
     def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
         __current_stream.received_size += len(chunk)
         __current_stream.__stream__.append(chunk)
@@ -144,27 +147,42 @@ class BlazeioMultiplexer:
                     app.cancel()
                     break
 
+    def perform_checks(app, chunk: (bytes, bytearray)):
+        for checker in (app._eof_check, app._stream_closure_check, app._stream_ack):
+            if (_ := checker(chunk)) is not None:
+                return _
+
+        return None
+    
+    def _has_handshake(app):
+        return app.__stream_opts == app._data_bounds_[6]
+
     async def update_streams(app):
         app.clear_state()
         async for chunk in app.__pull__():
             if app.__current_stream is NotImplemented:
                 app.__buff.extend(chunk)
+
                 if not app._set_stream(): continue
+
                 if not (bounds := app._parse_bounds()): continue
 
                 app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + len(app._data_bounds_[0]):bounds[1]]), 16), app.__buff[bounds[1] + len(app._data_bounds_[1]):]
 
                 chunk, _ = bytes(memoryview(app.__buff)[:]), app.__buff.clear()
+                
+                if not (__current_stream := app.__streams__.get(app.__current_stream_id, None)):
+                    if app._has_handshake():
+                        __current_stream = app.protocol.create_stream(app.__current_stream_id)
+                    else:
+                        __current_stream = None
 
-                app.__current_stream = app.__streams__.get(app.__current_stream_id) or app.protocol.create_stream(app.__current_stream_id)
+                app.__current_stream = __current_stream
 
-                if (_ := app._eof_check(chunk)) is not None:
-                    chunk = _
-                elif (_ := app._stream_closure_check(chunk)) is not None:
-                    chunk = _
-                elif (_ := app._stream_ack(chunk)) is not None:
-                    chunk = _
-                else:
+                if app.__current_stream:
+                    if (_ := app.perform_checks(chunk)) is not None:
+                        chunk = _
+    
                     app.__current_stream.expected_size += app.__expected_size
 
             app.__received_size += len(chunk)
@@ -175,18 +193,20 @@ class BlazeioMultiplexer:
                     remainder, chunk = bytes(memoryview(chunk)[chunk_size:]), bytes(memoryview(chunk[:chunk_size]))
                     app.__prepends__.appendleft(remainder)
 
-                if app.__expected_size and not app.__current_stream.__stream_closed__:
+                if app.__current_stream and app.__expected_size and not app.__current_stream.__stream_closed__:
                     app.__current_stream.add_callback(app.__current_stream.__send_ack__())
 
-                app.update_stream(app.__current_stream, chunk)
+                if app.__current_stream:
+                    app.update_stream(app.__current_stream, chunk)
                 app.clear_state()
             else:
-                app.update_stream(app.__current_stream, chunk)
+                if app.__current_stream:
+                    app.update_stream(app.__current_stream, chunk)
 
 class Stream:
-    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__")
+    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake")
     
-    _chunk_size_base_ = 4096*4
+    _chunk_size_base_ = 4096*2
 
     def __init__(app, _id: (bytes, bytearray), protocol):
         app.clear_state()
@@ -194,6 +214,7 @@ class Stream:
         app.transport = app.protocol.protocol.transport
         app.id = _id
         app.__stream_closed__ = False
+        app.__initial_handshake = app.protocol._data_bounds_[6]
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app._chunk_size_base_
@@ -232,9 +253,13 @@ class Stream:
         app.__callbacks__.append(cb)
         app.__callback_added__.set()
 
-    def write_mux(app, data: (bytes, bytearray)):
+    def write_mux(app, data, __stream_opts):
         if app.can_write():
-            return app.transport.write(app.protocol.metadata(app.id, len(data)) + bytes(data))
+            if app.__initial_handshake:
+                __stream_opts = __stream_opts or app.__initial_handshake
+                app.__initial_handshake = None
+
+            return app.transport.write(app.protocol.metadata(app.id, len(data), __stream_opts) + bytes(data))
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
 
@@ -244,8 +269,7 @@ class Stream:
 
     def stream_closed(app):
         app.__stream_closed__ = True
-        app.__wait_closed__.set()
-        app.__callback_added__.set()
+        for event in (app.__wait_closed__, app.__callback_added__, app.__stream_ack__,): event.set()
 
     async def wfc(app):
         while app.__callbacks__:
@@ -267,16 +291,6 @@ class Stream:
             await app.__eof__()
 
         return False
-
-    async def __send_ack__(app):
-        async with app.__busy_stream__: pass
-        if app.can_write(): await app.__writer__(app.protocol._data_bounds_[5], False, False)
-
-    async def __eof__(app, data: (None, bytes, bytearray) = None):
-        if data and app.can_write(): await app.__writer__(data)
-
-        app.eof_sent = True
-        if not app.eof_sent and app.can_write(): return await app.__writer__(app.protocol._data_bounds_[2], False, False)
 
     async def ensure_reading(app):
         if not app.choose_stream():
@@ -309,14 +323,15 @@ class Stream:
 
         app.__stream_acks__.popleft()
 
-    async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True):
+    async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
         if not app.can_write(): raise app.protocol.protocol.__stream_closed_exception__()
 
         if not app._used: app._used = True
+
         async for chunk in app.__to_chunks__(memoryview(data)):
             async with app.protocol.__busy_write__:
                 await app.protocol.protocol.buffer_overflow_manager()
-                app.write_mux(chunk)
+                app.write_mux(chunk, __stream_opts)
 
             if wait:
                 await app.wfa()
@@ -330,9 +345,22 @@ class Stream:
             _.extend(chunk)
         return _.decode() if decode else _
 
+    async def __send_ack__(app):
+        async with app.__busy_stream__: pass
+        if app.can_write(): await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[5])
+
+    async def __eof__(app, data: (None, bytes, bytearray) = None):
+        if data and app.can_write(): await app.__writer__(data)
+
+        if app.eof_sent: return
+
+        if app.can_write():
+            app.eof_sent = True
+            return await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[2])
+
     async def __close__(app, __stream_closed__: bool = False):
         if not __stream_closed__ and app.can_write():
-            if app.can_write(): await app.__writer__(app.protocol._data_bounds_[3], False, False)
+            await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[3])
 
         if not app.__stream_closed__:
             app.protocol.protocol.stream_closed(app)

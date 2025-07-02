@@ -13,16 +13,8 @@ scope = io.DotDict(
 
 class Pathops:
     __slots__ = ("parent",)
-
     def __init__(app):
-        root = Path.cwd().resolve()
-        while root.parent != root:
-            if not all([os_access(root.parent, os_R_OK), os_access(root.parent, os_W_OK), os_access(root.parent, os_X_OK)]): break
-
-            root = root.parent
-
-        app.parent = io.path.join(root, scope.parent_dir)
-
+        app.parent = io.path.abspath(io.path.join(io.environ.get('HOME'), scope.parent_dir))
         makedirs(app.parent, exist_ok=True)
 
 scope.HOME = Pathops().parent
@@ -166,19 +158,21 @@ class Transporters:
             if r.store.task: await r.store.task
 
 class App(Sslproxy, Transporters):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_event", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics")
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics")
 
-    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_event = io.SharpEvent(True, io.ioConf.loop), hosts = {scope.server_name: {}}):
+    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = {scope.server_name: {}}):
         for key in (__locals__ := locals()):
             if key not in app.__slots__: continue
             if getattr(app, key, NotImplemented) != NotImplemented: continue
             setattr(app, key, __locals__[key])
 
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
+        
+        if app.log:
+            io.loop.create_task(io.log.debug("blazeio_proxy_hosts: %s" % app.blazeio_proxy_hosts))
 
         app.transporter = app.no_tls_transporter
 
-        app.tasks.append(io.ioConf.loop.create_task(app.update_file_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.update_mem_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.protocol_manager()))
     
@@ -193,9 +187,10 @@ class App(Sslproxy, Transporters):
         return data
 
     async def update_file_db(app):
-        while await app.host_update_event.wait():
+        async with app.host_update_cond:
+            data = io.dumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
             async with io.async_open(app.blazeio_proxy_hosts, "wb") as f:
-                await f.write(io.dumps(app.hosts).encode())
+                await f.write(data)
 
     async def update_mem_db(app):
         if not io.path.exists(app.blazeio_proxy_hosts): return
@@ -203,11 +198,12 @@ class App(Sslproxy, Transporters):
         async with io.async_open(app.blazeio_proxy_hosts, "rb") as f:
             app.hosts.update(io.loads(await f.read()))
 
-        await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=1))
+        await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=4, escape_forward_slashes = False))
 
     async def _remote_webhook(app, r):
         app.hosts.update(json := await io.Request.get_json(r))
-        app.host_update_event.set()
+
+        await app.update_file_db()
 
         await io.plog.cyan("remote_webhook", "added: %s" % io.dumps(json, indent=1))
 

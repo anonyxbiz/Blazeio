@@ -67,5 +67,26 @@ class DotDict:
     def json(app):
         return app._dict
 
+class Multirouter:
+    __slots__ = ("routes", "route_name")
+    def __init__(app, route_name, *routes):
+        app.route_name, app.routes = route_name, [*routes]
+
+    def add(app, route):
+        app.routes.append(route)
+
+    async def router(app, *args, **kwargs):
+        for route in app.routes:
+            _ = await route["func"](*args, **kwargs)
+
+        return _
+
+    def get_router(app):
+        return {
+            "func": app.router,
+            "params": {},
+            "len": len(app.route_name)
+        }
+
 if __name__ == "__main__":
     pass

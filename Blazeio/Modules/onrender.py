@@ -5,8 +5,10 @@ from ..Client import Session
 is_on_render = lambda: environ.get("RENDER")
 
 class RenderFreeTierPatch:
+    _is_on_render = is_on_render()
     def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 60):
-        if not is_on_render(): return
+        if not app._is_on_render:
+            return
 
         for method, value in locals().items():
             if method == app: continue
@@ -36,6 +38,8 @@ class RenderFreeTierPatch:
             await sleep(app.asleep)
 
     async def before_middleware(app, r):
+        if not app._is_on_render: return
+
         if not app.rnd_host and not app.host:
             if not (host := r.headers.get("Referer", r.headers.get("Origin"))):
                 return

@@ -124,6 +124,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 protocol.cancel()
             else:
                 await protocol.__close__()
+                await protocol.__wait_closed__.wait()
 
         return False
 
