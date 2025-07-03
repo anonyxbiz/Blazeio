@@ -36,20 +36,16 @@ class BlazeioMultiplexer:
         app.__stream_id_count__ = 0
         app.__current_stream = None
         app.__buff = bytearray()
-
         app.__prepends__ = io.deque()
         app.__busy_write__ = io.ioCondition(evloop = io.loop)
         app.__stream_created_evt__ = io.SharpEvent(evloop = io.loop)
-
-        app.__tasks__.append(io.loop.create_task(app.update_streams()))
-
         app.socket = app.protocol.transport.get_extra_info('socket')
-
         app.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
         app.update_protocol_write_buffer_limits()
+        app.__tasks__.append(io.loop.create_task(app.update_streams()))
 
     def update_protocol_write_buffer_limits(app):
-        app.protocol.transport.set_write_buffer_limits(0)
+        app.protocol.transport.set_write_buffer_limits(len(app.protocol.__buff__), 0)
 
     def choose_stream(app):
         return app.__prepends__ or app.protocol.__stream__
@@ -179,6 +175,9 @@ class BlazeioMultiplexer:
 
                 app.__current_stream = __current_stream
 
+                if app.__stream_opts and app.__stream_opts not in app._data_bounds_:
+                    app.__current_stream.__stream_opts__.append(app.__stream_opts)
+
                 if app.__current_stream:
                     if (_ := app.perform_checks(chunk)) is not None:
                         chunk = _
@@ -204,7 +203,7 @@ class BlazeioMultiplexer:
                     app.update_stream(app.__current_stream, chunk)
 
 class Stream:
-    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake")
+    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__")
     
     _chunk_size_base_ = 4096*2
 
@@ -223,6 +222,7 @@ class Stream:
         app.__prepends__ = io.deque()
         app.__stream_acks__ = io.deque()
         app.__callbacks__ = io.deque()
+        app.__stream_opts__ = []
         app.__evt__ = io.SharpEvent(False, evloop = io.loop)
         app.__callback_added__ = io.SharpEvent(False, evloop = io.loop)
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)

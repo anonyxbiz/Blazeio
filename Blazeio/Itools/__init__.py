@@ -88,5 +88,39 @@ class Multirouter:
             "len": len(app.route_name)
         }
 
+class memarray(bytearray):
+    __slots__ = ()
+    def __getitem__(app, key):
+        if isinstance(key, slice):
+            return bytes(memoryview(app)[key])
+        return super().__getitem__(key)
+
+    def __setitem__(app, key, value):
+        if isinstance(key, slice):
+            memoryview(app)[key] = memoryview(value)
+            return
+
+        return super().__setitem__(key, value)
+
+class zcbuff:
+    __slots__ = ("buff", "pointer", "_resize")
+    def __init__(app, buff_size: int = 4096, _resize: bool = False):
+        app.buff, app.pointer, app._resize = memarray(buff_size), 0, _resize
+
+    def extend(app, data):
+        if app._resize:
+            if len(data) > (len(app.buff)-app.pointer): app.buff.extend(len(data))
+        app.buff[app.pointer:app.pointer + len(data)] = data
+        app.pointer += len(data)
+
+    def __getitem__(app, *args):
+        _ = app.buff.__getitem__(*args)
+        if app.pointer:
+            app.pointer -= len(_)
+        return _
+
+    def __setitem__(app, *args):
+        return app.buff.__setitem__(*args)
+
 if __name__ == "__main__":
     pass

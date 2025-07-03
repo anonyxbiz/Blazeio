@@ -243,6 +243,7 @@ class App(Handler, OOP_RouteDef):
     ioConf.ServerConfig = SrvConfig()
     on_exit = deque()
     is_server_running = SharpEvent(False, loop)
+    _server_closing = SharpEvent(False, loop)
 
     __server_config__ = {
         "__http_request_heading_end_seperator__": b"\r\n\r\n",
@@ -426,6 +427,8 @@ class App(Handler, OOP_RouteDef):
         except Exception: raise
 
     async def exit(app, e, exception_handled = False, terminate = True):
+        app.event_loop.call_soon(app._server_closing.set)
+
         warn = lambda _log: Log.warning("<Blazeio.exit>", ":: %s" % str(_log))
 
         if not exception_handled:
@@ -439,7 +442,7 @@ class App(Handler, OOP_RouteDef):
         if isinstance(e, KeyboardInterrupt):
             await warn("KeyboardInterrupt Detected, Shutting down gracefully.")
             app.server.close()
-        else:
+        elif isinstance(e, Exception):
             await traceback_logger(e)
 
         for callback in app.on_exit:
