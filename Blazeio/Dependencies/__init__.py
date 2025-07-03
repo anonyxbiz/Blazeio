@@ -130,14 +130,15 @@ class SharpEvent:
 SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
 
 class Enqueue:
-    __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow",)
-    def __init__(app, maxsize: int = 100):
+    __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "loop")
+    def __init__(app, maxsize: int = 100, evloop = None, cond = None):
         app.maxsize = maxsize
+        app.loop = evloop or get_event_loop()
         app.queue: deque = deque()
-        app.queue_event: SharpEvent = SharpEvent()
-        app.queue_add_event: SharpEvent = SharpEvent()
-        app.queueunderflow: Condition = Condition()
-        get_event_loop().create_task(app.check_overflow())
+        app.queue_event: SharpEvent = SharpEvent(evloop = app.loop)
+        app.queue_add_event: SharpEvent = SharpEvent(evloop = app.loop)
+        app.queueunderflow = cond(evloop = app.loop) if cond else Condition()
+        app.loop.create_task(app.check_overflow())
 
     async def check_overflow(app):
         while True:
@@ -232,18 +233,21 @@ class Default_logger:
 
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
-    async def __log_actual__(app, color, log, add_new_line = True):
-        if not isinstance(log, str):
-            log = str(log)
+    async def __log_actual__(app, color = "", log: str = "", add_new_line: bool = True, raw: bool = None):
+        if raw is None:
+            if not isinstance(log, str):
+                log = str(log)
+    
+            if add_new_line and not "\n" in log: log += "\n"
+    
+            if not log.startswith("\\"):
+                prec = "\r"
+            else:
+                prec = ""
 
-        if add_new_line and not "\n" in log: log += "\n"
-
-        if not log.startswith("\\"):
-            prec = "\r"
+            sys_stdout.write("%s%s%s" % (prec, color, log))
         else:
-            prec = ""
-
-        sys_stdout.write("%s%s%s" % (prec, color, log))
+            sys_stdout.write(raw)
 
     async def __log__(app, *args, **kwargs):
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs)), app.loop))

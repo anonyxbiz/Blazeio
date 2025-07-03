@@ -269,7 +269,6 @@ class Asynchronizer:
     def start(app):
         app.loop = new_event_loop()
         loop.call_soon_threadsafe(app.start_event.set,)
-
         if app.perform_test: loop.create_task(app.test())
         app.loop.run_until_complete(app.worker())
 
@@ -429,35 +428,62 @@ class __plog__:
 
     line_sepr = ("<", "line_", ">")
 
+    __serializer = ioCondition()
+
     def __init__(app): pass
 
     def __getattr__(app, name):
         if name in logger.colors._dict:
-            def dynamic_method(*args):
-                return app.__log__(*args, logger_ = logger.__getattr__(name))
+            def dynamic_method(*args, **kwargs):
+                return app.__log__(*args, logger_ = logger.__getattr__(name), **kwargs)
 
             setattr(app, name, dynamic_method)
             return dynamic_method
 
         return getattr(logger, name)
 
-    def __log__(app, name: (int, str, None) = None, *logs, sepr = "  ", logger_=None):
-        frmt, indent = "", 0
+    def to_line(app, lineno: int, col: int = 0): return "\033[%d;%dH" % (lineno, col)
 
+    def __log__(app, name: (int, str, None) = None, *logs, sepr = "  ", logger_ = None, _format = True):
+        if _format:
+            sepr0 = "\n"
+        else:
+            sepr0 = ""
+
+        frmt, indent = "", 0
         for log in logs:
             indent += 1
-            frmt += "\n%s%s" % (sepr*indent, log)
+            frmt += "%s%s%s" % (sepr0, sepr*indent, log)
 
         if str(name).startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
             if not (line := app.lines.get(name[:ide + 1])):
-                lineno = int(name[idb + len(app.line_sepr[1]):ide])
-                app.lines[line] = (line := "\033[%d;1H" % lineno)
+                line = app.to_line(int(name[idb + len(app.line_sepr[1]):ide]))
 
             name = name[ide + 1:]
         else:
             line = ""
+        
+        if _format:
+            txt = ("<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
+        else:
+            txt = frmt
 
-        return logger_(line + ("<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt)))
+        return logger_(line + txt)
+
+    async def clear(app, a: int = 0, b: int = 20):
+        for line in range(a, b):
+            await app.clear_line(line)
+
+    async def clear_line(app, lineno):
+        await logger.__log__(raw = "\033[%d;%dH\x1b[2K" % (lineno, 10))
+
+    async def mvto(app, lineno: int = 1, col: int = 10):
+        await logger.__log__(raw = "\033[%d;%dH" % (lineno, col))
+
+    async def clear_mv(app, a, b):
+        await app.clear(a, b)
+        await app.mvto(a)
+        await logger.flush()
 
 plog = __plog__()
 
