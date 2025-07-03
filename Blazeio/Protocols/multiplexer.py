@@ -28,6 +28,8 @@ class Utils:
 class BlazeioMultiplexer:
     __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_created_evt__", "__stream_opts")
     _data_bounds_ = (b"<::", b"::>", b"<-io_eof->", b"<-io_close->", b"", b"<-io_ack->", b"<-create_stream->")
+    
+    _write_buffer_limit = 1024*1024
 
     def __init__(app, protocol):
         app.protocol = protocol
@@ -45,7 +47,7 @@ class BlazeioMultiplexer:
         app.__tasks__.append(io.loop.create_task(app.update_streams()))
 
     def update_protocol_write_buffer_limits(app):
-        app.protocol.transport.set_write_buffer_limits(len(app.protocol.__buff__), 0)
+        app.protocol.transport.set_write_buffer_limits(app._write_buffer_limit, 0)
 
     def choose_stream(app):
         return app.__prepends__ or app.protocol.__stream__
@@ -321,7 +323,8 @@ class Stream:
         while not app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
-        app.__stream_acks__.popleft()
+        if app.__stream_acks__:
+            app.__stream_acks__.popleft()
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
         if not app.can_write(): raise app.protocol.protocol.__stream_closed_exception__()
