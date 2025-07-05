@@ -4,7 +4,7 @@ from .reasons import *
 class Context:
     @classmethod
     def _r(app):
-        return current_task().__BlazeioServerProtocol__
+        return current_task().__BlazeioProtocol__
 
     @classmethod
     def r_sync(app):

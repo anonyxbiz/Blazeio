@@ -1,4 +1,5 @@
 from secrets import token_urlsafe
+from collections import deque, defaultdict, OrderedDict
 
 class Dot_Dict:
     __slots__ = ("_dict",)
@@ -105,22 +106,30 @@ class memarray(bytearray):
 class zcbuff:
     __slots__ = ("buff", "pointer", "_resize")
     def __init__(app, buff_size: int = 4096, _resize: bool = False):
-        app.buff, app.pointer, app._resize = memarray(buff_size), 0, _resize
+        app.buff, app.pointer, app._resize = bytearray(buff_size), 0, _resize
+
+    def _len(app):
+        return app.pointer
+
+    def chunk(app, size):
+        if not app.pointer: return
+        return app[int(app.pointer-size):app.pointer]
 
     def extend(app, data):
         if app._resize:
-            if len(data) > (len(app.buff)-app.pointer): app.buff.extend(len(data))
-        app.buff[app.pointer:app.pointer + len(data)] = data
-        app.pointer += len(data)
+            if len(data) > int(len(app.buff)-app.pointer):
+                app.buff = bytearray(app.buff) + bytearray(len(data))
 
-    def __getitem__(app, *args):
-        _ = app.buff.__getitem__(*args)
-        if app.pointer:
-            app.pointer -= len(_)
-        return _
+        app[app.pointer:app.pointer + len(data)] = data
 
-    def __setitem__(app, *args):
-        return app.buff.__setitem__(*args)
+    def __getitem__(app, key):
+        _ = memoryview(app.buff)[key]
+        app.pointer -= len(_)
+        return bytes(_)
+
+    def __setitem__(app, key, value):
+        memoryview(app.buff)[key] = memoryview(value)
+        app.pointer += len(value)
 
 if __name__ == "__main__":
     pass

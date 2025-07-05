@@ -18,9 +18,9 @@ class BlazeioProtocol:
         return app.__buff__memory__[:sizehint]
 
     def connection_lost(app, exc):
-        if app.cancel and app.cancel_on_disconnect: app.cancel()
         app.__evt__.set()
         app.__overflow_evt__.set()
+        if app.cancel and app.cancel_on_disconnect: app.cancel()
 
     def eof_received(app):
         app.__is_at_eof__ = True

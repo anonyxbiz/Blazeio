@@ -46,8 +46,8 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         transport.pause_reading()
         app.transport = transport
         app.cancel = (task := loop.create_task(app.transporter())).cancel
-        task.__BlazeioServerProtocol__ = app
-    
+        task.__BlazeioProtocol__ = app
+
     def state(app):
         return {key: str(value)[:500] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
 

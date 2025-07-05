@@ -75,11 +75,15 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return method
 
     async def __aenter__(app, create_connection = True):
+        current_task().__BlazeioProtocol__ = app
+
         if not app.loop:
             app.loop = get_event_loop()
 
         if app.protocol:
             if isinstance(app.protocol, BlazeioClientProtocol):
+                return app
+            elif app.kwargs.get("connect_only"):
                 return app
 
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else create_connection
@@ -270,7 +274,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
             for callback in callbacks: await callback(app) if iscoroutinefunction(callback) else callback(app)
-        
+
         app.has_sent_headers = True
 
         return app

@@ -62,11 +62,11 @@ class Sslproxy:
     
     def context(app):
         context = io.create_default_context(io.Purpose.CLIENT_AUTH)
-        context.post_handshake_auth = True
+        context.post_handshake_auth = False
         context.options |= io.OP_NO_COMPRESSION
         context.set_ecdh_curve("prime256v1")
         context.minimum_version = TLSVersion.TLSv1_3
-        context.session_tickets = False
+        context.session_tickets = True
         return context
 
     def configure_ssl(app):
@@ -77,13 +77,14 @@ class Sslproxy:
 class Transporters:
     __slots__ = ()
     __conn__ = io.ioCondition(evloop = io.loop)
+    __serialize__ = io.ioCondition(evloop = io.loop)
 
     def __init__(app): pass
 
     async def puller(app, r, resp):
-        async for chunk in r.pull():
-            await resp.writer(chunk)
-        await resp.__eof__()
+        async with resp.protocol:
+            async for chunk in r.pull():
+                await resp.writer(chunk)
 
     def prepare(app, r, headers, *args, **kwargs):
         headers = {key.capitalize(): val for key, val in headers.items()}
@@ -95,12 +96,18 @@ class Transporters:
 
         return r.prepare(headers, *args, **kwargs)
 
-    async def conn(app, srv):
+    async def _conn(app, srv):
         async with app.__conn__:
             if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
                 srv["conn"] = (conn := await io.Session(srv.get("remote"), client_protocol = BlazeioClientProtocol, connect_only = 1).__aenter__())
 
         return conn.create_stream()
+
+    async def conn(app, srv):
+        try:
+            return await app._conn(srv)
+        except Exception as e:
+            raise io.Abort("Service Unavailable", 500)
 
     async def no_tls_transporter(app, r, srv: dict):
         r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
@@ -122,16 +129,36 @@ class Transporters:
                 await r.writer(chunk)
 
             if r.store.task: await r.store.task
+    
+    async def __write_chunks__(app, r, chunk = b"", chunk_size = 1024):
+        if r.store.buff or len(chunk) < scope.tls_record_size:
+            if chunk:
+                r.store.buff.extend(chunk)
+                if len(r.store.buff) < scope.tls_record_size:
+                    return
+                else:
+                    chunk = b""
+
+            chunk = bytes(r.store.buff) + chunk
+            r.store.buff.clear()
+
+        while chunk and len(chunk) >= chunk_size:
+            _, chunk = bytes(memoryview(chunk)[:chunk_size]), bytes(memoryview(chunk)[chunk_size:])
+            await r.writer(_)
+
+        if chunk:
+            await r.writer(chunk)
 
     async def tls_transporter(app, r, srv: dict):
         r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
+
         async with io.Session(srv.get("remote") + r.tail, r.method, r.headers, decode_resp=False, add_host = False, use_protocol = await app.conn(srv)) as resp:
             r.store.telemetry.ttc = r.store.telemetry.ttfb()
 
             if r.method not in r.non_bodied_methods:
                 r.store.task = io.create_task(app.puller(r, resp))
             else:
-                await resp.__eof__()
+                async with resp.protocol: pass
 
             if not resp.is_prepared(): await resp.prepare_http()
 
@@ -142,18 +169,9 @@ class Transporters:
             r.store.buff = bytearray()
 
             async for chunk in resp.__pull__():
-                if not r.store.buff and len(chunk) >= scope.tls_record_size:
-                    await r.writer(chunk)
-                    continue
+                await app.__write_chunks__(r, chunk)
 
-                r.store.buff.extend(chunk)
-
-                if len(r.store.buff) >= scope.tls_record_size:
-                    _, _ = await r.writer(r.store.buff), r.store.buff.clear()
-                else:
-                    continue
-
-            if r.store.buff: await r.writer(r.store.buff)
+            await app.__write_chunks__(r)
 
             if r.store.task: await r.store.task
 
@@ -360,8 +378,6 @@ def runner(args, web_runner = None):
     scope.whclient.save_state(state)
 
     scope.web.sock().setsockopt(io.SOL_SOCKET, io.SO_REUSEPORT, 1)
-    scope.web.sock().setsockopt(io.IPPROTO_TCP, io.TCP_NODELAY, 1)
-
     scope.server_set.set()
 
     if not web_runner: web_runner = scope.web.run

@@ -26,10 +26,18 @@ class Utils:
         return _state
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_created_evt__", "__stream_opts")
-    _data_bounds_ = (b"<::", b"::>", b"<-io_eof->", b"<-io_close->", b"", b"<-io_ack->", b"<-create_stream->")
-    
-    _write_buffer_limit = 1024*1024
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts")
+    _data_bounds_ = (
+        b"\x00", # sof
+        b"\x01", # eof
+        b"\x02", # io_eof
+        b"\x03", # io_close
+        b"\x04", # io_heartbeat
+        b"\x05", # io_ack
+        b"\x06", # io_create
+    )
+
+    _write_buffer_limits = (1024**2, 0)
 
     def __init__(app, protocol):
         app.protocol = protocol
@@ -40,14 +48,15 @@ class BlazeioMultiplexer:
         app.__buff = bytearray()
         app.__prepends__ = io.deque()
         app.__busy_write__ = io.ioCondition(evloop = io.loop)
-        app.__stream_created_evt__ = io.SharpEvent(evloop = io.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
-        app.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
         app.update_protocol_write_buffer_limits()
         app.__tasks__.append(io.loop.create_task(app.update_streams()))
 
+    def disable_nagle(app):
+        app.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+
     def update_protocol_write_buffer_limits(app):
-        app.protocol.transport.set_write_buffer_limits(app._write_buffer_limit, 0)
+        app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
 
     def choose_stream(app):
         return app.__prepends__ or app.protocol.__stream__
@@ -65,7 +74,6 @@ class BlazeioMultiplexer:
     def _parse_bounds(app, __buff: (bytes, bytearray, None) = None):
         if __buff is None:
             __buff = app.__buff
-
         if (idx := __buff.find(app._data_bounds_[0])) == -1 or (idb := __buff.find(app._data_bounds_[1])) == -1: return
         return (idx, idb)
 
@@ -73,11 +81,11 @@ class BlazeioMultiplexer:
         if not (bounds := app._parse_bounds()): return None
 
         if app.__current_stream_id is NotImplemented:
-            __current_stream_id, __buff = bytes(memoryview(app.__buff)[:bounds[1] + len(app._data_bounds_[_point])]), app.__buff[bounds[1] + len(app._data_bounds_[_point]):]
+            __current_stream_id, __buff = bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), app.__buff[bounds[1] + 1:]
 
             if not (bounds := app._parse_bounds(__buff)): return None
 
-            __stream_opts, __buff = bytes(memoryview(__buff)[bounds[0] + len(app._data_bounds_[0]):bounds[1]]), __buff[bounds[1] + len(app._data_bounds_[_point]):]
+            __stream_opts, __buff = bytes(memoryview(__buff)[bounds[0] + 1:bounds[1]]), __buff[bounds[1] + 1:]
 
             app.__current_stream_id, app.__buff, app.__stream_opts = __current_stream_id, __buff, __stream_opts
 
@@ -112,9 +120,12 @@ class BlazeioMultiplexer:
         return None
 
     def stream_id_gen(app):
-        _id = app.__stream_id_count__
-        app.__stream_id_count__ += 1
-        return b"%bio_%X%b" % (app._data_bounds_[0], _id, app._data_bounds_[1])
+        while (_id := b"io_%X" % app.__stream_id_count__) in app.__streams__:
+            app.__stream_id_count__ += 1
+        else:
+            app.__stream_id_count__ += 1
+
+        return _id
 
     def enter_stream(app, _id: (None, bytes) = None, instance = None):
         if not instance:
@@ -128,7 +139,7 @@ class BlazeioMultiplexer:
         return stream
 
     def metadata(app, _id: (bytes, bytearray), _len: int, __stream_opts: (bytes, bytearray, None) = None):
-        return b"%b%b%b%X%b" % (_id, app._data_bounds_[0] + (__stream_opts or b"") + app._data_bounds_[1], app._data_bounds_[0], _len, app._data_bounds_[1])
+        return b"%b%b%b%b%b%b%b%X%b" % (app._data_bounds_[0], _id, app._data_bounds_[1], app._data_bounds_[0], __stream_opts or b"", app._data_bounds_[1], app._data_bounds_[0], _len, app._data_bounds_[1])
 
     def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
         __current_stream.received_size += len(chunk)
@@ -165,7 +176,7 @@ class BlazeioMultiplexer:
 
                 if not (bounds := app._parse_bounds()): continue
 
-                app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + len(app._data_bounds_[0]):bounds[1]]), 16), app.__buff[bounds[1] + len(app._data_bounds_[1]):]
+                app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), 16), app.__buff[bounds[1] + 1:]
 
                 chunk, _ = bytes(memoryview(app.__buff)[:]), app.__buff.clear()
                 
@@ -206,7 +217,7 @@ class BlazeioMultiplexer:
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__")
-    
+
     _chunk_size_base_ = 4096*4
 
     def __init__(app, _id: (bytes, bytearray), protocol):
@@ -218,7 +229,7 @@ class Stream:
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.pull = app.__pull__
         app.writer = app.__writer__
-        app.chunk_size = app._chunk_size_base_
+        app.chunk_size = app.calculate_chunk_size()
         app.id_str = app.id.decode()
         app.__stream__ = io.deque()
         app.__prepends__ = io.deque()
@@ -231,6 +242,10 @@ class Stream:
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
+
+    def calculate_chunk_size(app):
+        return app._chunk_size_base_
+        return int(len(app.protocol.protocol.__buff__)/2)
 
     def id_f(app):
         if not hasattr(app, "__idf__"):
@@ -412,6 +427,7 @@ class BlazeioClientProtocol(io.BlazeioClientProtocol):
 
     def create_stream(app, _id: (None, bytes) = None):
         return app.multiplexer.enter_stream(_id, Stream_Client)
+        return
 
     def stream_closed(app, stream):
         app.multiplexer.__streams__.pop(stream.id, None)
@@ -430,8 +446,7 @@ class BlazeioServerProtocol(io.BlazeioServerProtocol):
 
     def create_stream(app, _id):
         app.multiplexer.__tasks__.append(task := io.loop.create_task(app.__transporter__(r := app.multiplexer.enter_stream(_id, Stream_Server))))
-
-        task.__BlazeioServerProtocol__ = r
+        task.__BlazeioProtocol__ = r
         return r
 
     def stream_closed(app, stream):
