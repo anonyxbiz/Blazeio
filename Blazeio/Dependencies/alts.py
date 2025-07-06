@@ -492,5 +492,22 @@ class timef:
     def now(app, *args, **kwargs):
         return (now := dt.now(*args, **kwargs)).strftime("%H:%M:%S:") + str(now.microsecond)[:2]
 
+class Errdetail(BlazeioException):
+    __slots__ = (
+        'err',
+        'time'
+    )
+    def __init__(app, err):
+        app.err = err
+        app.time = timef.now()
+
+    def detail(app) -> dict:
+        return {"time": app.time, "err": app.err}
+
+    def __str__(app) -> str:
+        detail = app.detail()
+        try: return dumps(detail, indent=4, escape_forward_slashes=False, reject_bytes=False)
+        except: return str(detail)
+
 if __name__ == "__main__":
     pass

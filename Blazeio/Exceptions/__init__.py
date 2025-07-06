@@ -6,10 +6,10 @@ class Err(BlazeioException):
         'message',
     )
     def __init__(app, message=None):
-        app.message = str(message)
+        app.message = message
 
     def __str__(app) -> str:
-        return app.message
+        return str(app.message)
 
 class ClientDisconnected(BlazeioException):
     __slots__ = ('message')
