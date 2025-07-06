@@ -449,11 +449,6 @@ def BlazeioMuxProtocol(base_class=object):
             app.multiplexer.cancel()
             app.close()
 
-        def buffer_updated(app, nbytes):
-            #app.transport.pause_reading()
-            app.__stream__.append(bytes(app.__buff__memory__[:nbytes]))
-            app.__evt__.set()
-
         def connection_lost(app, exc):
             app.__evt__.set()
             app.__overflow_evt__.set()
