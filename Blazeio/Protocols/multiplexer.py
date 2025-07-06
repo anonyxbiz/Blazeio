@@ -482,6 +482,10 @@ class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
     async def __transporter__(app, r):
         try:
             await app.on_client_connected(r)
+        except GeneratorExit:
+            pass
+        except StopIteration:
+            pass
         finally:
             await r.__eof__()
             await r.__close__()
