@@ -183,7 +183,6 @@ class BlazeioMultiplexer:
                 if app._has_handshake():
                     app.__current_stream = app.protocol.create_stream(app.__current_stream_id)
                 else:
-                    print("not _has_handshake")
                     app.__current_stream = None
             else:
                 app.__current_stream = __current_stream
@@ -358,7 +357,6 @@ class Stream:
         if app.__stream_acks__:
             app.__stream_acks__.popleft()
         else:
-            print("no ack")
             raise app.protocol.protocol.__stream_closed_exception__()
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
