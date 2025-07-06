@@ -57,6 +57,7 @@ class BlazeioMultiplexer:
         app.__prepends__ = io.deque()
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
+        app.disable_nagle()
         app.update_protocol_write_buffer_limits()
         app.create_task(app.mux())
 
@@ -182,6 +183,7 @@ class BlazeioMultiplexer:
                 if app._has_handshake():
                     app.__current_stream = app.protocol.create_stream(app.__current_stream_id)
                 else:
+                    print("not _has_handshake")
                     app.__current_stream = None
             else:
                 app.__current_stream = __current_stream
@@ -350,10 +352,14 @@ class Stream:
         yield data
 
     async def wfa(app):
-        while not app.__stream_acks__:
+        if not app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
-        app.__stream_acks__.popleft()
+        if app.__stream_acks__:
+            app.__stream_acks__.popleft()
+        else:
+            print("no ack")
+            raise app.protocol.protocol.__stream_closed_exception__()
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
         if not app.can_write(): raise app.protocol.protocol.__stream_closed_exception__()
@@ -443,9 +449,14 @@ def BlazeioMuxProtocol(base_class=object):
             app.close()
 
         def buffer_updated(app, nbytes):
-            # app.transport.pause_reading()
+            app.transport.pause_reading()
             app.__stream__.append(bytes(app.__buff__memory__[:nbytes]))
             app.__evt__.set()
+
+        def connection_lost(app, exc):
+            app.__evt__.set()
+            app.__overflow_evt__.set()
+            app.cancel()
 
     return _BlazeioMuxProtocol
 
