@@ -75,8 +75,9 @@ class BlazeioMultiplexer:
         return app.__prepends__ or app.protocol.__stream__
 
     def cancel(app):
-        for stream in app.__streams__:
+        for stream in list(app.__streams__):
             app.protocol.stream_closed(app.__streams__[stream])
+
         for task in app.__tasks__: task.cancel()
 
     def clear_state(app):
