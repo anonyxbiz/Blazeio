@@ -258,6 +258,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
+        app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
@@ -334,6 +335,8 @@ class Stream:
                 await app.__evt__.wait_clear()
 
     async def __pull__(app):
+        if app.__busy_stream__.initial and app.__busy_stream__.locked(): app.__busy_stream__.release()
+
         while True:
             await app.ensure_reading()
             async with app.__busy_stream__:
@@ -341,7 +344,7 @@ class Stream:
                     yield chunk
                 else:
                     if app.eof_received and not app.choose_stream(): return
-
+    
                     if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
                         return
@@ -386,8 +389,8 @@ class Stream:
 
     async def __send_ack__(app):
         if app.__stream_closed__: return
-        async with app.__busy_stream__: pass
-        if app.can_write(): await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[5])
+        async with app.__busy_stream__:
+            if app.can_write(): await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[5])
 
     async def __eof__(app, data: (None, bytes, bytearray) = None):
         if data and app.can_write(): await app.__writer__(data)
