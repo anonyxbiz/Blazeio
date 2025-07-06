@@ -475,10 +475,10 @@ class __plog__:
             await app.clear_line(line)
 
     async def clear_line(app, lineno):
-        await logger.__log__(raw = "\033[%d;%dH\x1b[2K" % (lineno, 10))
+        await logger.raw("\033[%d;%dH\x1b[2K" % (lineno, 10))
 
     async def mvto(app, lineno: int = 1, col: int = 10):
-        await logger.__log__(raw = "\033[%d;%dH" % (lineno, col))
+        await logger.raw("\033[%d;%dH" % (lineno, col))
 
     async def clear_mv(app, a, b):
         await app.clear(a, b)

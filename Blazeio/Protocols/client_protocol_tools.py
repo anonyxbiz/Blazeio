@@ -6,6 +6,11 @@ ssl_context = create_default_context()
 ssl_context.check_hostname = False
 ssl_context.verify_mode = CERT_NONE
 
+class ClientContext:
+    @classmethod
+    def r(app):
+        return current_task().__BlazeioClientProtocol__
+
 class __Rvtools__:
     __slots__ = ()
     headers = {
@@ -105,7 +110,6 @@ class AsyncHtml:
         items = []
 
         while (idx := html.find(a)) != -1:
-            await sleep(0)
             item, html = html[idx + len(a):], html[idx + len(a):]
 
             if (idy := item.find(b)) != -1:
@@ -607,7 +611,8 @@ class Pulltools(Parsers):
 
 class Extractors:
     @classmethod
-    async def aread_partial(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
+    async def aread_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
+        app = ClientContext.r()
         buff, started = bytearray(), 0
 
         async for chunk in app.pull():
@@ -639,7 +644,8 @@ class Extractors:
         return buff
 
     @classmethod
-    async def stream_partial(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
+    async def stream_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
+        app = ClientContext.r()
         buff, started, ended = bytearray(), 0, 0
 
         async for chunk in app.pull():

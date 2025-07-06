@@ -252,6 +252,9 @@ class Default_logger:
     async def __log__(app, *args, **kwargs):
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs)), app.loop))
 
+    async def raw(app, log, *args, **kwargs):
+        return await app.__log__(*args, raw = log, **kwargs)
+
     async def loop_setup(app):
         app.logs = Enqueue(maxsize=app.maxsize)
         app.log_idle_event = SharpEvent()
