@@ -17,12 +17,12 @@ from inspect import signature as sig, stack
 from typing import Callable, Any, Optional, Union
 
 from mimetypes import guess_type
-from os import stat, kill, getpid, path, environ, name as os_name
+from os import stat, kill, getpid, path, environ, name as os_name, getcwd
 
 from os import path as os_path
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
-from threading import Thread
+from threading import Thread, Lock as T_lock
 from html import escape
 
 from traceback import extract_tb, format_exc
@@ -215,7 +215,7 @@ class Default_logger:
 
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
 
-    def __init__(app, name: str = "", maxsize: int = 1000, max_unflushed_logs: int = 100):
+    def __init__(app, name: str = "", maxsize: int = 1000, max_unflushed_logs: int = 1000):
         app.name: str = name
         app.maxsize: int = maxsize
         app.max_unflushed_logs: int = max_unflushed_logs
@@ -336,44 +336,23 @@ class __log__:
 
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
-    async def __log__(app, r=None, message=None, color=None, logger_=None, **kwargs):
-        try:
-            if isinstance(r, BlazeioProtocol):
-                message = str(message).strip()
-                if message in app.known_exceptions:
-                    return
+    async def __log__(app, r: Any = None, message: Any = None, color: (None, str) = None, logger_: Any = None, **kwargs):
+        if hasattr(r, "transport"):
+            message = str(message).strip()
+            if message in app.known_exceptions: return
+            await logger_("%s•%s | [%s:%s] %s" % (r.identifier, str(dt.now()), r.ip_host, str(r.ip_port), message))
+        else:
+            _ = str(r).strip()
+            if message:
+                _ += message
 
-                await logger_(
-                    "%s•%s | [%s:%s] %s" % (
-                        r.identifier,
-                        str(dt.now()),
-                        r.ip_host,
-                        str(r.ip_port),
-                        message
-                    )
-                )
-            else:
-                _ = str(r).strip()
-                if message:
-                    _ += message
-                    
-                message = _
+            message = _
+            msg = message
 
-                msg = message
+            if msg == "":
+                return await logger_(message, **kwargs)
 
-                if msg == "":
-                    await logger_(message, **kwargs)
-                    return
-                
-                await logger_(
-                    "%s•%s | %s" % (
-                        "",
-                        str(dt.now()),
-                        message
-                    )
-                )
-        except Exception as e:
-            pass
+            await logger_("%s•%s | %s" % ("", str(dt.now()), message))
 
 logger = Default_logger(name='BlazeioLogger')
 

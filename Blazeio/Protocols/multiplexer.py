@@ -44,6 +44,8 @@ class BlazeioMultiplexer:
         b"\x05", # io_permission
         b"\x06", # io_create
     )
+    
+    # b"\x00io_0\x01\x005\x01\x00Hello\x01"
 
     def __init__(app, protocol, _write_buffer_limits: tuple = (1048576, 1024), evloop = None):
         app.protocol = protocol
@@ -131,7 +133,6 @@ class BlazeioMultiplexer:
             app.__current_stream.__stream_acks__.append(bytes(opts))
             app.__current_stream.__stream_ack__.set()
             return bytes(remainder)
-
         return None
 
     def stream_id_gen(app):
@@ -258,7 +259,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        app.__busy_stream__.lock()
+        # app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):

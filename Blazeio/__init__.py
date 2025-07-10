@@ -80,10 +80,8 @@ class Handler:
         else: raise Abort("Not Found", 404)
     
     async def handle_exception(app, r, e, logger, format_only=False):
-        tb = extract_tb(e.__traceback__)
-        filename, lineno, func, text = tb[-1]
-        
-        msg = "\nException occured in %s.\nLine: %s.\nCode Part: `%s`.\nfunc: %s.\ntext: %s.\n" % (filename, lineno, text, func, str(e))
+        tb = e.__traceback__
+        msg = "\n".join([*("Exception occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntype: %s.\ntext: %s.\n" % (*extract_tb(tb)[-1], str(type(e))[8:-2], "".join([str(e)]))).split("\n")])
 
         if format_only: return msg
 
@@ -143,7 +141,7 @@ class OOP_RouteDef:
                 if not name.endswith("_middleware"):
                     route_name = name.replace("_", "/")
 
-                app.add_route(method, name)
+                app.add_route(method, route_name = name)
 
             except ValueError:
                 pass
@@ -157,8 +155,8 @@ class OOP_RouteDef:
 
 class SrvConfig:
     def __init__(app):
-        app.HOST: str =  "0.0.0.0"
-        app.PORT: int = 8000
+        app.host: str =  "0.0.0.0"
+        app.port: int = 8000
         app.__timeout__: float = float(60*10)
         app.__timeout_check_freq__: int = 30
         app.__health_check_freq__: int = 30
@@ -166,6 +164,17 @@ class SrvConfig:
         app.INBOUND_CHUNK_SIZE: (None, int) = None
         app.server_protocol = BlazeioServerProtocol
         app.sock = None
+        app._pending_coros = deque()
+
+    def __getattr__(app, name):
+        return None
+
+    def schedule_coro(app, coro):
+        return app._pending_coros.append(coro)
+
+    async def resolve_coros(app):
+        while app._pending_coros:
+            await app._pending_coros.popleft()
 
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
@@ -182,20 +191,18 @@ class Middlewarez:
                 setattr(app, i, __locals__.get(i))
 
     def __getattr__(app, name):
-        func = getattr(app.web, name)
-        return func
+        return getattr(app.web, name)
 
 class Add_Route:
-    __slots__ = ("web", "middlewarez",)
-    methods = ("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "ALL",)
+    __slots__ = ("web", )
+    methods = ("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "ALL", "ANY")
+    any_methods = ("ALL", "ANY")
 
     def __init__(app, web):
         __locals__ = locals()
         for i in app.__slots__:
             if i in __locals__:
                 setattr(app, i, __locals__.get(i))
-
-        app.middlewarez = Middlewarez(app)
 
     def __getattr__(app, name):
         if not name.upper() in app.methods:
@@ -206,31 +213,17 @@ class Add_Route:
 
         return method_route
 
-    def add_route(app, path: str = "", method: str = ""):
+    def add_route(app, path: (None, str) = None, method: (None, str) = None):
         async def before_func(r):
-            if method != "ALL" and r.method != method:
+            if method not in app.any_methods and r.method != method:
                 raise Abort("Method not allowed", 405)
-            
-            if app.middlewarez.middlewares.get(method):
-                for middleware in app.middlewarez.middlewares.get(method):
-                    await middleware["func"](r)
 
         def decor(func: Callable):
             async def wrapped_func(r, *args, **kwargs):
                 if path: await before_func(r)
                 return await func(r, *args, **kwargs)
 
-            if path: app.web.add_route(wrapped_func, path)
-            else:
-                if method == "ALL":
-                    for i in app.methods:
-                        if not app.middlewarez.middlewares.get(i): app.middlewarez.middlewares[i] = []
-                        app.middlewarez.middlewares[i].append({"func": wrapped_func, "method": method})
-                else:
-                    if not app.middlewarez.middlewares.get(method): app.middlewarez.middlewares[method] = []
-
-                    app.middlewarez.middlewares[method].append({"func": wrapped_func, "method": method})
-
+            app.web.add_route(wrapped_func, func, path)
             return wrapped_func
 
         return decor
@@ -251,6 +244,9 @@ class App(Handler, OOP_RouteDef):
         "__http_request_max_buff_size__": 102400,
         "__http_request_initial_separatir__": b' ',
         "__http_request_auto_header_parsing__": True,
+        "funcname_normalizers": {
+            "_": "/"
+        }
     }
 
     def __init__(app, *args, **kwargs):
@@ -280,27 +276,30 @@ class App(Handler, OOP_RouteDef):
             app.route = Add_Route(app)
         else:
             return app.ServerConfig.__dict__.get(name)
-
         return getattr(app, name)
 
     @classmethod
     async def init(app, *args, **kwargs):
         app = app(*args, **kwargs)
-
         return app
 
     @classmethod
     def init_sync(app, *args, **kwargs):
         app = app(*args, **kwargs)
         return app
+    
+    def normalize_funcname(app, funcname: str):
+        for i, x in app.__server_config__["funcname_normalizers"].items():
+            funcname = funcname.replace(i, x)
 
-    def add_route(app, func: Callable, route_name: str = ""):
-        params = {k: (\
-            v.default if str(v.default) != "<class 'inspect._empty'>"\
-            else None\
-        ) for k, v in dict(sig(func).parameters).items()}
+        return funcname
 
-        if not route_name: route_name = str(func.__name__)
+    def add_route(app, func: Callable, parent_func: (None, Callable) = None, route_name: (None, str) = None):
+        if parent_func is None: parent_func = func
+
+        params = {k: (v.default if str(v.default) != "<class 'inspect._empty'>"else None) for k, v in dict(sig(parent_func).parameters).items()}
+
+        if route_name is None: route_name = str(parent_func.__name__)
 
         if route_name == "__main_handler__":
             app.__main_handler__ = func
@@ -308,9 +307,7 @@ class App(Handler, OOP_RouteDef):
 
         if not route_name.endswith("_middleware"):
             if (route := params.get("route")) is None:
-                i, x = "_", "/"
-                while (idx := route_name.find(i)) != -1:
-                    route_name = route_name[:idx] + x + route_name[idx + len(i):]
+                route_name = app.normalize_funcname(route_name)
             else:
                 route_name = route
 
@@ -323,7 +320,6 @@ class App(Handler, OOP_RouteDef):
         if route_name in app.declared_routes:
             if not isinstance(app.declared_routes[route_name], Multirouter):
                 app.declared_routes[route_name] = Multirouter(route_name, app.declared_routes[route_name])
-
             app.declared_routes[route_name].add(data)
         else:
             app.declared_routes[route_name] = data
@@ -376,39 +372,52 @@ class App(Handler, OOP_RouteDef):
         
         return ssl_context
 
+    def bind_to_proxy(app, *args, **kwargs):
+        return app.ServerConfig.schedule_coro(app.add_to_proxy(*args, **kwargs))
+
+    async def add_to_proxy(app, *args, **kwargs):
+        from .Other.multiplexed_proxy import scope
+        state = await scope.whclient.add_to_proxy(args[0], app.ServerConfig.port, *args[1:], **kwargs)
+        app.ServerConfig.server_address = state.get("server_address")
+        return state
+
     async def run(app, host: (None, str) = None, port: (None, int) = None, **kwargs):
         app.route_validator()
-
-        if not host: host = app.ServerConfig.host
-        if not port: port = app.ServerConfig.port
+        if host: app.ServerConfig.host = host
+        if port: app.ServerConfig.port = port
 
         if not kwargs.get("backlog"):
             kwargs["backlog"] = 5000
 
         if app.ServerConfig.sock:
-            app.ServerConfig.sock.bind((host, port))
+            app.ServerConfig.sock.bind((app.ServerConfig.host, app.ServerConfig.port))
             kwargs["sock"] = app.ServerConfig.sock
 
         if (ssl_data := kwargs.get("ssl", None)) and isinstance(ssl_data, dict):
-            kwargs["ssl"] = app.setup_ssl(host, port, ssl_data)
+            kwargs["ssl"] = app.setup_ssl(app.ServerConfig.host, app.ServerConfig.port, ssl_data)
 
         await app.configure_server_handler()
 
         protocol = app.ServerConfig.server_protocol
 
         if not "sock" in kwargs:
-            args = (host, port)
+            args = (app.ServerConfig.host, app.ServerConfig.port)
         else:
             args = ()
+
+        # await app.ServerConfig.resolve_coros()
 
         app.server = await app.event_loop.create_server(
             lambda: protocol(app.handle_client, app.event_loop, ioConf.INBOUND_CHUNK_SIZE),
             *args,
             **kwargs
         )
+        
+        if not app.ServerConfig.server_address:
+            app.ServerConfig.server_address = "%s://%s:%s" % ("http" if not ssl_data else "https", app.ServerConfig.host, app.ServerConfig.port)
 
         async with app.server:
-            app.event_loop.create_task(Log.magenta("Blazeio [PID: %s]" % pid, " Server running on %s://%s:%s, Request Logging is %s.\n" % ("http" if not ssl_data else "https", host, port, "enabled" if app.ServerConfig.__log_requests__ else "disabled")))
+            app.event_loop.create_task(Log.magenta("Blazeio [PID: %s]" % pid, " Server running on %s, Request Logging is %s.\n" % (app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled")))
 
             app.event_loop.call_soon(app.is_server_running.set)
 

@@ -304,6 +304,16 @@ class Request:
             return await app.get_json(r)
 
     @classmethod
+    async def dotdict(app):
+        r = Context.r_sync()
+        datadict = Dot_Dict()
+        if r.method not in r.non_bodied_methods:
+            datadict.update(await app.get_json(r))
+
+        datadict.update(app.get_params_sync(r))
+        return datadict
+
+    @classmethod
     async def bop(app):
         r = Context.r_sync()
         if r.method in r.non_bodied_methods:
