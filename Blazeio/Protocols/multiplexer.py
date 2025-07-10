@@ -59,7 +59,7 @@ class BlazeioMultiplexer:
         app.__prepends__ = io.deque()
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
-        # app.disable_nagle()
+        app.disable_nagle()
         app.update_protocol_write_buffer_limits()
         app.create_task(app.mux())
 
