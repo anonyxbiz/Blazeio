@@ -209,7 +209,7 @@ class BlazeioMultiplexer:
                 remainder, chunk = bytes(memoryview(chunk)[chunk_size:]), bytes(memoryview(chunk[:chunk_size]))
                 app.__prepends__.appendleft(remainder)
 
-            if app.__current_stream:# and app.__expected_size and not app.__current_stream.__stream_closed__:
+            if app.__current_stream and app.__expected_size and not app.__current_stream.__stream_closed__:
                 app.__current_stream.add_callback(app.__current_stream.__send_ack__())
 
             if app.__current_stream:
@@ -310,8 +310,14 @@ class Stream:
         for event in (app.__wait_closed__, app.__callback_added__, app.__stream_ack__,): event.set()
     
     async def wfc(app):
+        """while app.__callbacks__:
+            await app.__callbacks__.popleft()"""
+
+        cbs = []
         while app.__callbacks__:
-            await app.__callbacks__.popleft()
+            cbs.append(app.__callbacks__.popleft())
+
+        await io.gather(*cbs)
 
     async def manage_callbacks(app):
         while True:
