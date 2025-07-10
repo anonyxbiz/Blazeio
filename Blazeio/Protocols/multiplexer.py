@@ -34,7 +34,7 @@ class Utils:
         return view
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits")
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "__io_create_lock__")
     _data_bounds_ = (
         b"\x00", # sof
         b"\x01", # eof
@@ -58,6 +58,7 @@ class BlazeioMultiplexer:
         app.__buff = bytearray()
         app.__prepends__ = io.deque()
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
+        app.__io_create_lock__ = io.T_lock()
         app.socket = app.protocol.transport.get_extra_info('socket')
         app.disable_nagle()
         app.update_protocol_write_buffer_limits()
@@ -87,6 +88,10 @@ class BlazeioMultiplexer:
 
     def state(app):
         return Utils.gen_state(app)
+    
+    def __prepend__(app, data):
+        app.__prepends__.appendleft(data)
+        app.protocol.__evt__.set()
 
     def _parse_bounds(app, __buff: (bytes, bytearray, None) = None):
         if __buff is None:
@@ -136,12 +141,10 @@ class BlazeioMultiplexer:
         return None
 
     def stream_id_gen(app):
-        while (_id := b"io_%X" % app.__stream_id_count__) in app.__streams__:
+        with app.__io_create_lock__:
+            _id = b"io_%X" % app.__stream_id_count__
             app.__stream_id_count__ += 1
-        else:
-            app.__stream_id_count__ += 1
-
-        return _id
+            return _id
 
     def enter_stream(app, _id: (None, bytes) = None, instance = None):
         if not instance:
@@ -177,7 +180,7 @@ class BlazeioMultiplexer:
             app.__buff.extend(chunk)
 
             if not app._set_stream() or not (bounds := app._parse_bounds()):
-                return app.__prepends__.appendleft(chunk)
+                return app.__prepend__(chunk)
 
             app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), 16), app.__buff[bounds[1] + 1:]
 
@@ -199,7 +202,7 @@ class BlazeioMultiplexer:
                     remainder = _
                 app.__current_stream.expected_size += app.__expected_size
 
-            return app.__prepends__.appendleft(remainder)
+            return app.__prepend__(remainder)
 
         app.__received_size += len(chunk)
 
@@ -207,7 +210,7 @@ class BlazeioMultiplexer:
             if app.__received_size > app.__expected_size:
                 chunk_size = (len(chunk) - (app.__received_size - app.__expected_size))
                 remainder, chunk = bytes(memoryview(chunk)[chunk_size:]), bytes(memoryview(chunk[:chunk_size]))
-                app.__prepends__.appendleft(remainder)
+                app.__prepend__(remainder)
 
             if app.__current_stream and app.__expected_size and not app.__current_stream.__stream_closed__:
                 app.__current_stream.add_callback(app.__current_stream.__send_ack__())
@@ -259,7 +262,6 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
@@ -315,9 +317,7 @@ class Stream:
 
     async def manage_callbacks(app):
         while True:
-            if not app.__callbacks__:
-                await app.__callback_added__.wait_clear()
-                
+            await app.__callback_added__.wait_clear()
             await app.wfc()
             if app.__stream_closed__: break
 
@@ -338,8 +338,6 @@ class Stream:
                 await app.__evt__.wait_clear()
 
     async def __pull__(app):
-        if app.__busy_stream__.initial and app.__busy_stream__.locked(): app.__busy_stream__.release()
-
         while True:
             await app.ensure_reading()
             async with app.__busy_stream__:
@@ -360,7 +358,7 @@ class Stream:
         yield data
 
     async def wfa(app):
-        while not app.__stream_acks__:
+        if not app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
         if app.__stream_acks__:
