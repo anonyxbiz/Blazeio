@@ -47,7 +47,7 @@ class BlazeioMultiplexer:
     
     # b"\x00io_0\x01\x005\x01\x00Hello\x01"
 
-    def __init__(app, protocol, _write_buffer_limits: tuple = (1048576, 1024), evloop = None):
+    def __init__(app, protocol, _write_buffer_limits: tuple = (0, 0), evloop = None):
         app.protocol = protocol
         app.loop = evloop or io.loop
         app._write_buffer_limits = _write_buffer_limits
