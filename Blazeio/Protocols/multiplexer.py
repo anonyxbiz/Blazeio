@@ -310,18 +310,14 @@ class Stream:
         for event in (app.__wait_closed__, app.__callback_added__, app.__stream_ack__,): event.set()
     
     async def wfc(app):
-        """while app.__callbacks__:
-            await app.__callbacks__.popleft()"""
-
-        cbs = []
         while app.__callbacks__:
-            cbs.append(app.__callbacks__.popleft())
-
-        await io.gather(*cbs)
+            await app.__callbacks__.popleft()
 
     async def manage_callbacks(app):
         while True:
-            await app.__callback_added__.wait_clear()
+            if not app.__callbacks__:
+                await app.__callback_added__.wait_clear()
+                
             await app.wfc()
             if app.__stream_closed__: break
 
@@ -351,7 +347,7 @@ class Stream:
                     yield chunk
                 else:
                     if app.eof_received and not app.choose_stream(): return
-    
+
                     if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
                         return
