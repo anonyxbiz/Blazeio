@@ -209,7 +209,7 @@ class BlazeioMultiplexer:
                 remainder, chunk = bytes(memoryview(chunk)[chunk_size:]), bytes(memoryview(chunk[:chunk_size]))
                 app.__prepends__.appendleft(remainder)
 
-            if app.__current_stream and app.__expected_size and not app.__current_stream.__stream_closed__:
+            if app.__current_stream:# and app.__expected_size and not app.__current_stream.__stream_closed__:
                 app.__current_stream.add_callback(app.__current_stream.__send_ack__())
 
             if app.__current_stream:

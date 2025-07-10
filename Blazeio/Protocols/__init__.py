@@ -40,15 +40,11 @@ class BlazeioProtocol:
 
     async def buffer_overflow_manager(app):
         if not app.__is_buffer_over_high_watermark__: return
-
-        await app.__overflow_evt__.wait()
-        app.__overflow_evt__.clear()
+        await app.__overflow_evt__.wait_clear()
 
     async def ensure_reading(app):
         if not app.transport.is_closing():
             if not app.__stream__ and not app.transport.is_reading():
                 app.transport.resume_reading()
 
-            await app.__evt__.wait()
-            app.__evt__.clear()
-
+            await app.__evt__.wait_clear()
