@@ -233,7 +233,7 @@ class Default_logger:
 
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
-    async def __log_actual__(app, color = "", log: str = "", add_new_line: bool = True, raw: bool = None):
+    def __log_actual__(app, color = "", log: str = "", add_new_line: bool = True, raw: bool = None):
         if raw is None:
             if not isinstance(log, str):
                 log = str(log)
@@ -250,7 +250,9 @@ class Default_logger:
             sys_stdout.write(raw)
 
     async def __log__(app, *args, **kwargs):
-        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs)), app.loop))
+        event = SharpEvent()
+        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event)), app.loop))
+        await event.wait()
 
     async def raw(app, log, *args, **kwargs):
         return await app.__log__(*args, raw = log, **kwargs)
@@ -267,8 +269,9 @@ class Default_logger:
         while True:
             await app.logs.get_one(pop=False)
             while app.logs.queue:
-                args, kwargs = app.logs.popleft()
-                await app.__log_actual__(*args, **kwargs)
+                args, kwargs, event = app.logs.popleft()
+                app.__log_actual__(*args, **kwargs)
+                event.loop.call_soon(event.set)
 
             if not app.logs.queue:
                 app.log_idle_event.set()
