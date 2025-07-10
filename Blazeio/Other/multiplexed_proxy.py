@@ -107,6 +107,7 @@ class Transporters:
         try:
             return await app._conn(srv)
         except Exception as e:
+            srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
 
     async def no_tls_transporter(app, r, srv: dict):
