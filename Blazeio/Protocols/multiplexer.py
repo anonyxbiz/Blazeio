@@ -259,7 +259,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        app.__busy_stream__.lock()
+        # app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
@@ -336,7 +336,7 @@ class Stream:
                 await app.__evt__.wait_clear()
 
     async def __pull__(app):
-        if app.__busy_stream__.initial and app.__busy_stream__.locked(): app.__busy_stream__.release()
+        # if app.__busy_stream__.initial and app.__busy_stream__.locked(): app.__busy_stream__.release()
 
         while True:
             await app.ensure_reading()
