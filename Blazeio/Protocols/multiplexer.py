@@ -358,7 +358,7 @@ class Stream:
         yield data
 
     async def wfa(app):
-        if not app.__stream_acks__:
+        while not app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
         if app.__stream_acks__:
@@ -373,7 +373,7 @@ class Stream:
 
         async for chunk in app.__to_chunks__(memoryview(data)):
             async with app.protocol.__busy_write__:
-                # await app.protocol.protocol.buffer_overflow_manager()
+                await app.protocol.protocol.buffer_overflow_manager()
                 app.write_mux(chunk, __stream_opts)
 
             if wait:
@@ -391,7 +391,9 @@ class Stream:
     async def __send_ack__(app):
         if app.__stream_closed__: return
         async with app.__busy_stream__:
-            if app.can_write(): await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[5])
+            pass
+
+        if app.can_write(): await app.__writer__(app.protocol._data_bounds_[4], False, False, app.protocol._data_bounds_[5])
 
     async def __eof__(app, data: (None, bytes, bytearray) = None):
         if data and app.can_write(): await app.__writer__(data)
