@@ -106,7 +106,7 @@ class Transporters:
     async def conn(app, srv):
         try:
             return await app._conn(srv)
-        except Exception as e:
+        except OSError:
             srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
 
@@ -226,7 +226,10 @@ class App(Sslproxy, Transporters):
 
         await io.plog.cyan("remote_webhook", "added: %s" % io.dumps(json, indent=1))
 
-        raise io.Eof(await io.Deliver.json(json))
+        await io.Deliver.json(json)
+
+    async def _discover(app, r):
+        await io.Deliver.json({"discovered": True})
 
     async def _proxy_state(app, r):
         json = {}
@@ -274,7 +277,11 @@ class App(Sslproxy, Transporters):
         r.transport.set_write_buffer_limits(0)
         r.store = io.Dot_Dict()
         r.store.telemetry = io.Dot_Dict()
-        
+
+        app.protocol_count += 1
+        r.identifier = app.protocol_count
+        r.__perf_counter__ = io.perf_counter()
+
         r.store.telemetry.prepare_http_request = lambda start = io.perf_counter(): (io.perf_counter() - start)
 
         await io.Request.prepare_http_request(r)
@@ -297,10 +304,6 @@ class App(Sslproxy, Transporters):
         if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
-        app.protocol_count += 1
-        r.identifier = (app.protocol_count, remote)
-        r.__perf_counter__ = io.perf_counter()
-
         try:
             app.protocols[r.identifier] = r
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
@@ -310,9 +313,10 @@ class App(Sslproxy, Transporters):
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
 class WebhookClient:
-    __slots__ = ("conf",)
+    __slots__ = ("conf", "availablity")
     def __init__(app):
         app.conf = io.path.join(scope.HOME, "conf")
+        app.availablity = None
 
     def save_state(app, data: dict):
         with open(app.conf, "wb") as f:
@@ -358,10 +362,25 @@ class WebhookClient:
             if not ow: await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
         return host_data
+    
+    async def available(app):
+        if app.availablity is not None:
+            return app.availablity
+
+        state = app.get_state()
+
+        try:
+            async with io.Session(state.get("server_address") + "/discover", "get", {"host": state.get("server_name"), "route": "/discover"}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None, add_host = False) as session:
+                app.availablity = await session.data()
+        except OSError:
+            app.availablity = False
+
+        return app.availablity
 
 scope.whclient = WebhookClient()
 
 add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k))
+available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 def runner(args, web_runner = None):
     scope.web = io.App(args.host, args.port, __timeout__ = float((60**2) * 24))
@@ -382,6 +401,8 @@ def runner(args, web_runner = None):
         "Blazeio.Other.proxy.port": args.port,
         "Blazeio.Other.proxy.ssl": True if args.ssl else False,
         "server_name": scope.server_name,
+        "server_address": "%s://127.0.0.1:%d" % ("https" if conf.ssl else "http", int(args.port)),
+        **{str(key): str(val) for key,val in args.__dict__.items()}
     })
 
     scope.whclient.save_state(state)
