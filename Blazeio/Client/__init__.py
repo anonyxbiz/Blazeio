@@ -360,7 +360,7 @@ class __SessionPool__:
     async def release(app, session, context):
         async with context:
             context.notify(1)
-    
+
     def create_instance(app, url, *args, **kwargs):
         instance = {}
         instance["context"] = ioCondition()
@@ -425,15 +425,10 @@ class SessionPool:
         await app.session.__aenter__(create_connection = False)
 
         return await app.session.prepare(*app.args, **app.kwargs)
-    
-    async def exit(app):
-        return await sleep(0)
+ 
+    def __aexit__(app, *args, **kwargs):
+        return app.session.__aexit__(*args, **kwargs)
 
-    async def __aexit__(app, *args, **kwargs):
-        await app.session.__aexit__(*args, **kwargs)
-
-        return await app.exit()
-        
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts",)
     def __init__(app, max_conns: int = 100, max_contexts: int = 2):

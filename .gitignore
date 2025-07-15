@@ -11,6 +11,7 @@ Blazeio/Exceptions/__pycache__
 Blazeio/Extensions/__pycache__
 Blazeio/Protocols/__pycache__
 Blazeio/Protocols/bmp.md
+Blazeio/Protocols/udp.py
 Blazeio/Itools/__pycache__
 Blazeio/Extensions/uninstall.py
 c_request_util.egg-info
