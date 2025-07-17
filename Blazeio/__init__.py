@@ -394,7 +394,7 @@ class App(Handler, OOP_RouteDef):
     def reboot(app):
         ReMonitor.reboot()
         app.__init__(*app.ServerConfig.args, **app.ServerConfig.kwargs)
-
+    
     def used(app):
         return app._server_closing.is_set()
 
@@ -449,9 +449,6 @@ class App(Handler, OOP_RouteDef):
                 cancelled_tasks.append(task)
                 task.cancel()
 
-        await Log.warning(":: %s" % "Event loop wiped, ready to exit.")
-        await log.flush()
-
         for task in cancelled_tasks:
             async with Ehandler(ignore = CancelledError):
                 await task
@@ -470,31 +467,35 @@ class App(Handler, OOP_RouteDef):
             except Exception as e: await traceback_logger(e, str(e))
             except KeyboardInterrupt: terminate = True
             finally:
+                await Log.b_red(":: %s" % "Exited.")
+                await log.flush()
+
                 if (terminate is NotImplemented or not terminate):
                     return None
                 return main_process.terminate()
 
-        async with Ehandler(ignore = CancelledError):
-            if isinstance(e, KeyboardInterrupt):
-                await Log.warning(":: %s" % "KeyboardInterrupt Detected.")
-    
-            elif isinstance(e, Exception):
-                await traceback_logger(e)
-    
-            await Log.warning(":: %s" % "Shutting down gracefully.")
+        if isinstance(e, KeyboardInterrupt):
+            await Log.warning(":: %s" % "KeyboardInterrupt Detected.")
 
-            app.server.close()
-            app._server_closing.set()
-            await app.wait_closed.wait()
+        elif isinstance(e, Exception):
+            await traceback_logger(e)
+        
+        await Log.warning(":: %s" % "Shutting down gracefully.")
 
-            await app.cancelloop(app.event_loop)
+        app.server.close()
+        app._server_closing.set()
+        await app.wait_closed.wait()
+        await app.cancelloop(app.event_loop)
 
-            for callback in app.on_exit:
-                async with Ehandler():
-                    if iscoroutinefunction(callback.func):
-                        await callback.arun()
-                    else:
-                        callback.run()
+        for callback in app.on_exit:
+            if iscoroutinefunction(callback.func):
+                await callback.arun()
+            else:
+                callback.run()
+
+            await Log.warning(":: %s" % "Executed app.on_exit `callback`: %s." % callback.func.__name__)
+
+        await Log.warning(":: %s" % "Event loop wiped, ready to exit.")
 
 if __name__ == "__main__":
     pass
