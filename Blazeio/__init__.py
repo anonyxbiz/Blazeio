@@ -395,6 +395,9 @@ class App(Handler, OOP_RouteDef):
         ReMonitor.reboot()
         app.__init__(*app.ServerConfig.args, **app.ServerConfig.kwargs)
 
+    def used(app):
+        return app._server_closing.is_set()
+
     async def add_to_proxy(app, *args, **kwargs):
         from .Other.multiplexed_proxy import scope
         state = await scope.whclient.add_to_proxy(args[0], app.ServerConfig.port, *args[1:], **kwargs)
@@ -437,7 +440,6 @@ class App(Handler, OOP_RouteDef):
             await app.server.start_serving()
             app.is_server_running.set()
             await app._server_closing.wait()
-
             app.wait_closed.set()
 
     async def cancelloop(app, loop):
@@ -447,11 +449,15 @@ class App(Handler, OOP_RouteDef):
                 cancelled_tasks.append(task)
                 task.cancel()
 
+        await Log.warning(":: %s" % "Event loop wiped, ready to exit.")
+        await log.flush()
+
         for task in cancelled_tasks:
             async with Ehandler(ignore = CancelledError):
                 await task
             await Log.warning(":: %s" % "Task [%s] Cancelled" % task.get_name())
-            cancelled_tasks.remove(task)
+            if task in cancelled_tasks:
+                cancelled_tasks.remove(task)
 
     async def exit(app, e = None, exception_handled = False, terminate = NotImplemented):
         if not exception_handled:
@@ -464,35 +470,31 @@ class App(Handler, OOP_RouteDef):
             except Exception as e: await traceback_logger(e, str(e))
             except KeyboardInterrupt: terminate = True
             finally:
-                await Log.b_red(":: %s" % "Exited.")
-                await log.flush()
-
                 if (terminate is NotImplemented or not terminate):
                     return None
                 return main_process.terminate()
 
-        if isinstance(e, KeyboardInterrupt):
-            await Log.warning(":: %s" % "KeyboardInterrupt Detected.")
+        async with Ehandler(ignore = CancelledError):
+            if isinstance(e, KeyboardInterrupt):
+                await Log.warning(":: %s" % "KeyboardInterrupt Detected.")
+    
+            elif isinstance(e, Exception):
+                await traceback_logger(e)
+    
+            await Log.warning(":: %s" % "Shutting down gracefully.")
 
-        elif isinstance(e, Exception):
-            await traceback_logger(e)
-        
-        await Log.warning(":: %s" % "Shutting down gracefully.")
+            app.server.close()
+            app._server_closing.set()
+            await app.wait_closed.wait()
 
-        app.server.close()
-        app._server_closing.set()
-        await app.wait_closed.wait()
-        await app.cancelloop(app.event_loop)
+            await app.cancelloop(app.event_loop)
 
-        for callback in app.on_exit:
-            if iscoroutinefunction(callback.func):
-                await callback.arun()
-            else:
-                callback.run()
-
-            await Log.warning(":: %s" % "Executed app.on_exit `callback`: %s." % callback.func.__name__)
-
-        await Log.warning(":: %s" % "Event loop wiped, ready to exit.")
+            for callback in app.on_exit:
+                async with Ehandler():
+                    if iscoroutinefunction(callback.func):
+                        await callback.arun()
+                    else:
+                        callback.run()
 
 if __name__ == "__main__":
     pass

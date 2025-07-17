@@ -229,12 +229,10 @@ class Default_logger:
         'b_white': '\033[97m'
     })
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
-
     def __init__(app, name: str = "", maxsize: int = 1000, max_unflushed_logs: int = 1000):
         app.name: str = name
         app.maxsize: int = maxsize
         app.max_unflushed_logs: int = max_unflushed_logs
-
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
 
