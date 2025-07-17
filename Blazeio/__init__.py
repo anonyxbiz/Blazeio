@@ -463,7 +463,7 @@ class App(Handler, OOP_RouteDef):
                 if terminate is NotImplemented:
                     terminate = True
 
-            try: await app.exit(e, True, terminate)
+            try: await wait_for(app.exit(e, True, terminate), 5)
             except Exception as e: await traceback_logger(e, str(e))
             except KeyboardInterrupt: terminate = True
             finally:
