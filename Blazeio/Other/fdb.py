@@ -29,7 +29,7 @@ class Fdb:
 
     async def update(app, file: str, data: (dict, bytes), encoding: str = "wb"):
         if isinstance(data, dict):
-            data = io.dumps(data).encode()
+            data = io.dumps(data, indent=0).encode()
 
         if encoding != "ab": await app.obtain_lock(file)
 
