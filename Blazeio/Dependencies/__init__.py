@@ -403,9 +403,9 @@ class __ReMonitor__:
         app.terminate = True
         app.main.cancel()
         try:
-            app.Monitoring_thread_loop.run_until_complete(app.main)
+            app.Monitoring_thread_loop.run_until_complete(wait_for(app.main, 5))
         except CancelledError:
-            pass
+            ...
 
         app.Monitoring_thread.join()
 
@@ -417,10 +417,10 @@ class __ReMonitor__:
         await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
 
         while not app.terminate:
-            for server in app.servers:
+            for server in list(app.servers):
                 app.ServerConfig = server.ServerConfig
                 app.current_task = await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
-    
+
                 app.current_task = await sleep(app.ServerConfig.__timeout_check_freq__)
 
     async def enforce_health(app, Payload, task):

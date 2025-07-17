@@ -392,9 +392,11 @@ class App(Handler, OOP_RouteDef):
         return app.ServerConfig.server_context
 
     def reboot(app):
-        ReMonitor.reboot()
-        app.__init__(*app.ServerConfig.args, **app.ServerConfig.kwargs)
-    
+        # ReMonitor.reboot()
+        with Ehandler():
+            ReMonitor.rm_server(app)
+            app.__init__(*app.ServerConfig.args, **app.ServerConfig.kwargs)
+
     def used(app):
         return app._server_closing.is_set()
 
@@ -463,7 +465,7 @@ class App(Handler, OOP_RouteDef):
                 if terminate is NotImplemented:
                     terminate = True
 
-            try: await wait_for(app.exit(e, True, terminate), 5)
+            try: await app.exit(e, True, terminate)
             except Exception as e: await traceback_logger(e, str(e))
             except KeyboardInterrupt: terminate = True
             finally:
