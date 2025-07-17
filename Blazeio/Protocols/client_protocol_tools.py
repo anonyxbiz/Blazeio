@@ -1,15 +1,11 @@
 from ..Dependencies import *
 from ..Modules.request import *
+from ..Modules.streaming import ClientContext
 from ..Dependencies.alts import DictView, plog, memarray
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
 ssl_context.verify_mode = CERT_NONE
-
-class ClientContext:
-    @classmethod
-    def r(app):
-        return current_task().__BlazeioClientProtocol__
 
 class __Rvtools__:
     __slots__ = ()

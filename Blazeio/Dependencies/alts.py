@@ -1,6 +1,28 @@
 from ..Dependencies import *
+from ..Dependencies import _getframe
 from ..Modules.streaming import Context, Abort
 from ..Other._refuture import reTask
+
+def get_func_name(frame: int = 1):
+    try:
+        caller_frame = _getframe(frame)
+        caller_locals = caller_frame.f_locals
+        __class__ = None
+
+        for __class__ in caller_locals: break
+
+        if __class__:
+            __class__ = caller_locals[__class__].__class__.__name__
+        else:
+            __class__ = ""
+
+        return "<%s.%s>" % (__class__, caller_frame.f_code.co_name)
+
+    except Exception as e:
+        print(e)
+        return e.__class__.__name__
+
+ioConf.add(get_func_name=get_func_name)
 
 async def agather(*coros):
     return await gather(*[loop.create_task(coro) if iscoroutine(coro) else coro for coro in coros])
@@ -401,11 +423,15 @@ class RDict:
 
 create_task = lambda *a, **k: get_event_loop().create_task(*a, **k)
 
-async def traceback_logger(e, *args):
-    if isinstance(e, Exception): tb = e.__traceback__
-    else: tb = e
+async def traceback_logger(e, *args, **kwargs):
+    if not (exts := extract_tb(e.__traceback__)):
+        try: raise e
+        except Exception as e2: e = e2
+        finally: exts = extract_tb(e.__traceback__)
 
-    await plog.b_red(str(type(e))[8:-2], *("Exception occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntext: %s.\n" % (*extract_tb(tb)[-1], "".join([*args, str(e)]))).split("\n"))
+    exts = exts[-1]
+
+    await plog.b_red("Exception occured in %s." % exts[0], "Line: %s." % exts[1], "func: %s." % exts[2], "Code: `%s`." % exts[3], "exc_type: %s" % e.__class__.__name__, "exc_str: %s." % str(e), str(e), *["arg_%d: %s" % (idx+1, str(arg)) for idx, arg in enumerate(args)], *["%s = %s" % (str(key), str(kwargs[key])) for key in kwargs], frame = 4,)
 
 def read_safe_sync(_type = bytes, *a, **k):
     with open(*a, **k) as fd:
@@ -444,7 +470,10 @@ class __plog__:
 
     def to_line(app, lineno: int, col: int = 0): return "\033[%d;%dH" % (lineno, col)
 
-    def __log__(app, name: (int, str, None) = None, *logs, sepr = "  ", logger_ = None, _format = True):
+    def __log__(app, name: (int, str, None) = None, *logs, sepr = "  ", logger_ = None, _format = True, frame = 3):
+        if not logs:
+            logs, name = (name,), None
+
         if _format:
             sepr0 = "\n"
         else:
@@ -462,9 +491,9 @@ class __plog__:
             name = name[ide + 1:]
         else:
             line = ""
-        
+
         if _format:
-            txt = ("<%s[%s]>:%s\n\n" % ("" if name is None else "(%s) -> " % str(name), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
+            txt = ("<%s[%s]>:%s\n\n" % ("(%s%s) -> " % (get_func_name(frame), " - %s" % str(name) if name else ""), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
         else:
             txt = frmt
 
@@ -508,6 +537,62 @@ class Errdetail(BlazeioException):
         detail = app.detail()
         try: return dumps(detail, indent=4, escape_forward_slashes=False, reject_bytes=False)
         except: return str(detail)
+
+class Ehandler:
+    __slots__ = ("onerr", "ignore", "_raise", "exit_or_err")
+    def __init__(app, onerr = None, ignore = [], _raise = [], exit_or_err = False):
+        app.onerr = onerr
+        app.ignore = ignore
+        app._raise = _raise
+        app.exit_or_err = exit_or_err
+
+        for attr in ("ignore", "_raise"):
+            if not isinstance(val := getattr(app, attr), list):
+                setattr(app, attr, [val])
+
+    def __enter__(app):
+        return app
+
+    def should_ignore(app, exc_v):
+        for ignore in app.ignore:
+            if exc_v.__class__.__name__ == ignore.__name__: return True
+
+    def should_raise(app, exc_v):
+        for ignore in app._raise:
+            if exc_v.__class__.__name__ == ignore.__name__: return True
+
+    def __exit__(app, exc_t, exc_v, tb):
+        if exc_v is not None:
+            if not app.should_ignore(exc_v):
+                fut = run_coroutine_threadsafe(traceback_logger(exc_v), get_event_loop())
+                if app.onerr: fut.add_done_callback(lambda fut: app.onerr())
+            
+            if app.should_raise(exc_v): raise exc_v
+            if app.exit_or_err: return False
+            return True
+
+    async def __aenter__(app):
+        return app
+
+    async def __aexit__(app, exc_t, exc_v, tb):
+        if exc_v is not None:
+            if not app.should_ignore(exc_v):
+                await traceback_logger(exc_v)
+                if app.onerr: await app.onerr()
+
+            if app.should_raise(exc_v): raise exc_v
+            if app.exit_or_err: return False
+            return True
+
+def to_repr(__class__):
+    if hasattr(__class__, "__slots__"):
+        keys = __class__.__slots__
+    elif hasattr(__class__, "__dict__"):
+        keys = list(__class__.__dict__.keys())
+    else:
+        keys = list(dir(__class__))
+
+    return ", ".join(["(%s = %s)" % (str(key), str(getattr(__class__, key))) for key in keys])
 
 if __name__ == "__main__":
     pass

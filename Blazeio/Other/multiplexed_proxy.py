@@ -274,7 +274,7 @@ class App(Sslproxy, Transporters):
         return True
 
     async def __main_handler__(app, r):
-        r.transport.set_write_buffer_limits(0)
+        # r.transport.set_write_buffer_limits(0)
         r.store = io.Dot_Dict()
         r.store.telemetry = io.Dot_Dict()
 
@@ -370,7 +370,7 @@ class WebhookClient:
         state = app.get_state()
 
         try:
-            async with io.Session(state.get("server_address") + "/discover", "get", {"host": state.get("server_name"), "route": "/discover"}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None, add_host = False) as session:
+            async with io.Session(state.get("server_address") + "/discover", "get", headers = {"host": state.get("server_name"), "route": "/discover"}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None, add_host = False) as session:
                 app.availablity = await session.data()
         except OSError:
             app.availablity = False

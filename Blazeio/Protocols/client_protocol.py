@@ -17,6 +17,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         '__perf_counter__',
         '__timeout__',
         'cancel_on_disconnect',
+        '__wait_closed__',
     )
 
     def __init__(app, **kwargs):
@@ -31,6 +32,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         app.__is_buffer_over_high_watermark__: bool = False
         app.__evt__: SharpEvent = SharpEvent(False, kwargs.get("evloop"))
         app.__overflow_evt__: SharpEvent = SharpEvent(False, kwargs.get("evloop"))
+        app.__wait_closed__: SharpEvent = SharpEvent(False, kwargs.get("evloop"))
         if (task := current_task()):
             if not hasattr(task, "__BlazeioProtocol__"):
                 task.__BlazeioProtocol__ = app
@@ -38,8 +40,9 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
-    
+
     def cancel(app):
+        app.__wait_closed__.set()
         app.transport.close()
 
     async def pull(app):

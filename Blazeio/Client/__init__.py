@@ -75,7 +75,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return method
 
     async def __aenter__(app, create_connection = True):
-        if (task := current_task()) and not hasattr(task, "__BlazeioClientProtocol__"):
+        if (task := current_task()):
             task.__BlazeioClientProtocol__ = app
 
         if not app.loop:

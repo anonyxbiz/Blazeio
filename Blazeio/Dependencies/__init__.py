@@ -2,7 +2,7 @@
 from ..Itools import *
 from ..Exceptions import *
 from ..Protocols import *
-from asyncio import new_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, iscoroutine, InvalidStateError
+from asyncio import new_event_loop, set_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, iscoroutine, InvalidStateError
 
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEPORT, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_REUSEADDR
 
@@ -11,6 +11,7 @@ from collections import deque, defaultdict, OrderedDict
 from collections.abc import AsyncIterable
 
 from sys import exit, stdout as sys_stdout
+from sys import _getframe
 from datetime import datetime as dt, UTC, timedelta
 
 from inspect import signature as sig, stack
@@ -38,27 +39,41 @@ from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 
 from psutil import Process as psutilProcess
 
-try: from ujson import dumps, loads, JSONDecodeError
-except: from json import dumps, loads, JSONDecodeError
+try:
+    from ujson import dumps as ujson_dumps, loads, JSONDecodeError
+    dumps = lambda *args, indent = 4, reject_bytes = False, escape_forward_slashes = False, **kwargs: ujson_dumps(*args, indent = indent, reject_bytes = reject_bytes, escape_forward_slashes = escape_forward_slashes, **kwargs)
+except:
+    from json import dumps, loads, JSONDecodeError
 
 debug_mode = environ.get("BlazeioDev", None)
 
 main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
-    __slots__ = ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE", "url_to_host", "gen_payload", "url_decode_sync", "url_encode_sync", "get_params_sync", "loop", "headers_to_http_bytes", "ServerConfig",)
+    def __init__(app, **kwargs):
+        app.add(**kwargs)
 
-    def __init__(app):
-        for bound in ("INBOUND_CHUNK_SIZE", "OUTBOUND_CHUNK_SIZE"):
-            setattr(app, bound, 102400)
+    def __getattr__(app, key, default = None):
+        return default
 
-        for key in app.__slots__:
-            if getattr(app, key, False) == False: setattr(app, key, None)
+    def add(app, **kwargs):
+        for key in kwargs:
+            setattr(app, key, kwargs[key])
 
     def run(app, coro):
         return app.loop.run_until_complete(coro)
 
-ioConf = __ioConf__()
+    def new_event_loop(app):
+        app.loop = new_event_loop()
+        globals()["loop"] = app.loop
+        set_event_loop(app.loop)
+
+    def get_event_loop(app):
+        if app.loop: return app.loop
+        app.loop = get_event_loop()
+        return app.loop
+
+ioConf = __ioConf__(INBOUND_CHUNK_SIZE = 102400, OUTBOUND_CHUNK_SIZE = 102400)
 
 def c_extension_importer():
     try:
@@ -79,7 +94,7 @@ class SharpEvent:
 
     def is_set(app):
         return app._set
-    
+
     def fut_done(app, fut):
         if fut.__is_cleared__: return
         fut.__is_cleared__ = True
@@ -203,6 +218,7 @@ class Default_logger:
         'white': '\033[37m',
         'green': '\033[32m',
         'red': '\033[38;5;1m',
+        'grey': '\033[90m',
         'gray': '\033[90m',
         'b_red': '\033[91m',
         'b_green': '\033[92m',
@@ -212,7 +228,6 @@ class Default_logger:
         'b_cyan': '\033[96m',
         'b_white': '\033[97m'
     })
-
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
 
     def __init__(app, name: str = "", maxsize: int = 1000, max_unflushed_logs: int = 1000):
@@ -224,7 +239,7 @@ class Default_logger:
         app._thread.start()
 
     def __getattr__(app, name):
-        if name in app.colors._dict:
+        if name in app.colors:
             async def dynamic_method(*args, **kwargs):
                 return await app.__log__(app.colors.__getattr__(name), *args, **kwargs)
 
@@ -296,7 +311,7 @@ class Default_logger:
         app.loop.run_until_complete(app.log_worker())
 
 routines = {
-    ("loop = get_event_loop()", "loop = None"),
+    ("globals()['loop'] = ioConf.get_event_loop()", "globals()['loop'] = None"),
     ("import uvloop", ""),
     ("uvloop.install()", ""),
     ("from aiofile import async_open", "async_open = NotImplemented")
@@ -319,15 +334,13 @@ def routine_executor(arg):
 
 routine_executor(routines)
 
-ioConf.loop = loop
-
 class __log__:
     known_exceptions = ()
 
     def __init__(app): pass
 
     def __getattr__(app, name):
-        if name in logger.colors._dict:
+        if name in logger.colors:
             async def dynamic_method(*args, **kwargs):
                 return await app.__log__(*args, **kwargs, logger_=logger.__getattr__(name))
 
@@ -336,11 +349,11 @@ class __log__:
 
         raise AttributeError("'DefaultLogger' object has no attribute '%s'" % name)
 
-    async def __log__(app, r: Any = None, message: Any = None, color: (None, str) = None, logger_: Any = None, **kwargs):
+    async def __log__(app, r: Any = None, message: Any = None, color: (None, str) = None, logger_: Any = None, frame = 3, func = None, **kwargs):
         if hasattr(r, "transport"):
             message = str(message).strip()
             if message in app.known_exceptions: return
-            await logger_("%s•%s | [%s:%s] %s" % (r.identifier, str(dt.now()), r.ip_host, str(r.ip_port), message))
+            await logger_("%s @ %s • %s | [%s:%s] %s" % (ioConf.get_func_name(frame) if func is None else "<%s.%s>" % (str(dir(func)), func.__name__), r.identifier, str(dt.now()), r.ip_host, str(r.ip_port), message))
         else:
             _ = str(r).strip()
             if message:
@@ -352,7 +365,7 @@ class __log__:
             if msg == "":
                 return await logger_(message, **kwargs)
 
-            await logger_("%s•%s | %s" % ("", str(dt.now()), message))
+            await logger_("%s • %s | %s" % (ioConf.get_func_name(frame) if func is None else "<%s>" % func.__qualname__ if hasattr(func, "__qualname__") else func.__name__, str(dt.now()), message))
 
 logger = Default_logger(name='BlazeioLogger')
 
@@ -364,28 +377,53 @@ routine_executor({
 })
 
 class __ReMonitor__:
-    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "current_task",)
+    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "current_task", "_start_monitoring", "servers", "main")
 
     def __init__(app):
         app.terminate = False
         app.event_loop = loop
         app.current_task = None
+        app.servers = []
+        app.main = None
+        app._start_monitoring = SharpEvent(evloop = app.event_loop)
+        app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor, args=(app,), daemon = True)
+        app.Monitoring_thread.start()
+
+    def reboot(app):
+        app.Monitoring_thread_join()
+        app.__init__()
+
+    def add_server(app, server):
+        server.on_exit_middleware(lambda: app.rm_server(server))
+        app.servers.append(server)
+        app._start_monitoring.set()
+
+    def rm_server(app, server):
+        if server in app.servers: app.servers.remove(server)
 
     def Monitoring_thread_join(app):
         app.terminate = True
-        if app.current_task is not None: app.current_task.cancel()
+        app.main.cancel()
+        try:
+            app.Monitoring_thread_loop.run_until_complete(app.main)
+        except CancelledError:
+            pass
+
+        app.Monitoring_thread.join()
 
     def Monitoring_thread_monitor(app, parent=None):
         app.Monitoring_thread_loop = new_event_loop()
-        parent.on_exit_middleware(app.Monitoring_thread_join)
-
-        app.Monitoring_thread_loop.run_until_complete(app.__monitor_loop__())
+        app.main = app.Monitoring_thread_loop.create_task(app.__monitor_loop__())
 
     async def __monitor_loop__(app):
-        while not app.terminate:
-            app.current_task = await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+        await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
 
-            app.current_task = await sleep(app.ServerConfig.__timeout_check_freq__)
+        while not app.terminate:
+            for server in app.servers:
+                app.ServerConfig = server.ServerConfig
+                app.current_task = await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+    
+                app.current_task = await sleep(app.ServerConfig.__timeout_check_freq__)
 
     async def enforce_health(app, Payload, task):
         if Payload.transport.is_closing():

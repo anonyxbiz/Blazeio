@@ -18,6 +18,11 @@ class Context:
     async def from_task(app, task):
         return task.get_coro().cr_frame.f_locals.get("app")
 
+class ClientContext:
+    @classmethod
+    def r(app):
+        return current_task().__BlazeioClientProtocol__
+
 class Prepare:
     @classmethod
     async def text(app, headers: dict={}, status:int = 206, content_type: str = "text/plain; charset=utf-8"):
@@ -136,6 +141,19 @@ class Enterchunked:
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         await app.a[0].eof()
+
+class Protocols:
+    @classmethod
+    async def forward_to_client(app):
+        client, server = Context._r(), ClientContext.r()
+        async for chunk in server.pull():
+            await client.write(chunk)
+
+    @classmethod
+    async def forward_to_server(app):
+        client, server = Context._r(), ClientContext.r()
+        async for chunk in client.pull():
+            await server.write(chunk)
 
 if __name__ == "__main__":
     pass
