@@ -367,12 +367,12 @@ class WebhookClient:
         if app.availablity is not None:
             return app.availablity
 
-        state = app.get_state()
-
         try:
+            state = app.get_state()
             async with io.Session(state.get("server_address") + "/discover", "get", headers = {"host": state.get("server_name"), "route": "/discover"}, ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None, add_host = False) as session:
                 app.availablity = await session.data()
-        except OSError:
+
+        except (OSError, io.Errdetail):
             app.availablity = False
 
         return app.availablity
