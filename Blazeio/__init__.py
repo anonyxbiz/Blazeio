@@ -53,8 +53,8 @@ class Handler:
         else:
             app.__main_handler__ = app.serve_route_with_middleware
 
-    async def serve_route_with_middleware(app, r):
-        await Request.prepare_http_request(r, app)
+    async def serve_route_with_middleware(app, r, prepare = True):
+        if prepare: await Request.prepare_http_request(r, app)
 
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
@@ -70,8 +70,8 @@ class Handler:
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
 
-    async def serve_route_no_middleware(app, r):
-        await Request.prepare_http_request(r, app)
+    async def serve_route_no_middleware(app, r, prepare = True):
+        if prepare: await Request.prepare_http_request(r, app)
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
         if route := app.declared_routes.get(r.path): await route.get("func")(r)
