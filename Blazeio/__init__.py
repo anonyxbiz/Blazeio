@@ -268,12 +268,14 @@ class Rproxy:
 
 class Serverctx:
     def __init__(app):
-        ...
+        app.in_ctx = False
 
     def __enter__(app):
+        app.in_ctx = True
         return app
 
     def __exit__(app, exc_t, exc_v, tb):
+        app.in_ctx = False
         ioConf.run_callbacks()
 
 class Server:

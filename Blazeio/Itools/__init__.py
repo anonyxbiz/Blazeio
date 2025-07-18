@@ -135,5 +135,29 @@ class Super:
         if args[0] in app.__slots__: return object.__setattr__(app, *args)
         return app._super.__setattr__(*args)
 
+def Dotify(_dict_):
+    _dict = Dot_Dict()
+    if isinstance(_dict_, dict):
+        for key, val in _dict_.items():
+            if isinstance(val, dict):
+                val = Dotify(Dot_Dict(val))
+            elif isinstance(val, list):
+                val = Dotify(val)
+
+            _dict[key] = val
+
+    elif isinstance(_dict_, list):
+        for idx, val in enumerate(_dict_):
+            if isinstance(val, dict):
+                val = Dotify(Dot_Dict(val))
+            elif isinstance(val, list):
+                val = Dotify(val)
+
+            _dict[idx] = val
+    else:
+        return _dict_
+
+    return _dict
+
 if __name__ == "__main__":
     pass

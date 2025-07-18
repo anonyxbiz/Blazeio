@@ -258,7 +258,7 @@ class Default_logger:
         app.started_event = Tevent()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
-        app.started_event.wait()
+        ioConf.event_wait_clear(app.started_event)
 
     def __getattr__(app, name):
         if name in app.colors:
@@ -306,7 +306,6 @@ class Default_logger:
 
     async def log_worker(app):
         await app.loop_setup()
-        
         app.started_event.set()
 
         while not app.dead():
@@ -405,18 +404,19 @@ routine_executor({
 })
 
 class __ReMonitor__:
-    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "current_task", "_start_monitoring", "servers", "main", "stopped_event", "terminated_event", "started_event")
+    __slots__ = ("Monitoring_thread", "event_loop", "event_loops", "Monitoring_thread_loop", "_start_monitoring", "servers", "main", "stopped_event", "terminated_event", "started_event", "tasks")
+    default_payload_timeout = float(60*60)
     def __init__(app):
         ioConf.add_shutdown_callback(app.Monitoring_thread_join)
-        app.terminate = False
+        app.tasks = []
         app.event_loop = loop
-        app.current_task = None
+        app.event_loops = [app.event_loop]
         app.servers = []
         app.main = None
         app._start_monitoring = SharpEvent(evloop = app.event_loop)
         app.started_event = Tevent()
         app.stopped_event = Tevent()
-        app.terminated_event = SharpEvent(evloop = app.event_loop)
+        app.terminated_event = Tevent()
         app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor, args=(app,), daemon = True)
         app.Monitoring_thread.start()
         ioConf.event_wait_clear(app.started_event)
@@ -426,15 +426,19 @@ class __ReMonitor__:
         app.__init__()
 
     def add_server(app, server):
+        if server.loop not in app.event_loops:
+            app.event_loops.append(server.loop)
         server.on_exit_middleware(lambda: app.rm_server(server))
         app.servers.append(server)
         app._start_monitoring.set()
 
     def rm_server(app, server):
-        if server in app.servers: app.servers.remove(server)
+        if server in app.servers:
+            if server.loop in app.event_loops: app.event_loops.remove(server.loop)
+            app.servers.remove(server)
 
     def stop(app):
-        app.terminate = True
+        if app.terminated_event.is_set(): return
         app.terminated_event.set()
         app.stopped_event.wait()
 
@@ -445,30 +449,18 @@ class __ReMonitor__:
     def Monitoring_thread_monitor(app, parent=None):
         app.Monitoring_thread_loop = new_event_loop()
         app.main = app.Monitoring_thread_loop.create_task(app.__monitor_loop__())
+        app.tasks.append(app.main)
         app.Monitoring_thread_loop.run_until_complete(app.main)
 
     async def __monitor_loop__(app):
-        app.started_event.set()
-        await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
-
         try:
-            while not app.terminate:
-                for server in list(app.servers):
-                    app.ServerConfig = server.ServerConfig
-                    app.current_task = wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+            app.started_event.set()
+            await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
 
-                    await app.current_task
-                    
-                    app.current_task = wait_for(wrap_future(run_coroutine_threadsafe(app.terminated_event.wait(), app.terminated_event.loop)), app.ServerConfig.__timeout_check_freq__)
-
-                    try:
-                        await app.current_task
-                        break
-                    except TimeoutError:
-                        ...
-
-        except CancelledError:
-            ...
+            while not app.terminated_event.is_set():
+                for server in app.servers:
+                    await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+                    app.terminated_event.wait(server.ServerConfig.__timeout_check_freq__)
         finally:
             app.stopped_event.set()
 
@@ -483,40 +475,39 @@ class __ReMonitor__:
         except KeyboardInterrupt: raise
         except Exception as e: await Log.warning("Blazeio", str(e))
 
-        if msg: await Log.warning(Payload, msg)
+        try:
+            if msg: await Log.warning(Payload, msg)
+        except:
+            pass
 
     async def inspect_task(app, task):
-        coro = task.get_coro()
-        args = coro.cr_frame
-        if args is None: return
-        else: args = args.f_locals
-
-        if not (Payload := args.get("app")): return
-
-        if not isinstance(Payload, BlazeioProtocol): return
-
-        if not hasattr(Payload, "__slots__"): return
+        if hasattr(task, "__BlazeioProtocol__"):
+            Payload = task.__BlazeioProtocol__
+        elif hasattr(task, "__BlazeioClientProtocol__"):
+            Payload = task.__BlazeioClientProtocol__
+        else:
+            return
 
         if not hasattr(Payload, "__perf_counter__"):
-            if not "__perf_counter__" in Payload.__slots__: return
             Payload.__perf_counter__ = perf_counter()
 
         if await app.enforce_health(Payload, task): return
 
+        if not Payload.__timeout__: return
+
         duration = float(perf_counter() - getattr(Payload, "__perf_counter__"))
 
-        timeout = float(Payload.__timeout__ or app.ServerConfig.__timeout__)
+        condition = duration >= Payload.__timeout__
 
-        condition = duration >= timeout
-
-        if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(timeout), str(duration)))
+        if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(Payload.__timeout__), str(duration)))
 
     async def analyze_protocols(app):
-        for task in all_tasks(loop=app.event_loop):
-            if task is not current_task():
-                try: await app.inspect_task(task)
-                except AttributeError: pass
-                except KeyboardInterrupt: raise
-                except Exception as e: await Log.critical(e)
+        for event_loop in app.event_loops:
+            for task in all_tasks(loop=event_loop):
+                if task not in app.tasks:
+                    try: await app.inspect_task(task)
+                    except AttributeError: pass
+                    except KeyboardInterrupt: raise
+                    except Exception as e: print(e)
 
 ReMonitor = __ReMonitor__()

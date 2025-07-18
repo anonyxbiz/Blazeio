@@ -2,6 +2,8 @@ from ..Dependencies import *
 from .reasons import *
 
 class Context:
+    def __init__(app): ...
+
     @classmethod
     def _r(app):
         return current_task().__BlazeioProtocol__
@@ -19,11 +21,15 @@ class Context:
         return task.get_coro().cr_frame.f_locals.get("app")
 
 class ClientContext:
+    def __init__(app): ...
+
     @classmethod
     def r(app):
         return current_task().__BlazeioClientProtocol__
 
 class Prepare:
+    def __init__(app): ...
+
     @classmethod
     async def text(app, headers: dict={}, status:int = 206, content_type: str = "text/plain; charset=utf-8"):
         r = Context.r_sync()
@@ -46,8 +52,7 @@ class __Deliver__:
         "json": "application/json; charset=utf-8",
     }
 
-    def __init__(app):
-        pass
+    def __init__(app): ...
 
     async def deliver(app, r, data: (str, bytes, bytearray, memoryview, None, dict) = None, status: int = 200, headers: (dict, None) = None, path: (str, None) = None, content_type: (str, None) = None, indent: int = 0):
         headers = headers or {}
@@ -83,15 +88,8 @@ class __Deliver__:
 Deliver = __Deliver__()
 
 class Abort(BlazeioException):
-    __slots__ = (
-        'args',
-        'r',
-    )
-
-    def __init__(
-        app,
-        *args
-    ):
+    __slots__ = ('args', 'r',)
+    def __init__(app, *args):
         app.args = args
         app.r = None
 

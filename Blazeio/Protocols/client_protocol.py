@@ -21,18 +21,18 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
     )
 
     def __init__(app, **kwargs):
-        app.__chunk_size__: int = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
-        app.__timeout__: float = kwargs.get("__timeout__", 60.0)
-        app.__is_at_eof__: bool = False
+        app.__chunk_size__ = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
+        app.__timeout__ = kwargs.get("__timeout__")
+        app.__is_at_eof__ = False
         app.cancel_on_disconnect = False
-        app.__perf_counter__: int = perf_counter()
-        app.__stream__: deque = deque()
-        app.__buff__: bytearray = bytearray(app.__chunk_size__)
-        app.__buff__memory__: memoryview = memoryview(app.__buff__)
-        app.__is_buffer_over_high_watermark__: bool = False
-        app.__evt__: SharpEvent = SharpEvent(False, kwargs.get("evloop"))
-        app.__overflow_evt__: SharpEvent = SharpEvent(False, kwargs.get("evloop"))
-        app.__wait_closed__: SharpEvent = SharpEvent(False, kwargs.get("evloop"))
+        app.__perf_counter__ = perf_counter()
+        app.__stream__ = deque()
+        app.__buff__ = bytearray(app.__chunk_size__)
+        app.__buff__memory__ = memoryview(app.__buff__)
+        app.__is_buffer_over_high_watermark__ = False
+        app.__evt__ = SharpEvent(False, kwargs.get("evloop"))
+        app.__overflow_evt__ = SharpEvent(False, kwargs.get("evloop"))
+        app.__wait_closed__ = SharpEvent(False, kwargs.get("evloop"))
         if (task := current_task()):
             if not hasattr(task, "__BlazeioProtocol__"):
                 task.__BlazeioProtocol__ = app
