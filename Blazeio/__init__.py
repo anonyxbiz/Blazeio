@@ -392,10 +392,8 @@ class App(Handler, OOP_RouteDef):
         return app.ServerConfig.server_context
 
     def reboot(app):
-        # ReMonitor.reboot()
-        with Ehandler():
-            ReMonitor.rm_server(app)
-            app.__init__(*app.ServerConfig.args, **app.ServerConfig.kwargs)
+        if not app.used: return
+        app.__init__(*app.ServerConfig.args, **app.ServerConfig.kwargs)
 
     def used(app):
         return app._server_closing.is_set()
@@ -451,12 +449,8 @@ class App(Handler, OOP_RouteDef):
                 cancelled_tasks.append(task)
                 task.cancel()
 
-        for task in cancelled_tasks:
-            async with Ehandler(ignore = CancelledError):
-                await task
-            await Log.warning(":: %s" % "Task [%s] Cancelled" % task.get_name())
-            if task in cancelled_tasks:
-                cancelled_tasks.remove(task)
+        async with Ehandler(ignore = CancelledError):
+            await gather(*cancelled_tasks)
 
     async def exit(app, e = None, exception_handled = False, terminate = NotImplemented):
         if not exception_handled:
@@ -469,9 +463,6 @@ class App(Handler, OOP_RouteDef):
             except Exception as e: await traceback_logger(e, str(e))
             except KeyboardInterrupt: terminate = True
             finally:
-                await Log.b_red(":: %s" % "Exited.")
-                await log.flush()
-
                 if (terminate is NotImplemented or not terminate):
                     return None
                 return main_process.terminate()
@@ -489,15 +480,18 @@ class App(Handler, OOP_RouteDef):
         await app.wait_closed.wait()
         await app.cancelloop(app.event_loop)
 
+        await Log.b_red(":: %s" % "Event loop wiped, Exited.")
+        await log.flush()
+
         for callback in app.on_exit:
-            if iscoroutinefunction(callback.func):
-                await callback.arun()
-            else:
-                callback.run()
+            async with Ehandler():
+                if iscoroutinefunction(callback.func):
+                    await callback.arun()
+                else:
+                    callback.run()
 
-            await Log.warning(":: %s" % "Executed app.on_exit `callback`: %s." % callback.func.__name__)
-
-        await Log.warning(":: %s" % "Event loop wiped, ready to exit.")
+    async def wait_started(app):
+        return await app.is_server_running.wait()
 
 if __name__ == "__main__":
     pass

@@ -403,10 +403,9 @@ class __ReMonitor__:
         app.terminate = True
         app.main.cancel()
         try:
-            app.Monitoring_thread_loop.run_until_complete(wait_for(app.main, 5))
+            app.Monitoring_thread_loop.run_until_complete(app.main)
         except CancelledError:
             ...
-
         app.Monitoring_thread.join()
 
     def Monitoring_thread_monitor(app, parent=None):

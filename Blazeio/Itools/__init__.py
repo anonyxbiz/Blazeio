@@ -100,5 +100,18 @@ class zcbuff:
     def __getattr__(app, key):
         return getattr(app.buff, key)
 
+class Utype:
+    __slots__ = ("_item",)
+    def __init__(app, item = None):
+        app._item = item
+
+    def item(app):
+        return app._item
+
+def load_from_locals(app, fn, __locals__):
+    for key in __locals__:
+        if fn.__annotations__.get(key) == Utype:
+            setattr(app, key, __locals__[key])
+
 if __name__ == "__main__":
     pass
