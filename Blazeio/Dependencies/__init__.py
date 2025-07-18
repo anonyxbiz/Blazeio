@@ -23,7 +23,7 @@ from os import stat, kill, getpid, path, environ, name as os_name, getcwd
 from os import path as os_path
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
-from threading import Thread, Lock as T_lock
+from threading import Thread, Lock as T_lock, Event as Tevent
 from html import escape
 
 from traceback import extract_tb, format_exc
@@ -51,6 +51,7 @@ main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
     def __init__(app, **kwargs):
+        app.add(shutdown_callbacks = [])
         app.add(**kwargs)
 
     def __getattr__(app, key, default = None):
@@ -72,6 +73,22 @@ class __ioConf__:
         if app.loop: return app.loop
         app.loop = get_event_loop()
         return app.loop
+
+    def add_shutdown_callback(app, cb, *args, **kwargs):
+        app.shutdown_callbacks.append((cb, args, kwargs))
+
+    def run_callbacks(app):
+        for cb, args, kwargs in app.shutdown_callbacks:
+            if iscoroutinefunction(cb):
+                app.loop.create_task(cb(*args, **kwargs))
+            elif iscoroutine(cb):
+                app.loop.create_task(cb, *args, **kwargs)
+            else:
+                cb(*args, **kwargs)
+
+    def event_wait_clear(app, event, *args, **kwargs):
+        event.wait(*args, **kwargs)
+        return event.clear()
 
 ioConf = __ioConf__(INBOUND_CHUNK_SIZE = 102400, OUTBOUND_CHUNK_SIZE = 102400)
 
@@ -197,6 +214,9 @@ class Enqueue:
 
     def put_nowait(app, item):
         app.queue.append(item)
+        app.wakeup()
+
+    def wakeup(app):
         app.queue_event.set()
         app.queue_add_event.set()
 
@@ -229,12 +249,16 @@ class Default_logger:
         'b_white': '\033[97m'
     })
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
-    def __init__(app, name: str = "", maxsize: int = 1000, max_unflushed_logs: int = 1000):
-        app.name: str = name
-        app.maxsize: int = maxsize
-        app.max_unflushed_logs: int = max_unflushed_logs
+    def __init__(app, name: str = "", maxsize: int = 1000):
+        ioConf.add_shutdown_callback(app.stop)
+        app.name = name
+        app.maxsize = maxsize
+        app.should_stop = False
+        app.stopped_event = Tevent()
+        app.started_event = Tevent()
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
+        app.started_event.wait()
 
     def __getattr__(app, name):
         if name in app.colors:
@@ -262,8 +286,13 @@ class Default_logger:
         else:
             sys_stdout.write(raw)
 
+        sys_stdout.flush()
+
+    def dead(app):
+        return app.should_stop
+
     async def __log__(app, *args, **kwargs):
-        event = SharpEvent()
+        event = SharpEvent(False)
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event)), app.loop))
         await event.wait()
 
@@ -274,12 +303,13 @@ class Default_logger:
         app.logs = Enqueue(maxsize=app.maxsize)
         app.log_idle_event = SharpEvent()
         app.log_idle_event.set()
-        app.loop.create_task(app.flush_dog())
 
     async def log_worker(app):
         await app.loop_setup()
+        
+        app.started_event.set()
 
-        while True:
+        while not app.dead():
             await app.logs.get_one(pop=False)
             while app.logs.queue:
                 args, kwargs, event = app.logs.popleft()
@@ -294,19 +324,19 @@ class Default_logger:
     async def flush(app):
         if app.logs.queue: return await wrap_future(run_coroutine_threadsafe(app.log_idle_event.wait(), app.loop))
 
-    async def flush_dog(app):
-        unflushed_logs: int = 0
-        while True:
-            await app.logs.queue_add_event.wait()
-            unflushed_logs += 1
-
-            if unflushed_logs >= app.max_unflushed_logs:
-                unflushed_logs = 0
-                sys_stdout.flush()
-
     def start(app):
         app.loop = new_event_loop()
-        app.loop.run_until_complete(app.log_worker())
+        try:
+            app.loop.run_until_complete(app.log_worker())
+        finally:
+            app.stopped_event.set()
+
+    def stop(app):
+        app.should_stop = True
+        app.logs.loop.call_soon_threadsafe(app.logs.wakeup)
+        app.stopped_event.wait()
+        app._thread.join()
+        sys_stdout.flush()
 
 routines = {
     ("globals()['loop'] = ioConf.get_event_loop()", "globals()['loop'] = None"),
@@ -351,7 +381,7 @@ class __log__:
         if hasattr(r, "transport"):
             message = str(message).strip()
             if message in app.known_exceptions: return
-            await logger_("%s @ %s • %s | [%s:%s] %s" % (ioConf.get_func_name(frame) if func is None else "<%s.%s>" % (str(dir(func)), func.__name__), r.identifier, str(dt.now()), r.ip_host, str(r.ip_port), message))
+            await logger_("%s @ %s • %s | [%s:%s] %s" % (ioConf.get_func_name(frame) if func is None else "<%s>" % func.__qualname__ if hasattr(func, "__qualname__") else func.__name__, r.identifier, str(dt.now()), r.ip_host, str(r.ip_port), message))
         else:
             _ = str(r).strip()
             if message:
@@ -375,17 +405,21 @@ routine_executor({
 })
 
 class __ReMonitor__:
-    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "current_task", "_start_monitoring", "servers", "main")
-
+    __slots__ = ("terminate", "Monitoring_thread", "event_loop", "Monitoring_thread_loop", "ServerConfig", "current_task", "_start_monitoring", "servers", "main", "stopped_event", "terminated_event", "started_event")
     def __init__(app):
+        ioConf.add_shutdown_callback(app.Monitoring_thread_join)
         app.terminate = False
         app.event_loop = loop
         app.current_task = None
         app.servers = []
         app.main = None
         app._start_monitoring = SharpEvent(evloop = app.event_loop)
+        app.started_event = Tevent()
+        app.stopped_event = Tevent()
+        app.terminated_event = SharpEvent(evloop = app.event_loop)
         app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor, args=(app,), daemon = True)
         app.Monitoring_thread.start()
+        ioConf.event_wait_clear(app.started_event)
 
     def reboot(app):
         app.Monitoring_thread_join()
@@ -399,28 +433,44 @@ class __ReMonitor__:
     def rm_server(app, server):
         if server in app.servers: app.servers.remove(server)
 
-    def Monitoring_thread_join(app):
+    def stop(app):
         app.terminate = True
-        app.main.cancel()
-        try:
-            app.Monitoring_thread_loop.run_until_complete(app.main)
-        except CancelledError:
-            ...
+        app.terminated_event.set()
+        app.stopped_event.wait()
+
+    def Monitoring_thread_join(app):
+        app.stop()
         app.Monitoring_thread.join()
 
     def Monitoring_thread_monitor(app, parent=None):
         app.Monitoring_thread_loop = new_event_loop()
         app.main = app.Monitoring_thread_loop.create_task(app.__monitor_loop__())
+        app.Monitoring_thread_loop.run_until_complete(app.main)
 
     async def __monitor_loop__(app):
+        app.started_event.set()
         await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
 
-        while not app.terminate:
-            for server in list(app.servers):
-                app.ServerConfig = server.ServerConfig
-                app.current_task = await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
+        try:
+            while not app.terminate:
+                for server in list(app.servers):
+                    app.ServerConfig = server.ServerConfig
+                    app.current_task = wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
 
-                app.current_task = await sleep(app.ServerConfig.__timeout_check_freq__)
+                    await app.current_task
+                    
+                    app.current_task = wait_for(wrap_future(run_coroutine_threadsafe(app.terminated_event.wait(), app.terminated_event.loop)), app.ServerConfig.__timeout_check_freq__)
+
+                    try:
+                        await app.current_task
+                        break
+                    except TimeoutError:
+                        ...
+
+        except CancelledError:
+            ...
+        finally:
+            app.stopped_event.set()
 
     async def enforce_health(app, Payload, task):
         if Payload.transport.is_closing():

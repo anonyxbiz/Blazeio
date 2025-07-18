@@ -470,21 +470,26 @@ class __plog__:
 
     def to_line(app, lineno: int, col: int = 0): return "\033[%d;%dH" % (lineno, col)
 
-    def __log__(app, name: (int, str, None) = None, *logs, sepr = "  ", logger_ = None, _format = True, frame = 3):
+    def __log__(app, name: any = None, *logs, sepr = "  ", logger_: any = None, _format: bool = True, frame: int = 3, func: any = None, dnewline: bool = True, newline: bool = True):
         if not logs:
             logs, name = (name,), None
 
-        if _format:
+        if _format and newline:
             sepr0 = "\n"
         else:
             sepr0 = ""
+
+        if dnewline:
+            sepr1 = "\n\n"
+        else:
+            sepr1 = "\n"
 
         frmt, indent = "", 0
         for log in logs:
             indent += 1
             frmt += "%s%s%s" % (sepr0, sepr*indent, log)
 
-        if str(name).startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
+        if name and str(name).startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
             if not (line := app.lines.get(name[:ide + 1])):
                 line = app.to_line(int(name[idb + len(app.line_sepr[1]):ide]))
 
@@ -493,7 +498,7 @@ class __plog__:
             line = ""
 
         if _format:
-            txt = ("<%s[%s]>:%s\n\n" % ("(%s%s) -> " % (get_func_name(frame), " - %s" % str(name) if name else ""), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt))
+            txt = ("<%s[%s]>:%s%s" % ("(%s%s) -> " % (get_func_name(frame) if func is None else "<%s>" % func.__qualname__ if hasattr(func, "__qualname__") else func.__name__, " - %s" % str(name) if name else ""), (now := dt.now(UTC)).strftime("%H:%M:%S:") + str(now.microsecond)[:2], frmt, sepr1))
         else:
             txt = frmt
 
@@ -539,12 +544,13 @@ class Errdetail(BlazeioException):
         except: return str(detail)
 
 class Ehandler:
-    __slots__ = ("onerr", "ignore", "_raise", "exit_or_err")
+    __slots__ = ("onerr", "ignore", "_raise", "exit_or_err", "err")
     def __init__(app, onerr = None, ignore = [], _raise = [], exit_or_err = False):
         app.onerr = onerr
         app.ignore = ignore
         app._raise = _raise
         app.exit_or_err = exit_or_err
+        app.err = None
 
         for attr in ("ignore", "_raise"):
             if not isinstance(val := getattr(app, attr), list):
@@ -563,10 +569,11 @@ class Ehandler:
 
     def __exit__(app, exc_t, exc_v, tb):
         if exc_v is not None:
+            app.err = exc_v
             if not app.should_ignore(exc_v):
                 fut = run_coroutine_threadsafe(traceback_logger(exc_v), get_event_loop())
                 if app.onerr: fut.add_done_callback(lambda fut: app.onerr())
-            
+
             if app.should_raise(exc_v): raise exc_v
             if app.exit_or_err: return False
             return True
@@ -576,6 +583,7 @@ class Ehandler:
 
     async def __aexit__(app, exc_t, exc_v, tb):
         if exc_v is not None:
+            app.err = exc_v
             if not app.should_ignore(exc_v):
                 await traceback_logger(exc_v)
                 if app.onerr: await app.onerr()
@@ -585,10 +593,12 @@ class Ehandler:
             return True
 
 def to_repr(__class__):
-    if hasattr(__class__, "__slots__"):
+    if getattr(__class__, "__slots__", None):
         keys = __class__.__slots__
-    elif hasattr(__class__, "__dict__"):
+
+    elif getattr(__class__, "__dict__", None):
         keys = list(__class__.__dict__.keys())
+
     else:
         keys = list(dir(__class__))
 

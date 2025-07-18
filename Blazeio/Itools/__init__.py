@@ -10,8 +10,9 @@ class Dot_Dict(dict):
     def __setattr__(app, key, value):
         return app.__setitem__(key, value)
 
-    def __getattr__(app, key):
+    def __getattr__(app, key, default = None):
         if key == "_dict": return app
+        if key not in app: return default
         return super().__getitem__(key)
 
 class DotDict(dict):
@@ -23,8 +24,9 @@ class DotDict(dict):
     def __setattr__(app, key, value):
         return app.__setitem__(key, value)
 
-    def __getattr__(app, key):
+    def __getattr__(app, key, default = None):
         if key == "_dict": return app
+        if key not in app: return default
         return super().__getitem__(key)
 
     def token_urlsafe(app, *a, **kw):
@@ -112,6 +114,26 @@ def load_from_locals(app, fn, __locals__):
     for key in __locals__:
         if fn.__annotations__.get(key) == Utype:
             setattr(app, key, __locals__[key])
+
+class Super:
+    __slots__ = ("supers", "_super")
+    def __init__(app, _super = None):
+        if _super is None or getattr(app, "_super", None): return app.resolve_init()
+        app._super = _super
+        app.supers = app._super.__class__.__mro__[1:]
+
+    def resolve_init(app):
+        for _super in app.supers:
+            _super.__init__(app._super)
+        return app
+
+    def __getattr__(app, *args):
+        if args[0] in app.__slots__: return None
+        return app._super.__getattr__(*args)
+
+    def __setattr__(app, *args):
+        if args[0] in app.__slots__: return object.__setattr__(app, *args)
+        return app._super.__setattr__(*args)
 
 if __name__ == "__main__":
     pass

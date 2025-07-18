@@ -72,7 +72,7 @@ class __Deliver__:
 
     def __getattr__(app, name):
         def method(*a, **kw):
-            if not hasattr(a[0], "transport"):
+            if not getattr(a[0], "transport", None):
                 a = (Context.r_sync(), *a)
 
             return app.deliver(*a, **kw, content_type = app.content_types.get(name, name.replace("_", "/")))
