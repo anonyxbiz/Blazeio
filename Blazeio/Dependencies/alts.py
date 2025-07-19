@@ -586,7 +586,7 @@ class Ehandler:
             app.err = exc_v
             if not app.should_ignore(exc_v):
                 await traceback_logger(exc_v)
-                if app.onerr: await app.onerr()
+                if app.onerr: create_task(app.onerr())
 
             if app.should_raise(exc_v): raise exc_v
             if app.exit_on_err: return False
