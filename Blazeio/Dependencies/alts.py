@@ -544,12 +544,12 @@ class Errdetail(BlazeioException):
         except: return str(detail)
 
 class Ehandler:
-    __slots__ = ("onerr", "ignore", "_raise", "exit_or_err", "err")
-    def __init__(app, onerr = None, ignore = [], _raise = [], exit_or_err = False):
+    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err")
+    def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False):
         app.onerr = onerr
         app.ignore = ignore
         app._raise = _raise
-        app.exit_or_err = exit_or_err
+        app.exit_on_err = exit_on_err
         app.err = None
 
         for attr in ("ignore", "_raise"):
@@ -575,7 +575,7 @@ class Ehandler:
                 if app.onerr: fut.add_done_callback(lambda fut: app.onerr())
 
             if app.should_raise(exc_v): raise exc_v
-            if app.exit_or_err: return False
+            if app.exit_on_err: return False
             return True
 
     async def __aenter__(app):
@@ -589,7 +589,7 @@ class Ehandler:
                 if app.onerr: await app.onerr()
 
             if app.should_raise(exc_v): raise exc_v
-            if app.exit_or_err: return False
+            if app.exit_on_err: return False
             return True
 
 def to_repr(__class__):

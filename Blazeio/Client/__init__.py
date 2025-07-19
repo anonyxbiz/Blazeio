@@ -204,7 +204,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             normalized_headers["Content-type"] = "application/x-www-form-urlencoded"
 
         if json:
-            body = dumps(json).encode()
+            body = dumps(json, indent=0).encode()
             normalized_headers["Content-type"] = "application/json"
 
         if body:
@@ -407,6 +407,9 @@ class SessionPool:
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
 
         app.pool, app.args, app.kwargs = app.get_pool(), args, kwargs
+
+    def __getattr__(app, *args):
+        return getattr(app.session, *args)
 
     def get_pool(app):
         if (pool_memory := app.pool_memory) is None and (pool_memory := __memory__.get("SessionPool", None)) is None:
