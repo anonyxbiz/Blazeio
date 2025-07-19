@@ -129,8 +129,8 @@ class SharpEventLab:
 
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial")
-    def __init__(app, evloop=loop):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(False, evloop), SharpEvent(False, evloop), 0, 0, False, True
+    def __init__(app, evloop=loop, initial=True):
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(False, evloop), SharpEvent(False, evloop), 0, 0, False, initial
         app.event.set()
 
     def release(app):
@@ -168,6 +168,7 @@ class ioCondition:
         while app.locked():
             await app._lock_event.wait()
         app.lock()
+        return app
 
     async def wait(app):
         if not app.is_locked:
@@ -489,7 +490,8 @@ class __plog__:
             indent += 1
             frmt += "%s%s%s" % (sepr0, sepr*indent, log)
 
-        if name and str(name).startswith(app.line_sepr[0]) and (ida := name.find(app.line_sepr[1])) != -1 and (idb := name.find(app.line_sepr[1])) != -1 and (ide := name.find(app.line_sepr[2])) != -1:
+        if name and str(name).startswith(app.line_sepr[0]) and (ida := str(name).find(app.line_sepr[1])) != -1 and (idb := str(name).find(app.line_sepr[1])) != -1 and (ide := str(name).find(app.line_sepr[2])) != -1:
+            name = str(name)
             if not (line := app.lines.get(name[:ide + 1])):
                 line = app.to_line(int(name[idb + len(app.line_sepr[1]):ide]))
 

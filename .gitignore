@@ -13,6 +13,7 @@ Blazeio/Protocols/__pycache__
 Blazeio/Protocols/bmp.md
 Blazeio/Protocols/udp.py
 Blazeio/Itools/__pycache__
+Blazeio/Itools/ignore.py
 Blazeio/Extensions/uninstall.py
 c_request_util.egg-info
 client_payload_gen.egg-info

@@ -1,33 +1,22 @@
 from secrets import token_urlsafe
 from collections import deque, defaultdict, OrderedDict
 
-class Dot_Dict(dict):
+class Dot_Dict_Base(dict):
+    def __setattr__(app, key, value):
+        return app.__setitem__(key, value)
+
+    def __getattr__(app, *args):
+        if args[0] == "_dict": return app
+        return super().__getitem__(*args)
+
+class Dot_Dict(Dot_Dict_Base):
+    ...
+
+class DotDict(Dot_Dict_Base):
     __slots__ = ()
     def __init__(app, dictionary: (dict, None) = None, **kw):
         dictionary = dictionary or kw or {}
         super().__init__(**dictionary)
-
-    def __setattr__(app, key, value):
-        return app.__setitem__(key, value)
-
-    def __getattr__(app, key, default = None):
-        if key == "_dict": return app
-        if key not in app: return default
-        return super().__getitem__(key)
-
-class DotDict(dict):
-    __slots__ = ()
-    def __init__(app, dictionary: (dict, None) = None, **kw):
-        dictionary = dictionary or kw or {}
-        super().__init__(**dictionary)
-
-    def __setattr__(app, key, value):
-        return app.__setitem__(key, value)
-
-    def __getattr__(app, key, default = None):
-        if key == "_dict": return app
-        if key not in app: return default
-        return super().__getitem__(key)
 
     def token_urlsafe(app, *a, **kw):
         while (token := token_urlsafe(*a, **kw)) in app: pass
@@ -135,29 +124,22 @@ class Super:
         if args[0] in app.__slots__: return object.__setattr__(app, *args)
         return app._super.__setattr__(*args)
 
-def Dotify(_dict_):
-    _dict = Dot_Dict()
+def Dotify(_dict_=None, **kwargs):
+    if _dict_ is None:
+        _dict_ = kwargs
+    
     if isinstance(_dict_, dict):
+        result = Dot_Dict()
         for key, val in _dict_.items():
-            if isinstance(val, dict):
-                val = Dotify(Dot_Dict(val))
-            elif isinstance(val, list):
+            if isinstance(val, (dict, list)):
                 val = Dotify(val)
-
-            _dict[key] = val
-
+            result[key] = val
+        return result
     elif isinstance(_dict_, list):
-        for idx, val in enumerate(_dict_):
-            if isinstance(val, dict):
-                val = Dotify(Dot_Dict(val))
-            elif isinstance(val, list):
-                val = Dotify(val)
-
-            _dict[idx] = val
+        return [Dotify(item) if isinstance(item, (dict, list)) else item 
+                for item in _dict_]
     else:
         return _dict_
-
-    return _dict
 
 if __name__ == "__main__":
     pass
