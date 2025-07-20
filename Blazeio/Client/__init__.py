@@ -408,9 +408,6 @@ class SessionPool:
 
         app.pool, app.args, app.kwargs = app.get_pool(), args, kwargs
 
-    def __getattr__(app, *args):
-        return getattr(app.session, *args)
-
     def get_pool(app):
         if (pool_memory := app.pool_memory) is None and (pool_memory := __memory__.get("SessionPool", None)) is None:
             __memory__["SessionPool"] = (pool_memory := {})
