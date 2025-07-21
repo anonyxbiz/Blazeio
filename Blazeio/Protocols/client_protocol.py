@@ -33,9 +33,6 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         app.__evt__ = SharpEvent(False, kwargs.get("evloop"))
         app.__overflow_evt__ = SharpEvent(False, kwargs.get("evloop"))
         app.__wait_closed__ = SharpEvent(False, kwargs.get("evloop"))
-        if (task := current_task()):
-            if not hasattr(task, "__BlazeioProtocol__"):
-                task.__BlazeioProtocol__ = app
 
     def connection_made(app, transport):
         transport.pause_reading()
