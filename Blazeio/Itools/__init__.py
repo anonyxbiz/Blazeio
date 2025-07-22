@@ -99,6 +99,14 @@ class Utype:
     def item(app):
         return app._item
 
+class Unone:
+    __slots__ = ("_item",)
+    def __init__(app, item = None):
+        app._item = item
+
+    def item(app):
+        return app._item
+
 def load_from_locals(app, fn, __locals__):
     for key in __locals__:
         if fn.__annotations__.get(key) == Utype:
@@ -140,6 +148,17 @@ def Dotify(_dict_=None, **kwargs):
                 for item in _dict_]
     else:
         return _dict_
+
+def load_from_type_in_locals(app, fn, __locals__, _type):
+    for key in __locals__:
+        if (annotation := fn.__annotations__.get(key, NotImplemented)) is not NotImplemented:
+            if isinstance(annotation, tuple):
+                if not any([True for ann in annotation if ann in _type]):
+                    continue
+            elif annotation not in _type:
+                continue
+
+            setattr(app, key, __locals__[key])
 
 if __name__ == "__main__":
     pass

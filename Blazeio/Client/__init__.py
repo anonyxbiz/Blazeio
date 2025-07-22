@@ -66,7 +66,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     def __getattr__(app, name):
         if (method := getattr(app.protocol, name, None)):
-            pass
+            ...
         elif (val := StaticStuff.dynamic_attrs.get(name)):
             method = getattr(app, val)
         else:

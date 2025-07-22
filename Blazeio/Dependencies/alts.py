@@ -594,7 +594,7 @@ class Ehandler:
             if app.exit_on_err: return False
             return True
 
-def to_repr(__class__):
+def to_repr(__class__, _type = str):
     if getattr(__class__, "__slots__", None):
         keys = __class__.__slots__
 
@@ -604,7 +604,10 @@ def to_repr(__class__):
     else:
         keys = list(dir(__class__))
 
-    return ", ".join(["(%s = %s)" % (str(key), str(getattr(__class__, key))) for key in keys])
+    if _type == str:
+        return ", ".join(["(%s = %s)" % (str(key), str(getattr(__class__, key))) for key in keys])
+    elif _type == dict:
+        return {str(key): str(getattr(__class__, key)) for key in keys}
 
 if __name__ == "__main__":
     pass

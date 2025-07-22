@@ -25,7 +25,7 @@ class __Rvtools__:
         'user-agent': 'Mozilla/5.0 (Linux; Android 11; U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36'
     }
 
-    def __init__(app): pass
+    def __init__(app): ...
 
     def dh(app, url: str):
         return {'accept': '*/*', 'accept-language': 'en-US,en;q=0.9', 'origin': url, 'priority': 'u=1, i', 'referer': url, 'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"%s"' % os_name, 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'cors', 'sec-fetch-site': 'same-origin', 'user-agent': 'BlazeI/O', 'connection': 'keep-alive'}
@@ -99,7 +99,7 @@ class Multipart:
 
 class AsyncHtml:
     __slots__ = ()
-    def __init__(app): pass
+    def __init__(app): ...
     
     @classmethod
     async def parse_text(app, html, a: str, b: str):
@@ -124,7 +124,7 @@ class Urllib:
     port_sepr: str = ":"
 
     def __init__(app):
-        pass
+        ...
 
     @classmethod
     def url_to_host(app, url: str, params: dict, parse_params: bool = False):
@@ -177,7 +177,7 @@ class Urllib:
 class OtherUtils:
     __slots__ = ()
     def __init__(app):
-        pass
+        ...
     
     @classmethod
     def gen_payload(app, method: str, headers: dict, path: str = "/", host: str = "", port: int = 0, http_version = "1.1"):
@@ -210,7 +210,7 @@ class StaticStuff:
     }
 
     def __init__(app):
-        pass
+        ...
 
 class Parsers:
     __slots__ = ()
@@ -222,7 +222,7 @@ class Parsers:
     http_redirect_status_range = (300,301,302,304,305,306,307,308,309)
     http_startswith = b"HTTP"
 
-    def __init__(app): pass
+    def __init__(app): ...
 
     def is_prepared(app): return True if app.status_code and app.handler else False
     
@@ -395,7 +395,7 @@ class Parsers:
 
 class Pushtools:
     __slots__ = ()
-    def __init__(app): pass
+    def __init__(app): ...
 
     async def write_chunked(app, data: (tuple[bool, AsyncIterable[bytes | bytearray]])):
         if isinstance(data, (bytes, bytearray)):
@@ -428,7 +428,7 @@ class Pushtools:
 
 class Pulltools(Parsers):
     __slots__ = ()
-    def __init__(app): pass
+    def __init__(app): ...
 
     async def pull(app, *args, http=True, **kwargs):
         if http and not app.is_prepared(): await app.prepare_http()
@@ -443,9 +443,9 @@ class Pulltools(Parsers):
                 async for chunk in app.decoder(): yield chunk
 
         except GeneratorExit as e:
-            pass
+            ...
         except StopIteration as e:
-            pass
+            ...
 
     async def aread(app, decode=False):
         if not app.is_prepared(): await app.prepare_http()
@@ -480,31 +480,6 @@ class Pulltools(Parsers):
 
     async def json(app):
         return loads(await app.aread(True))
-
-    async def find(app, *args):
-        data, start, end, cont = args
-        while (idx := data.find(start)) != -1:
-            data = data[idx + len(start):]
-
-            if (ids := data.find(end)) != -1:
-                chunk, data = data[:ids], data[ids + len(end):]
-
-                if start in chunk:
-                    async for i in app.find(chunk, *args[1:]):
-                        yield (start + i + end if cont else i, data)
-                else:
-                    yield (start + chunk + end if cont else chunk, data)
-
-    async def aextract(app, start: (bytes, bytearray), end: (bytes, bytearray), cont=True):
-        data = bytearray()
-        async for chunk in app.pull():
-            data.extend(chunk)
-            async for x, data in app.find(data, start, end, cont):
-                yield x
-
-    async def extract(app, *args, **kwargs):
-        async for chunk in app.aextract(*args, **kwargs):
-            return chunk
 
     async def brotli(app):
         if not app.decompressor: app.decompressor = Decompressor()
@@ -603,7 +578,7 @@ class Pulltools(Parsers):
                 yield ((uploaded / size) * 100)
 
     async def drain_pipe(app):
-        async for chunk in app.pull(): pass
+        async for chunk in app.pull(): ...
 
 class Extractors:
     @classmethod
@@ -668,5 +643,37 @@ class Extractors:
 
             if ended: break
 
+    @classmethod
+    async def find(cls, *args):
+        app = ClientContext.r()
+        data, start, end, cont = args
+        while (idx := data.find(start)) != -1:
+            data = data[idx + len(start):]
+
+            if (ids := data.find(end)) != -1:
+                chunk, data = data[:ids], data[ids + len(end):]
+
+                if start in chunk:
+                    async for i in app.find(chunk, *args[1:]):
+                        yield (start + i + end if cont else i, data)
+                else:
+                    yield (start + chunk + end if cont else chunk, data)
+    
+    @classmethod
+    async def aextract(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont=True):
+        app = ClientContext.r()
+        data = bytearray()
+        async for chunk in app.pull():
+            data.extend(chunk)
+            async for x, data in app.find(data, start, end, cont):
+                yield x
+
+    @classmethod
+    async def extract(cls, *args, **kwargs):
+        app = ClientContext.r()
+        async for chunk in app.aextract(*args, **kwargs):
+            return chunk
+
+
 if __name__ == "__main__":
-    pass
+    ...
