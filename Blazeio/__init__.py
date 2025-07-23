@@ -360,9 +360,9 @@ class Server:
     async def cancelloop(app, loop, except_tasks):
         async with Ehandler(ignore = CancelledError):
             cancelled_tasks = []
-            for task in all_tasks(loop=loop):
+            for task in list(all_tasks(loop=app.loop)):
                 if (not task in except_tasks):
-                    except_tasks.append(loop.create_task(plog.warning(":: Task `%s` Cancelled." % task.get_name())))
+                    except_tasks.append(app.loop.create_task(plog.warning(":: Task `%s` Cancelled." % task.get_name())))
                     task.cancel()
                     cancelled_tasks.append(task)
 
@@ -381,7 +381,7 @@ class Server:
 
         app.server.close()
         app._server_closing.set()
-        await app.wait_closed.wait()
+        # await app.wait_closed.wait()
 
         for callback in app.on_exit:
             async with Ehandler():
@@ -440,7 +440,9 @@ class Server:
 
             await app.server.start_serving()
             app.is_server_running.set()
+            
             await app._server_closing.wait()
+
             app.wait_closed.set()
 
     async def wait_started(app):
