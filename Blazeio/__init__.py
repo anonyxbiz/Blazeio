@@ -381,7 +381,7 @@ class Server:
 
         app.server.close()
         app._server_closing.set()
-        # await app.wait_closed.wait()
+        await app.wait_closed.wait()
 
         for callback in app.on_exit:
             async with Ehandler():
@@ -425,8 +425,9 @@ class Server:
             args = ()
 
         await app.ServerConfig.resolve_coros()
-
-        app.server = await app.get_server()(protocol, *args, **kwargs)
+        
+        async with io.Ehandler():
+            app.server = await app.get_server()(protocol, *args, **kwargs)
 
         if not app.ServerConfig.server_address:
             app.ServerConfig.server_address = "%s://%s:%s" % ("http" if not ssl_data else "https", app.ServerConfig.host, app.ServerConfig.port)
