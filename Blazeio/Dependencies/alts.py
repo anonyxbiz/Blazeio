@@ -130,7 +130,7 @@ class SharpEventLab:
 class ioCondition:
     __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial")
     def __init__(app, evloop=loop, initial=True):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(False, evloop), SharpEvent(False, evloop), 0, 0, False, initial
+        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), 0, 0, False, initial
         app.event.set()
 
     def release(app):
@@ -203,8 +203,8 @@ class Asynchronizer:
     def __init__(app, maxsize=0, perform_test=False, await_ready=True):
         app.jobs = asyncQueue(maxsize=maxsize)
         app.perform_test = perform_test
-        app.idle_event = SharpEvent()
-        app.start_event = SharpEvent()
+        app.idle_event = SharpEvent(True)
+        app.start_event = SharpEvent(True)
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
         if await_ready: loop.run_until_complete(app.ready())
@@ -218,7 +218,7 @@ class Asynchronizer:
             "kwargs": kwargs,
             "exception": None,
             "result": NotImplemented,
-            "event": (event := SharpEvent()),
+            "event": (event := SharpEvent(True)),
             "loop": get_event_loop(),
             "current_task": current_task()
         }
@@ -301,9 +301,9 @@ class TaskPool:
         app.maxtasks, app.timeout, app.taskpool = maxtasks, timeout, []
 
         app.loop = evloop or get_event_loop()
-        app.task_activity = SharpEvent(False, app.loop)
+        app.task_activity = SharpEvent(evloop = app.loop)
 
-        app.task_under_flow = cond(evloop=app.loop)
+        app.task_under_flow = cond(evloop = app.loop)
 
         app.listener_task = app.loop.create_task(app.listener())
 
@@ -424,15 +424,19 @@ class RDict:
 
 create_task = lambda *a, **k: get_event_loop().create_task(*a, **k)
 
-async def traceback_logger(e, *args, **kwargs):
+async def traceback_logger(e, *args, frame = 4, frmt_only = False, **kwargs):
     if not (exts := extract_tb(e.__traceback__)):
         try: raise e
         except Exception as e2: e = e2
         finally: exts = extract_tb(e.__traceback__)
 
     exts = exts[-1]
+    
+    args = ("Exception occured in %s." % exts[0], "Line: %s." % exts[1], "func: %s." % exts[2], "Code: `%s`." % exts[3], "exc_type: %s" % e.__class__.__name__, "exc_str: %s." % str(e), str(e), *["arg_%d: %s" % (idx+1, str(arg)) for idx, arg in enumerate(args)], *["%s = %s" % (str(key), str(kwargs[key])) for key in kwargs])
+    
+    if frmt_only: return args
 
-    await plog.b_red("Exception occured in %s." % exts[0], "Line: %s." % exts[1], "func: %s." % exts[2], "Code: `%s`." % exts[3], "exc_type: %s" % e.__class__.__name__, "exc_str: %s." % str(e), str(e), *["arg_%d: %s" % (idx+1, str(arg)) for idx, arg in enumerate(args)], *["%s = %s" % (str(key), str(kwargs[key])) for key in kwargs], frame = 4,)
+    await plog.b_red(*args, frame = frame)
 
 def read_safe_sync(_type = bytes, *a, **k):
     with open(*a, **k) as fd:
@@ -581,7 +585,7 @@ class Ehandler:
         if exc_v is not None:
             app.err = exc_v
             if not app.should_ignore(exc_v):
-                fut = run_coroutine_threadsafe(traceback_logger(exc_v), get_event_loop())
+                fut = run_coroutine_threadsafe(traceback_logger(exc_v, frame = 5), get_event_loop())
                 if app.onerr: fut.add_done_callback(lambda fut: app.onerr())
 
             if app.should_raise(exc_v): raise exc_v
@@ -595,7 +599,7 @@ class Ehandler:
         if exc_v is not None:
             app.err = exc_v
             if not app.should_ignore(exc_v):
-                await traceback_logger(exc_v)
+                await traceback_logger(exc_v, frame = 5)
                 if app.onerr: create_task(app.onerr())
 
             if app.should_raise(exc_v): raise exc_v

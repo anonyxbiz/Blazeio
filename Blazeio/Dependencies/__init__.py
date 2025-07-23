@@ -119,7 +119,7 @@ c_extension_importer()
 
 class SharpEvent:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
-    def __init__(app, auto_clear: bool = True, evloop = None):
+    def __init__(app, auto_clear: bool = False, evloop = None):
         app._set, app._waiters, app.loop, app.auto_clear = False, [], evloop or get_event_loop(), auto_clear
 
     def is_set(app):
@@ -172,16 +172,14 @@ class SharpEvent:
 
         app._waiters.clear()
 
-SharpEventManual = lambda auto_clear = False: SharpEvent(auto_clear=auto_clear)
-
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "loop")
     def __init__(app, maxsize: int = 100, evloop = None, cond = None):
         app.maxsize = maxsize
         app.loop = evloop or get_event_loop()
-        app.queue: deque = deque()
-        app.queue_event: SharpEvent = SharpEvent(evloop = app.loop)
-        app.queue_add_event: SharpEvent = SharpEvent(evloop = app.loop)
+        app.queue = deque()
+        app.queue_event = SharpEvent(True, app.loop)
+        app.queue_add_event = SharpEvent(True, app.loop)
         app.queueunderflow = cond(evloop = app.loop) if cond else Condition()
         app.loop.create_task(app.check_overflow())
 
@@ -305,7 +303,7 @@ class Default_logger:
         return app.should_stop
 
     async def __log__(app, *args, **kwargs):
-        event = SharpEvent(False)
+        event = SharpEvent()
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event)), app.loop))
         await event.wait()
 
@@ -314,7 +312,7 @@ class Default_logger:
 
     async def loop_setup(app):
         app.logs = Enqueue(maxsize=app.maxsize)
-        app.log_idle_event = SharpEvent()
+        app.log_idle_event = SharpEvent(True)
         app.log_idle_event.set()
 
     async def log_worker(app):
@@ -350,35 +348,27 @@ class Default_logger:
         app._thread.join()
         sys_stdout.flush()
 
-def configure_uvloop_loop():
-    from uvloop import EventLoopPolicy as uvloop_EventLoopPolicy
-    set_event_loop_policy(uvloop_EventLoopPolicy())
-    ioConf.get_event_loop()
-
-def configure_asyncio_loop():
-    ioConf.get_event_loop()
-
-routines = {
-    ("configure_uvloop_loop()", "configure_asyncio_loop()"),
-    ("from aiofile import async_open", "async_open = NotImplemented")
-}
-
-def routine_executor(arg):
+def optional_module_importer(arg, optional_modules = ("uvloop",)):
     for if_, else_ in arg:
         try:
             exec(if_, globals())
         except Exception as e:
-            e = str(e).strip()
-            if not "uvloop" in e: print("routine_executor Exception: %s\n" % e)
+            e = Dot_Dict(fileno = (exts := extract_tb(e.__traceback__)[-1])[0], lineno = exts[1], func = exts[2], code = exts[3], exc_type = e.__class__.__name__, exc_str = str(e))
 
-            if else_ == NotImplemented:
-                raise Err("A required package is not installed.")
+            if e.exc_type == "ModuleNotFoundError" and not any([module for module in optional_modules if module in e.exc_str]): print(dumps(e))
+
             try:
+                if else_ == NotImplemented: raise Err("A required package is not installed.")
                 exec(else_, globals())
             except Exception as e:
-                print("routine_executor Exception: %s\n" % str(e).strip())
+                print(dumps(Dot_Dict(fileno = (exts := extract_tb(e.__traceback__)[-1])[0], lineno = exts[1], func = exts[2], code = exts[3], exc_type = e.__class__.__name__, exc_str = str(e))))
 
-routine_executor(routines)
+optional_module_importer({
+    ("from uvloop import EventLoopPolicy as uvloop_EventLoopPolicy\nset_event_loop_policy(uvloop_EventLoopPolicy())", "..."),
+    ("from aiofile import async_open", "async_open = NotImplemented")
+})
+
+ioConf.get_event_loop()
 
 class __log__:
     known_exceptions = ()
@@ -416,11 +406,7 @@ class __log__:
 logger = Default_logger(name='BlazeioLogger')
 
 Log = __log__()
-
-routine_executor({
-    ('p = Log.info', 'p = None'),
-    ('log = logger', 'p = None')
-})
+p, log = Log.info, logger
 
 class __ReMonitor__:
     __slots__ = ("Monitoring_thread", "event_loop", "event_loops", "Monitoring_thread_loop", "_start_monitoring", "servers", "main", "stopped_event", "terminated_event", "started_event", "tasks")

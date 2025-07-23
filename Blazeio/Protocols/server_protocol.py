@@ -38,8 +38,8 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         app.store = None
         app.__timeout__ = None
         app.__buff__memory__ = memoryview(app.__buff__)
-        app.__evt__ = SharpEvent(False, evloop)
-        app.__overflow_evt__ = SharpEvent(False, evloop)
+        app.__evt__ = SharpEvent(evloop = evloop)
+        app.__overflow_evt__ = SharpEvent(evloop = evloop)
         app.cancel_on_disconnect = True
 
     def connection_made(app, transport):

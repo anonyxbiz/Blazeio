@@ -5,6 +5,49 @@ from ..Modules.streaming import *
 from ..Modules.server_tools import *
 from ..Modules.reasons import *
 
+class Rutils:
+    __slots__ = ()
+    def __init__(app):
+        ...
+    
+    def __getattr__(app, *args):
+        return getattr(Request, *args)
+
+    def r(app):
+        return Context._r()
+
+    async def aread(app, decode=False):
+        r = app.r()
+        if r.content_length: return await app.read_exactly(r.content_length, decode)
+
+        data = bytearray()
+        async for chunk in r.pull(): data.extend(chunk)
+        return data if not decode else data.decode()
+    
+    async def read_exactly(app, size: int, decode=False):
+        r = app.r()
+        data, point = memarray(size), 0
+        async for chunk in r.pull():
+            len_ = len(chunk)
+            rem = (size-point)
+
+            if len_ > rem:
+                chunk = chunk[:rem]
+                len_ = len(chunk)
+
+            data[point: point + len_] = chunk
+
+            point += len_
+            if point >= size: break
+
+        return data if not decode else data.decode()
+
+    async def text(app):
+        return await app.aread(True)
+
+    async def json(app):
+        return Dot_Dict(loads(await app.aread(True)))
+
 class ExtraToolset:
     __slots__ = ()
     prepare_http_sepr1 = b"\r\n"
@@ -12,6 +55,7 @@ class ExtraToolset:
     prepare_http_header_end = b"\r\n\r\n"
     handle_chunked_endsig =  b"0\r\n\r\n"
     handle_chunked_sepr1 = b"\r\n"
+    utils = Rutils()
 
     def headers_to_http_bytes(app, headers):
         payload = b""
@@ -24,6 +68,11 @@ class ExtraToolset:
             payload += b"%s: %s%s" % (str(key).encode(), str(val).encode(), app.prepare_http_sepr1)
     
         return payload + app.prepare_http_sepr1
+
+    async def write_raw(app, data: (bytes, bytearray)):
+        if app.encoder: data = await app.encoder(data)
+
+        return await app.writer(data)
 
     async def write_chunked(app, data):
         if app.encoder: data = await app.encoder(data)
@@ -144,11 +193,6 @@ class ExtraToolset:
             app.write = app.write_raw
 
         await app.writer(app.headers_to_http_bytes(headers))
-
-    async def write_raw(app, data: (bytes, bytearray)):
-        if app.encoder: data = await app.encoder(data)
-
-        return await app.writer(data)
 
     def br(app, data: (bytes, bytearray)):
         return to_thread(brotlicffi_compress, bytes(data))

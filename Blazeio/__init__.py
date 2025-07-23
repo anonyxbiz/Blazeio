@@ -362,7 +362,7 @@ class Server:
             cancelled_tasks = []
             for task in list(all_tasks(loop=app.loop)):
                 if (not task in except_tasks):
-                    except_tasks.append(app.loop.create_task(plog.warning(":: Task `%s` Cancelled." % task.get_name())))
+                    if not app.quiet_shutdown: except_tasks.append(app.loop.create_task(plog.warning(":: Task `%s` Cancelled." % task.get_name())))
                     task.cancel()
                     cancelled_tasks.append(task)
 
@@ -390,7 +390,7 @@ class Server:
                 else:
                     callback.run()
 
-            shutdown_tasks.append(app.loop.create_task(plog.warning(":: Executed `%s` callback." % callback.func.__name__)))
+            if not app.quiet_shutdown: shutdown_tasks.append(app.loop.create_task(plog.warning(":: Executed `%s` callback." % callback.func.__name__)))
 
         await app.cancelloop(app.event_loop, shutdown_tasks)
         await plog.b_red(":: %s" % "Event loop wiped, Exited.")
@@ -401,48 +401,50 @@ class Server:
             app.exit_event.set()
 
     async def run(app, host: (None, str) = None, port: (None, int) = None, serve_forever = True, **kwargs):
-        app.route_validator()
-        if host: app.ServerConfig.host = host
-        if port: app.ServerConfig.port = port
+        async with Ehandler() as e:
+            app.route_validator()
+            if host: app.ServerConfig.host = host
+            if port: app.ServerConfig.port = port
+    
+            if not kwargs.get("backlog"):
+                kwargs["backlog"] = 5000
+    
+            if app.ServerConfig.sock:
+                app.ServerConfig.sock.bind((app.ServerConfig.host, app.ServerConfig.port))
+                kwargs["sock"] = app.ServerConfig.sock
+    
+            if (ssl_data := kwargs.get("ssl", None)) and isinstance(ssl_data, dict):
+                kwargs["ssl"] = app.setup_ssl(app.ServerConfig.host, app.ServerConfig.port, ssl_data)
+    
+            await app.configure_server_handler()
+    
+            protocol = app.ServerConfig.server_protocol
+    
+            if not "sock" in kwargs:
+                args = (app.ServerConfig.host, app.ServerConfig.port)
+            else:
+                args = ()
+    
+            await app.ServerConfig.resolve_coros()
 
-        if not kwargs.get("backlog"):
-            kwargs["backlog"] = 5000
+            app.server = await app.get_server()(protocol, *args, **kwargs)
 
-        if app.ServerConfig.sock:
-            app.ServerConfig.sock.bind((app.ServerConfig.host, app.ServerConfig.port))
-            kwargs["sock"] = app.ServerConfig.sock
+            if not app.ServerConfig.server_address:
+                app.ServerConfig.server_address = "%s://%s:%s" % ("http" if not ssl_data else "https", app.ServerConfig.host, app.ServerConfig.port)
 
-        if (ssl_data := kwargs.get("ssl", None)) and isinstance(ssl_data, dict):
-            kwargs["ssl"] = app.setup_ssl(app.ServerConfig.host, app.ServerConfig.port, ssl_data)
-
-        await app.configure_server_handler()
-
-        protocol = app.ServerConfig.server_protocol
-
-        if not "sock" in kwargs:
-            args = (app.ServerConfig.host, app.ServerConfig.port)
-        else:
-            args = ()
-
-        await app.ServerConfig.resolve_coros()
-        
-        app.server = await app.get_server()(protocol, *args, **kwargs)
-
-        if not app.ServerConfig.server_address:
-            app.ServerConfig.server_address = "%s://%s:%s" % ("http" if not ssl_data else "https", app.ServerConfig.host, app.ServerConfig.port)
+        if e.err: return
 
         if serve_forever:
             await app.serve_forever()
 
     async def serve_forever(app):
         async with app.server:
-            app.event_loop.create_task(Log.magenta("Blazeio [PID: %s]" % pid, " Server running on %s, Request Logging is %s.\n" % (app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run))
-
             await app.server.start_serving()
             app.is_server_running.set()
             
-            await app._server_closing.wait()
+            await plog.magenta("Blazeio [PID: %s]" % pid, " Server running on %s, Request Logging is %s.\n" % (app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
+            await app._server_closing.wait()
             app.wait_closed.set()
 
     async def wait_started(app):
@@ -456,10 +458,11 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Serverctx)
         app.INBOUND_CHUNK_SIZE = kwargs.get("INBOUND_CHUNK_SIZE") or ioConf.INBOUND_CHUNK_SIZE
         app.declared_routes = kwargs.get("declared_routes") or OrderedDict()
         app.on_exit = kwargs.get("on_exit") or deque()
-        app.is_server_running = SharpEvent(False, app.loop)
-        app._server_closing = SharpEvent(False, app.loop)
-        app.wait_closed = SharpEvent(False, app.loop)
-        app.exit_event = SharpEvent(False, app.loop)
+        app.quiet_shutdown = kwargs.get("quiet_shutdown", True)
+        app.is_server_running = SharpEvent(evloop = app.loop)
+        app._server_closing = SharpEvent(evloop = app.loop)
+        app.wait_closed = SharpEvent(evloop = app.loop)
+        app.exit_event = SharpEvent(evloop = app.loop)
         app.ServerConfig = SrvConfig()
         app.ServerConfig.args, app.ServerConfig.kwargs = args, kwargs
 

@@ -30,15 +30,18 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         app.__buff__ = bytearray(app.__chunk_size__)
         app.__buff__memory__ = memoryview(app.__buff__)
         app.__is_buffer_over_high_watermark__ = False
-        app.__evt__ = SharpEvent(False, kwargs.get("evloop"))
-        app.__overflow_evt__ = SharpEvent(False, kwargs.get("evloop"))
-        app.__wait_closed__ = SharpEvent(False, kwargs.get("evloop"))
+        app.__evt__ = SharpEvent(evloop = kwargs.get("evloop"))
+        app.__overflow_evt__ = SharpEvent(evloop = kwargs.get("evloop"))
+        app.__wait_closed__ = SharpEvent(evloop = kwargs.get("evloop"))
         if (task := current_task()):
             task.__BlazeioClientProtocol__ = app
 
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
+
+    def state(app):
+        return {key: str(value)[:500] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
 
     def cancel(app):
         app.__wait_closed__.set()

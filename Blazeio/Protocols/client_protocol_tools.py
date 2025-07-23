@@ -479,7 +479,7 @@ class Pulltools(Parsers):
         return await app.aread(True)
 
     async def json(app):
-        return loads(await app.aread(True))
+        return Dot_Dict(loads(await app.aread(True)))
 
     async def brotli(app):
         if not app.decompressor: app.decompressor = Decompressor()
