@@ -227,7 +227,7 @@ class Parsers:
     def is_prepared(app): return True if app.status_code and app.handler else False
     
     def gen_headers(app, headers):
-        response_headers = {}
+        response_headers = Dot_Dict({})
         while headers:
             if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
             else: header, headers = headers, b""

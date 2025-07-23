@@ -28,11 +28,8 @@ class HTTPParser:
 
             await app.make(r, header)
 
-class Request:
+class Depreciated:
     URL_DECODE_MAP = URL_DECODE_MAP
-
-    alphas = set([*string_ascii_lowercase, string_ascii_uppercase, *[str(i) for i in range(9)]])
-
     url_encoding_map = {
         " ": "%20",
         "!": "%21",
@@ -40,18 +37,91 @@ class Request:
 
     URL_DECODE_MAP_ITEMS = URL_DECODE_MAP.items()
     URL_ENCODE_MAP_ITEMS = url_encoding_map.items()
-    
-    form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n------'), (b'filename=', b'\r\n')
 
-    __server_config__ = {
-        "__http_request_heading_end_seperator__": b"\r\n\r\n",
-        "__http_request_heading_end_seperator_len__": 4,
-        "__http_request_max_buff_size__": 102400,
-        "__http_request_initial_separatir__": b' ',
-        "__http_request_auto_header_parsing__": True
-    }
     cache = {}
     max_cache_len = 10
+
+    def __init__(app):
+        ...
+
+    @classmethod
+    def url_encode_sync(app, rawvalue: str, func_name: str = "url_encode_sync"):
+        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
+
+        value = rawvalue
+
+        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
+
+        if not func_name in app.cache:
+            app.cache[func_name] = {}
+
+        for k, v in app.URL_DECODE_MAP.items():
+            if v not in value or v in app.alphas: continue
+            value = value.replace(v, k)
+
+        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
+
+        app.cache[func_name][rawvalue] = value
+
+        return value
+
+    @classmethod
+    def url_decode_sync(app, rawvalue: str, func_name: str = "url_decode_sync"):
+        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
+
+        value = rawvalue
+
+        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
+
+        if not func_name in app.cache:
+            app.cache[func_name] = {}
+
+        for k, v in app.URL_DECODE_MAP.items():
+            if k not in value: continue
+            value = value.replace(k, v)
+
+        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
+
+        app.cache[func_name][rawvalue] = value
+
+        return value
+
+    @classmethod
+    def get_params_sync(app, r=None, url: (None, str) = None, q: str = "?", o: str = "&", y: str = "="):
+        temp = {}
+        if r is not None:
+            if (idx0 := r.tail.find(q)) == -1: return temp
+            params = r.tail[idx0 + 1:]
+
+        elif url is not None:
+            if (idx0 := url.find(q)) == -1: return dict(temp)
+
+            params = url[idx0 + 1:]
+
+        idx: int = 0
+
+        while True:
+            if (idx := params.find(y)) != -1:
+                key, value = params[:idx], params[idx + 1:]
+                if (idx_end := value.find(q)) != -1:
+                    pass
+                elif (idx := value.find(o)) != -1:
+                    value, params = value[:idx], value[idx + 1:]
+                temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
+
+            if idx == -1 or idx_end != -1: break
+
+        return dict(temp)
+
+class Request(Depreciated):
+    alphas = set([*string_ascii_lowercase, string_ascii_uppercase, *[str(i) for i in range(9)]])
+
+    form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n------'), (b'filename=', b'\r\n')
+
+    __server_config__ = dict(ioConf.default_http_server_config)
+
+    def __init__(app):
+        ...
 
     @classmethod
     async def get_cookie(app, r, val: str = ""):
@@ -120,122 +190,15 @@ class Request:
 
     @classmethod
     async def url_decode(app, value: str):
-        if len(value) <= 4096: return app.url_decode_sync(value)
-        for k, v in app.URL_DECODE_MAP_ITEMS:
-            while (idx := value.find(k)) != -1:
-                value = value[:idx] + v + value[idx + len(k):]
-
-        return value
+        return app.url_decode_sync(value)
 
     @classmethod
     async def url_encode(app, value: str):
-        if len(value) <= 4096: return app.url_encode_sync(value)
-
-        for k, v in app.URL_ENCODE_MAP_ITEMS:
-            while (idx := value.find(k)) != -1:
-                value = value[:idx] + v + value[idx + len(k):]
-
-        return value
+        return app.url_encode_sync(value)
 
     @classmethod
-    def url_encode_sync(app, rawvalue: str, func_name: str = "url_encode_sync"):
-        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
-
-        value = rawvalue
-
-        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
-
-        if not func_name in app.cache:
-            app.cache[func_name] = {}
-
-        for k, v in app.URL_DECODE_MAP.items():
-            if v not in value or v in app.alphas: continue
-            value = value.replace(v, k)
-
-        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
-
-        app.cache[func_name][rawvalue] = value
-
-        return value
-
-    @classmethod
-    def url_decode_sync(app, rawvalue: str, func_name: str = "url_decode_sync"):
-        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
-
-        value = rawvalue
-
-        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
-
-        if not func_name in app.cache:
-            app.cache[func_name] = {}
-
-        for k, v in app.URL_DECODE_MAP.items():
-            if k not in value: continue
-            value = value.replace(k, v)
-
-        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
-
-        app.cache[func_name][rawvalue] = value
-
-        return value
-
-    @classmethod
-    def get_params_sync(app, r=None, url: (None, str) = None, q: str = "?", o: str = "&", y: str = "="):
-        temp: defaultdict = defaultdict(str)
-
-        if r is not None:
-            if (idx0 := r.tail.find(q)) == -1: return dict(temp)
-            params = r.tail[idx0 + 1:]
-
-        elif url is not None:
-            if (idx0 := url.find(q)) == -1: return dict(temp)
-
-            params = url[idx0 + 1:]
-
-        idx: int = 0
-
-        while True:
-            if (idx := params.find(y)) != -1:
-                key, value = params[:idx], params[idx + 1:]
-                if (idx_end := value.find(q)) != -1:
-                    pass
-                elif (idx := value.find(o)) != -1:
-                    value, params = value[:idx], value[idx + 1:]
-                temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
-
-            if idx == -1 or idx_end != -1: break
-
-        return dict(temp)
-
-    @classmethod
-    async def get_params(app, r=None, url=None, q = "?", o = "&", y = "="):
-        temp = defaultdict(str)
-        if r is not None:
-            if (idx0 := r.tail.find(q)) == -1: return dict(temp)
-            params = r.tail[idx0 + 1:]
-
-        elif url is not None:
-            if (idx0 := url.find(q)) == -1: return dict(temp)
-
-            params = url[idx0 + 1:]
-
-        idx = 0
-
-        while True:
-            if (idx := params.find(y)) != -1:
-                key, value = params[:idx], params[idx + 1:]
-
-                if (idx_end := value.find(q)) != -1:
-                    pass
-                elif (idx := value.find(o)) != -1:
-                    value, params = value[:idx], value[idx + 1:]
-
-                temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
-
-            if idx == -1 or idx_end != -1:
-                break
-
-        return dict(temp)
+    async def get_params(app, *args, **kwargs):
+        return app.get_params_sync(*args, **kwargs)
 
     @classmethod
     async def set_method(app, r, server, chunk):
@@ -363,9 +326,10 @@ class Request:
     async def wrapper(app, target, *a, **k):
         return target(*a, **k)
 
+# Replace python implementations with their c implementations if available
 for i in (Request.url_decode_sync, Request.url_encode_sync, Request.get_params_sync):
     if (func := getattr(ioConf, i.__name__)):
-        setattr(Request, "_python_" + i.__name__, i)
+        setattr(Request, "_python_impl_%s" % i.__name__, i)
         setattr(Request, i.__name__, func)
         setattr(Request, (async_method := i.__name__[:-5]), lambda *a, **k: Request.wrapper(func, *a, **k))
 

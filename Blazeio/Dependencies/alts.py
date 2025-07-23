@@ -528,6 +528,14 @@ class timef:
     def now(app, *args, **kwargs):
         return (now := dt.now(*args, **kwargs)).strftime("%H:%M:%S:") + str(now.microsecond)[:2]
 
+    @classmethod
+    def rnow(app, *args, **kwargs):
+        return dt.now(*args, **kwargs)
+
+    @classmethod
+    def fnow(app, now):
+        return str(now.strftime("%H:%M:%S:")) + str(now.microsecond)[:2]
+
 class Errdetail(BlazeioException):
     __slots__ = (
         'err',

@@ -52,6 +52,16 @@ main_process = psutilProcess(pid := getpid())
 class __ioConf__:
     def __init__(app, **kwargs):
         app.add(shutdown_callbacks = [])
+        app.add(default_http_server_config = {
+            "__http_request_heading_end_seperator__": b"\r\n\r\n",
+            "__http_request_heading_end_seperator_len__": 4,
+            "__http_request_max_buff_size__": 102400,
+            "__http_request_initial_separatir__": b' ',
+            "__http_request_auto_header_parsing__": True,
+            "funcname_normalizers": {
+                "_": "/"
+            }
+        })
         app.add(**kwargs)
 
     def __getattr__(app, key, default = None):

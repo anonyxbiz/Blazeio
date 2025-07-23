@@ -448,16 +448,7 @@ class Server:
 
 class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Serverctx):
     def __init__(app, *args, **kwargs):
-        app.__server_config__ = kwargs.get("__server_config__") or {
-            "__http_request_heading_end_seperator__": b"\r\n\r\n",
-            "__http_request_heading_end_seperator_len__": 4,
-            "__http_request_max_buff_size__": 102400,
-            "__http_request_initial_separatir__": b' ',
-            "__http_request_auto_header_parsing__": True,
-            "funcname_normalizers": {
-                "_": "/"
-            }
-        }
+        app.__server_config__ = kwargs.get("__server_config__") or dict(ioConf.default_http_server_config)
         app.loop = kwargs.get("evloop") or kwargs.get("loop") or loop
         app.REQUEST_COUNT = 0
         app.INBOUND_CHUNK_SIZE = kwargs.get("INBOUND_CHUNK_SIZE") or ioConf.INBOUND_CHUNK_SIZE
