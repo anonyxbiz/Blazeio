@@ -2,7 +2,7 @@
 from ..Itools import *
 from ..Exceptions import *
 from ..Protocols import *
-from asyncio import new_event_loop, set_event_loop, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, iscoroutine, InvalidStateError
+from asyncio import new_event_loop, set_event_loop, set_event_loop_policy, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, iscoroutine, InvalidStateError
 
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEPORT, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_REUSEADDR
 
@@ -76,12 +76,15 @@ class __ioConf__:
 
     def new_event_loop(app):
         app.loop = new_event_loop()
-        globals()["loop"] = app.loop
         set_event_loop(app.loop)
+        globals()["loop"] = app.loop
+        return app.loop
 
     def get_event_loop(app):
         if app.loop: return app.loop
         app.loop = get_event_loop()
+        set_event_loop(app.loop)
+        globals()["loop"] = app.loop
         return app.loop
 
     def add_shutdown_callback(app, cb, *args, **kwargs):
@@ -347,10 +350,16 @@ class Default_logger:
         app._thread.join()
         sys_stdout.flush()
 
+def configure_uvloop_loop():
+    from uvloop import EventLoopPolicy as uvloop_EventLoopPolicy
+    set_event_loop_policy(uvloop_EventLoopPolicy())
+    ioConf.new_event_loop()
+
+def configure_asyncio_loop():
+    ioConf.new_event_loop()
+
 routines = {
-    ("import uvloop", ""),
-    ("uvloop.install()", ""),
-    ("globals()['loop'] = ioConf.get_event_loop()", "globals()['loop'] = None"),
+    ("configure_uvloop_loop()", "configure_asyncio_loop()"),
     ("from aiofile import async_open", "async_open = NotImplemented")
 }
 
