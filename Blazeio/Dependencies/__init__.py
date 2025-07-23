@@ -348,9 +348,9 @@ class Default_logger:
         sys_stdout.flush()
 
 routines = {
-    ("globals()['loop'] = ioConf.get_event_loop()", "globals()['loop'] = None"),
     ("import uvloop", ""),
     ("uvloop.install()", ""),
+    ("globals()['loop'] = ioConf.get_event_loop()", "globals()['loop'] = None"),
     ("from aiofile import async_open", "async_open = NotImplemented")
 }
 

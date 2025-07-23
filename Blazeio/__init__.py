@@ -449,7 +449,7 @@ class Server:
 class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Serverctx):
     def __init__(app, *args, **kwargs):
         app.__server_config__ = kwargs.get("__server_config__") or dict(ioConf.default_http_server_config)
-        app.loop = kwargs.get("evloop") or kwargs.get("loop") or loop
+        app.loop = kwargs.get("evloop") or kwargs.get("loop") or ioConf.loop
         app.REQUEST_COUNT = 0
         app.INBOUND_CHUNK_SIZE = kwargs.get("INBOUND_CHUNK_SIZE") or ioConf.INBOUND_CHUNK_SIZE
         app.declared_routes = kwargs.get("declared_routes") or OrderedDict()
