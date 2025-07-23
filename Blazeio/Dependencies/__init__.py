@@ -353,10 +353,10 @@ class Default_logger:
 def configure_uvloop_loop():
     from uvloop import EventLoopPolicy as uvloop_EventLoopPolicy
     set_event_loop_policy(uvloop_EventLoopPolicy())
-    ioConf.new_event_loop()
+    ioConf.get_event_loop()
 
 def configure_asyncio_loop():
-    ioConf.new_event_loop()
+    ioConf.get_event_loop()
 
 routines = {
     ("configure_uvloop_loop()", "configure_asyncio_loop()"),
