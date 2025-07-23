@@ -426,8 +426,7 @@ class Server:
 
         await app.ServerConfig.resolve_coros()
         
-        async with io.Ehandler():
-            app.server = await app.get_server()(protocol, *args, **kwargs)
+        app.server = await app.get_server()(protocol, *args, **kwargs)
 
         if not app.ServerConfig.server_address:
             app.ServerConfig.server_address = "%s://%s:%s" % ("http" if not ssl_data else "https", app.ServerConfig.host, app.ServerConfig.port)
