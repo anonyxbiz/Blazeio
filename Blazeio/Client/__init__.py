@@ -89,19 +89,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else create_connection
 
-    def conn(app, *a, **k): return app.prepare(*args, **kwargs)
-
-    async def prepare(app, *args, **kwargs):
-        if app.close_on_exit != False:
-            app.close_on_exit = False
-
-        if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
-
-        if args: app.args = (*args, *app.args[len(args):])
-        if kwargs: app.kwargs.update(kwargs)
-
-        return await app.create_connection(*app.args, **app.kwargs)
-
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         known = isinstance(exc_value, app.known_ext_types)
 
@@ -132,6 +119,19 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 await protocol.__wait_closed__.wait()
 
         return False
+
+    def conn(app, *a, **k): return app.prepare(*args, **kwargs)
+
+    async def prepare(app, *args, **kwargs):
+        if app.close_on_exit != False:
+            app.close_on_exit = False
+
+        if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
+
+        if args: app.args = (*args, *app.args[len(args):])
+        if kwargs: app.kwargs.update(kwargs)
+
+        return await app.create_connection(*app.args, **app.kwargs)
 
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, form[key]) for key in form]).encode()
@@ -365,9 +365,7 @@ class __SessionPool__:
         instance = {}
         instance["context"] = ioCondition()
         kwargs.update(dict(on_exit_callback = (app.release, instance["context"])))
-
         instance["session"] = Session(url, *args, **kwargs)
-
         return instance
 
     async def get(app, url, *args, **kwargs):
@@ -426,8 +424,8 @@ class SessionPool:
 
         return await app.session.prepare(*app.args, **app.kwargs)
  
-    def __aexit__(app, *args, **kwargs):
-        return app.session.__aexit__(*args, **kwargs)
+    async def __aexit__(app, *args, **kwargs):
+        return await app.session.__aexit__(*args, **kwargs)
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts",)

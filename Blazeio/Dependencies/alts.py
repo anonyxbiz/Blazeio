@@ -128,9 +128,9 @@ class SharpEventLab:
         app._waiters.clear()
 
 class ioCondition:
-    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial")
+    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial", "_waiter_event")
     def __init__(app, evloop=loop, initial=True):
-        app.event, app._lock_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), 0, 0, False, initial
+        app.event, app._lock_event, app._waiter_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), 0, 0, False, initial
         app.event.set()
 
     def release(app):
@@ -182,10 +182,12 @@ class ioCondition:
 
         while True:
             app.waiter_count += 1
+            app._waiter_event.set()
             await app.event.wait()
 
             if app.notify_count:
                 app.notify_count -= 1
+                app._waiter_event.set()
                 break
             elif app.event.is_set() and app.waiter_count:
                 app.waiter_count = 0
@@ -197,6 +199,14 @@ class ioCondition:
             await app.wait()
 
         return result
+
+    async def on_waiter_change(app):
+        if not app.is_locked:
+            raise RuntimeError("Cannot be invoked on an unlocked lock.")
+        else:
+            app.release()
+
+        return await app._waiter_event.wait_clear()
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
