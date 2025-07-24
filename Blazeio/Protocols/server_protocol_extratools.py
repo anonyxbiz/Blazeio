@@ -5,6 +5,98 @@ from ..Modules.streaming import *
 from ..Modules.server_tools import *
 from ..Modules.reasons import *
 
+class Multipartdemux:
+    __slots__ = ("r", "headers", "buff", "boundary", "boundary_only", "header_bytes")
+    boundary_eof = b"\r\n\r\n"
+    boundary_eof_len = len(boundary_eof)
+    boundary_start = b"----WebKitFormBoundary"
+    header_start = b"\r\n"
+    name_s = b"Content-Disposition: form-data; name="
+    name_s = b";"
+
+    def __init__(app, r = None):
+        app.r = r
+        app.header_bytes = None
+        app.headers = ddict()
+        app.buff = memarray()
+        app.boundary = None
+
+    async def __aexit__(app, exc_type, exc_value, tb):
+        if exc_value: raise exc_value
+
+    async def __aenter__(app):
+        if not app.r:
+            app.r = Context._r()
+        app.r.pull = app.pull
+        await app.prepare_multipart()
+        return app
+    
+    async def prepare_multipart(app):
+        idx, started = 0, 0
+        async for chunk in app.r.request():
+            app.buff.extend(chunk)
+            if not started:
+                if (idx := app.buff.find(app.boundary_start)) != -1 and (ide := app.buff.find(app.header_start)) != -1:
+                    app.header_bytes, app.boundary, app.boundary_only, app.buff = app.buff[:ide], app.buff[idx:ide+len(app.header_start)], app.buff[idx:ide], memarray(app.buff[ide:])
+
+                    started = 1
+                else:
+                    continue
+
+            if (app.buff.endswith(app.boundary_eof)) or app.buff.count(app.boundary) >= app.buff.count(app.boundary_eof):
+                break
+
+        idx = app.buff.rfind(app.boundary)
+        ide = app.buff[idx:].find(app.boundary_eof) + len(app.boundary_eof)
+
+        app.header_bytes += app.buff[:idx+ide]
+        app.buff = app.buff[idx + ide:]
+
+        app.parse_header_bytes()
+    
+    def parse_header_bytes(app):
+        header_bytes = app.header_bytes
+        while (idx := header_bytes.find(app.boundary)) != -1:
+            form_data = header_bytes[idx + len(app.boundary):]
+            name = form_data[(idx := form_data.find(app.name_s) + len(app.name_s) + 6):]
+
+            if (ide := name.find(app.boundary_eof)) != -1:
+                form_data, name = name[ide + len(app.boundary_eof):], name[:ide]
+
+            elif (ide := name.find(app.name_e)) != -1:
+                form_data, name = name[ide + len(app.name_e):], name[:ide]
+
+            value, form_data = form_data[:(idx := form_data.find(app.header_start))], form_data[idx + len(app.header_start):]
+            
+            app.headers[name[1:-1].decode()] = value.decode()
+
+            header_bytes = form_data
+
+    def is_eof(app, chunk):
+        return bytes(memoryview(chunk)[len(chunk)-(len(app.boundary_only)+10):]).find(app.boundary_only) != -1
+
+    def slice_trail(app, chunk):
+        chunk_rem = bytes(memoryview(chunk)[:chunk.rfind(app.boundary_only)])
+
+        return bytes(memoryview(chunk_rem)[:chunk_rem.find(app.header_start)])
+
+    async def pull(app):
+        if not app.headers:
+            await app.prepare_multipart()
+
+        if app.is_eof(app.buff):
+            yield app.slice_trail(app.buff)
+            return
+        
+        yield app.buff
+
+        async for chunk in app.r.request():
+            if app.is_eof(chunk):
+                yield app.slice_trail(chunk)
+                break
+
+            yield chunk
+
 class Rutils:
     __slots__ = ()
     def __init__(app):
@@ -15,6 +107,9 @@ class Rutils:
 
     def r(app):
         return Context._r()
+
+    def multipart(app, *args):
+        return Multipartdemux(*args)
 
     async def aread(app, decode=False):
         r = app.r()

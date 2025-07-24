@@ -160,5 +160,7 @@ def load_from_type_in_locals(app, fn, __locals__, _type):
 
             setattr(app, key, __locals__[key])
 
+ddict = Dot_Dict
+
 if __name__ == "__main__":
     pass

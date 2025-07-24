@@ -65,25 +65,53 @@ class Async:
         return conted
 
 class Multipart:
-    __slots__ = ("files", "kwargs", "boundary", "boundary_eof", "headers",)
+    __slots__ = ("files", "kwargs", "boundary", "boundary_eof", "headers", "r", "headers_sent")
 
-    def __init__(app, files: str, **kwargs):
+    def __init__(app, *files, **kwargs):
         app.files, app.kwargs = files, kwargs
         app.boundary = '----WebKitFormBoundary%s' % token_urlsafe(16)
-        app.boundary_eof = '\r\n%s--\r\n\r\n' % app.boundary
+        app.boundary_eof = ('\r\n%s--\r\n\r\n' % app.boundary).encode()
         app.headers = {
             "Content-Type": "multipart/form-data; boundary=%s" % app.boundary,
-            "Transfer-Encoding": "chunked",
         }
+        app.headers_sent = False
 
-    async def gen_form(app, file: str):
-        filename = path.basename(file)
-        filetype = guess_type(file)[0]
+    def gen_form(app, file: (None, str) = None, filename: (None, str) = None, filetype: (None, str) = None,):
+        payload = ""
+        if not filename:
+            filename = path.basename(file)
+
+        if not filetype:
+            filetype = guess_type(file)[0]
 
         for key, val in app.kwargs.items():
-            yield ('%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n' % (app.boundary, str(key), str(val))).encode()
+            payload += '%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n' % (app.boundary, str(key), str(val))
 
-        yield ('%s\r\nContent-Disposition: form-data; name="avatar"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (app.boundary, filename, filetype)).encode()
+        payload += '%s\r\nContent-Disposition: form-data; name="avatar"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (app.boundary, filename, filetype)
+
+        return payload.encode()
+    
+    async def __aexit__(app, exc_type, exc_value, tb):
+        if exc_value: raise exc_value
+        await app.r.protocol.push(app.boundary_eof)
+
+    async def __aenter__(app):
+        app.r = ClientContext.r()
+        app.r.write = app.write
+        return app
+
+    async def send_headers(app, *args, headers: (bytes, bytearray, None) = None, **kwargs):
+        if not headers:
+            headers = app.gen_form(*args, **kwargs)
+
+        app.headers_sent = True
+        return await app.r.protocol.push(headers)
+
+    async def write(app, *args):
+        if not app.headers_sent:
+            await app.send_headers(app.files[0])
+
+        return await app.r.protocol.push(*args)
 
     async def ayield(app, file: str):
         async with async_open(file, "rb") as f:
@@ -91,8 +119,8 @@ class Multipart:
 
     async def pull(app):
         for file in app.files:
-            async for chunk in app.gen_form(file): yield chunk
-    
+            yield app.gen_form(file)
+
             async for chunk in app.ayield(file): yield chunk
 
             yield app.boundary_eof.encode()

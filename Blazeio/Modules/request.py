@@ -202,6 +202,10 @@ class Request(Depreciated):
         return app.get_params_sync(*args, **kwargs)
 
     @classmethod
+    def params(app):
+        return Dot_Dict(app.get_params_sync(Context.r_sync()))
+
+    @classmethod
     async def set_method(app, r, server, chunk):
         if (idx := chunk.find(server.__server_config__["__http_request_initial_separatir__"])) != -1:
             r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]

@@ -77,7 +77,8 @@ class __Deliver__:
 
     def __getattr__(app, name):
         def method(*a, **kw):
-            if not getattr(a[0], "transport", None):
+            name = a[0].__class__.__name__
+            if not "Blazeio" in name:
                 a = (Context.r_sync(), *a)
 
             return app.deliver(*a, **kw, content_type = app.content_types.get(name, name.replace("_", "/")))
