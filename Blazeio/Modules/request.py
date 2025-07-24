@@ -125,7 +125,7 @@ class Request(Depreciated):
 
     @classmethod
     async def get_cookie(app, r, val: str = ""):
-        if not isinstance(r, BlazeioProtocol):
+        if isinstance(r, str):
             val, r = r, Context.r_sync()
 
         val += "="
@@ -142,8 +142,8 @@ class Request(Depreciated):
         return cookie
 
     @classmethod
-    def get_cookie_sync(app, r = None, val: str = ""):
-        if not r:
+    def get_cookie_sync(app, r, val: str = ""):
+        if isinstance(r, str):
             val, r = r, Context.r_sync()
 
         val += "="
@@ -178,7 +178,8 @@ class Request(Depreciated):
         return data if not decode else data.decode()
 
     @classmethod
-    async def get_json(app, r):
+    async def get_json(app, r = None):
+        if not r: r = Context.r_sync()
         if r.content_length:
             payload = await app.read_exactly(r, r.content_length)
         else:
@@ -319,8 +320,8 @@ class Request(Depreciated):
         return json_data
 
     @classmethod
-    async def get_form_data(app, r):
-        return await app.form_data(r)
+    async def get_form_data(app, *args, **kwargs):
+        return await app.form_data(*args, **kwargs)
 
     @classmethod
     async def wrapper(app, target, *a, **k):
