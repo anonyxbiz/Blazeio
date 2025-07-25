@@ -4,6 +4,24 @@ from .streaming import *
 
 URL_DECODE_MAP = {"%20": " ", "%21": "!", "%22": '"', "%23": "#", "%24": "$", "%25": "%", "%26": "&", "%27": "'", "%28": "(", "%29": ")", "%2A": "*", "%2B": "+", "%2C": ",", "%2D": "-", "%2E": ".", "%2F": "/", "%30": "0", "%31": "1", "%32": "2", "%33": "3", "%34": "4", "%35": "5", "%36": "6", "%37": "7", "%38": "8", "%39": "9", "%3A": ":", "%3B": ";", "%3C": "<", "%3D": "=", "%3E": ">", "%3F": "?", "%40": "@", "%41": "A", "%42": "B", "%43": "C", "%44": "D", "%45": "E", "%46": "F", "%47": "G", "%48": "H", "%49": "I", "%4A": "J", "%4B": "K", "%4C": "L", "%4D": "M", "%4E": "N", "%4F": "O", "%50": "P", "%51": "Q", "%52": "R", "%53": "S", "%54": "T", "%55": "U", "%56": "V", "%57": "W", "%58": "X", "%59": "Y", "%5A": "Z", "%5B": "[", "%5C": "\\", "%5D": "]", "%5E": "^", "%5F": "_", "%60": "`", "%61": "a", "%62": "b", "%63": "c", "%64": "d", "%65": "e", "%66": "f", "%67": "g", "%68": "h", "%69": "i", "%6A": "j", "%6B": "k", "%6C": "l", "%6D": "m", "%6E": "n", "%6F": "o", "%70": "p", "%71": "q", "%72": "r", "%73": "s", "%74": "t", "%75": "u", "%76": "v", "%77": "w", "%78": "x", "%79": "y", "%7A": "z", "%7B": "{", "%7C": "|", "%7D": "}", "%7E": "~", "%25": "%", "%3A": ":"}
 
+class ContentDecoders:
+    __slots__ = ()
+    def __init__(app): ...
+
+    async def br_decoder(app, data):
+        if len(data) >= 102400:
+            data = await to_thread(brotlicffi_decompress, data)
+        else:
+            data = brotlicffi_decompress(data)
+        return data
+
+    async def gzip_decoder(app, data):
+        data = (decompressor := decompressobj(16 + zlib_MAX_WBITS)).decompress(data)
+
+        if (chunk := decompressor.flush()):
+            data += chunk
+        return data
+
 class HTTPParser:
     header_key_val = b': '
     h_s = b'\r\n'
@@ -340,6 +358,98 @@ for i in (Request.url_decode_sync, Request.url_encode_sync, Request.get_params_s
 
     else:
         setattr(ioConf, i.__name__, i)
+
+class Multipartdemux:
+    __slots__ = ("r", "headers", "buff", "boundary", "boundary_only", "header_bytes")
+    boundary_eof = b"\r\n\r\n"
+    boundary_eof_len = len(boundary_eof)
+    boundary_start = b"----WebKitFormBoundary"
+    header_start = b"\r\n"
+    name_s = b"Content-Disposition: form-data; name="
+    name_s = b";"
+
+    def __init__(app, r = None):
+        app.r = r
+        app.header_bytes = None
+        app.headers = ddict()
+        app.buff = memarray()
+        app.boundary = None
+
+    async def __aexit__(app, exc_type, exc_value, tb):
+        if exc_value: raise exc_value
+
+    async def __aenter__(app):
+        if not app.r:
+            app.r = Context._r()
+        app.r.pull = app.pull
+        await app.prepare_multipart()
+        return app
+    
+    async def prepare_multipart(app):
+        idx, started = 0, 0
+        async for chunk in app.r.request():
+            app.buff.extend(chunk)
+            if not started:
+                if (idx := app.buff.find(app.boundary_start)) != -1 and (ide := app.buff.find(app.header_start)) != -1:
+                    app.header_bytes, app.boundary, app.boundary_only, app.buff = app.buff[:ide], app.buff[idx:ide+len(app.header_start)], app.buff[idx:ide], memarray(app.buff[ide:])
+
+                    started = 1
+                else:
+                    continue
+
+            if (app.buff.endswith(app.boundary_eof)) or app.buff.count(app.boundary) >= app.buff.count(app.boundary_eof):
+                break
+
+        idx = app.buff.rfind(app.boundary)
+        ide = app.buff[idx:].find(app.boundary_eof) + len(app.boundary_eof)
+
+        app.header_bytes += app.buff[:idx+ide]
+        app.buff = app.buff[idx + ide:]
+
+        app.parse_header_bytes()
+    
+    def parse_header_bytes(app):
+        header_bytes = app.header_bytes
+        while (idx := header_bytes.find(app.boundary)) != -1:
+            form_data = header_bytes[idx + len(app.boundary):]
+            name = form_data[(idx := form_data.find(app.name_s) + len(app.name_s) + 6):]
+
+            if (ide := name.find(app.boundary_eof)) != -1:
+                form_data, name = name[ide + len(app.boundary_eof):], name[:ide]
+
+            elif (ide := name.find(app.name_e)) != -1:
+                form_data, name = name[ide + len(app.name_e):], name[:ide]
+
+            value, form_data = form_data[:(idx := form_data.find(app.header_start))], form_data[idx + len(app.header_start):]
+            
+            app.headers[name[1:-1].decode()] = value.decode()
+
+            header_bytes = form_data
+
+    def is_eof(app, chunk):
+        return bytes(memoryview(chunk)[len(chunk)-(len(app.boundary_only)+10):]).find(app.boundary_only) != -1
+
+    def slice_trail(app, chunk):
+        chunk_rem = bytes(memoryview(chunk)[:chunk.rfind(app.boundary_only)])
+
+        return bytes(memoryview(chunk_rem)[:chunk_rem.find(app.header_start)])
+
+    async def pull(app):
+        if not app.headers:
+            await app.prepare_multipart()
+
+        if app.is_eof(app.buff):
+            yield app.slice_trail(app.buff)
+            return
+        
+        yield app.buff
+
+        async for chunk in app.r.request():
+            if app.is_eof(chunk):
+                yield app.slice_trail(chunk)
+                break
+
+            yield chunk
 
 if __name__ == "__main__":
     pass

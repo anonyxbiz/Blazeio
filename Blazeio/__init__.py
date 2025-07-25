@@ -14,6 +14,7 @@ from .Other._refuture import *
 class Handler:
     def __init__(app):
         app.__main_handler__ = NotImplemented
+        app.__default_handler__ = NotImplemented
 
     async def log_request(app, r):
         r.__perf_counter__ = perf_counter()
@@ -40,18 +41,19 @@ class Handler:
         return decorator
 
     async def configure_server_handler(app):
-        if app.__main_handler__ is not NotImplemented: return
-
         app.before_middleware = app.declared_routes.get("before_middleware")
 
         app.after_middleware = app.declared_routes.get("after_middleware")
 
         app.handle_all_middleware = app.declared_routes.get("handle_all_middleware")
-        
+
         if not app.before_middleware and not app.after_middleware and not app.handle_all_middleware:
-            app.__main_handler__ = app.serve_route_no_middleware
+            app.__default_handler__ = app.serve_route_no_middleware
         else:
-            app.__main_handler__ = app.serve_route_with_middleware
+            app.__default_handler__ = app.serve_route_with_middleware
+
+        if app.__main_handler__ is NotImplemented:
+            app.__main_handler__ = app.__default_handler__
 
     async def serve_route_with_middleware(app, r, prepare = True):
         if prepare: await Request.prepare_http_request(r, app)
@@ -235,6 +237,7 @@ class OOP_RouteDef:
 
                 if (name := str(method.__name__)) == "__main_handler__":
                     app.__main_handler__ = method
+                    app.create_task(plog.info("Added %s => %s." % (name, name), func = app.attach, dnewline = False, newline = False))
                     raise ValueError()
 
                 if not name.startswith("_") or name.startswith("__"):
@@ -370,7 +373,6 @@ class Server:
 
     async def shutdown(app, e = None):
         shutdown_tasks = [current_task()]
-
         if isinstance(e, KeyboardInterrupt):
             shutdown_tasks.append(app.loop.create_task(plog.warning(":: %s" % "KeyboardInterrupt Detected.")))
 
@@ -431,6 +433,8 @@ class Server:
 
             if not app.ServerConfig.server_address:
                 app.ServerConfig.server_address = "%s://%s:%s" % ("http" if not ssl_data else "https", app.ServerConfig.host, app.ServerConfig.port)
+
+                app.ServerConfig.server_addressf = app.ServerConfig.server_address + "%s"
 
         if e.err: return
 

@@ -35,7 +35,7 @@ from base64 import b64encode, b64decode
 from string import ascii_lowercase as string_ascii_lowercase, ascii_uppercase as string_ascii_uppercase
 
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
-from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
+from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress, decompress as brotlicffi_decompress
 
 from psutil import Process as psutilProcess
 

@@ -42,9 +42,10 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "write", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder")
 
     __should_be_reset__ = ("decompressor", "compressor", "has_sent_headers",)
+    
     __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"),)
 
     NON_BODIED_HTTP_METHODS = {
@@ -64,13 +65,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         app.args, app.kwargs = args, kwargs
 
-    def __getattr__(app, name):
-        if (method := getattr(app.protocol, name, None)):
+    def __getattr__(app, key, *args):
+        if (method := getattr(app.protocol, key, None)):
             ...
-        elif (val := StaticStuff.dynamic_attrs.get(name)):
+        elif (val := StaticStuff.dynamic_attrs.get(key)):
             method = getattr(app, val)
         else:
-            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
         return method
 
@@ -136,7 +137,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, form[key]) for key in form]).encode()
 
-    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, **kwargs):
+    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, encoder: any = None, default_writer: any = None, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
             if (val := __locals__.get(key, NotImplemented)) == NotImplemented: continue
@@ -251,13 +252,16 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         await app.protocol.push(payload)
 
-        if not app.write:
-            if "Transfer-encoding" in normalized_headers: app.write = app.write_chunked
+        if not app.default_writer:
+            if "Transfer-encoding" in normalized_headers: app.default_writer = app.write_chunked
             else:
-                app.write = app.push
+                app.default_writer = app.push
 
         if proxy:
             await app.prepare_connect(method, stdheaders)
+        
+        if app.encode_writes and (encoding := normalized_headers.get("Content-encoding", None)) and (encoder := getattr(app, "%s_encoder" % encoding, NotImplemented)) is not NotImplemented:
+            app.encoder = encoder
 
         if content is not None:
             if isinstance(content, (bytes, bytearray)):
@@ -427,15 +431,51 @@ class SessionPool:
     async def __aexit__(app, *args, **kwargs):
         return await app.session.__aexit__(*args, **kwargs)
 
+class PooledSession:
+    __slots__ = ("_super",)
+    HTTP_METHODS = (
+        "GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE", "CONNECT"
+    )
+    HTTP_METHODS = (*HTTP_METHODS, *(arg.lower() for arg in HTTP_METHODS))
+
+    def __init__(app, _super):
+        app._super = _super
+
+    def __getattr__(app, key):
+        if key in app.HTTP_METHODS:
+            @asynccontextmanager
+            async def dynamic_method(*args, **kwargs):
+                async with app.method_setter(key, *args, **kwargs) as instance:
+                    yield instance
+        else:
+            dynamic_method = None
+
+        if dynamic_method:
+            return dynamic_method
+        else:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+
+    def __call__(app, *args, **kwargs):
+        app._super.pool = SessionPool(*args, max_conns = app._super.max_conns, max_contexts = app._super.max_contexts, pool_memory = app._super.pool_memory, **kwargs)
+        return app._super.pool
+
+    @asynccontextmanager
+    async def method_setter(app, method: str, *args, **kwargs):
+        exception = (None, None, None)
+        try:
+            instance = app(*(args[0], method, *args[1:]), **kwargs)
+            yield await instance.__aenter__()
+        except Exception as e:
+            exception = (type(e).__name__, e, e.__traceback__)
+        finally:
+            await instance.__aexit__(*exception)
+
 class createSessionPool:
-    __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts",)
+    __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool")
     def __init__(app, max_conns: int = 100, max_contexts: int = 2):
-        app.pool_memory, app.max_conns, app.max_contexts = {}, max_conns, max_contexts
-
-    def Session(app, *a, **k): return app.SessionPool(*a, **k)
-
-    def SessionPool(app, *a, **k):
-        return SessionPool(*a, max_conns = app.max_conns, max_contexts = app.max_contexts, pool_memory = app.pool_memory, **k)
+        app.pool_memory, app.max_conns, app.max_contexts, app.pool = {}, max_conns, max_contexts, None
+        app.Session = PooledSession(app)
+        app.SessionPool = app.Session
 
 if __name__ == "__main__":
     pass

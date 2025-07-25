@@ -32,6 +32,65 @@ class __Rvtools__:
 
 Rvtools = __Rvtools__()
 
+class Decoders:
+    __slots__ = ()
+    def __init__(app): ...
+
+    async def _br_decoder(app):
+        if not app.decompressor: app.decompressor = Decompressor()
+
+        buff = memarray()
+
+        async for chunk in app.handler():
+            buff.extend(chunk)
+
+            if len(buff) >= 1024:
+                if len(buff) >= 10240:
+                    chunk = await to_thread(app.decompressor.decompress, bytes(buff))
+                else:
+                    chunk = app.decompressor.decompress(bytes(buff))
+
+                yield chunk
+                buff = memarray(buff[len(buff):])
+
+        if buff: yield app.decompressor.decompress(bytes(buff))
+
+    async def br_decoder(app):
+        async for chunk in app.handler():
+            if len(chunk) >= 102400:
+                yield await to_thread(brotlicffi_decompress, bytes(chunk))
+            else:
+                yield brotlicffi_decompress(bytes(chunk))
+
+    async def gzip_decoder(app):
+        if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
+
+        buff = memarray()
+
+        async for chunk in app.handler():
+            buff.extend(chunk)
+
+            if len(buff) >= 1024:
+                yield app.decompressor.decompress(bytes(buff))
+                buff = memarray(buff[len(buff):])
+
+        if buff: yield app.decompressor.decompress(bytes(buff))
+
+        if (chunk := app.decompressor.flush()):
+            yield chunk
+
+class Encoders:
+    __slots__ = ()
+    def __init__(app): ...
+
+    async def br_encoder(app, data: (bytes, bytearray)):
+        return await to_thread(brotlicffi_compress, bytes(data))
+
+    async def gzip_encoder(app, data: (bytes, bytearray)):
+        data = (encoder := compressobj(wbits=31)).compress(bytes(data))
+        if (_ := encoder.flush()): data += _
+        return data
+
 class Async:
     @classmethod
     async def replace(app, data, a, b):
@@ -97,7 +156,7 @@ class Multipart:
 
     async def __aenter__(app):
         app.r = ClientContext.r()
-        app.r.write = app.write
+        app.r.default_writer = app.write
         return app
 
     async def send_headers(app, *args, headers: (bytes, bytearray, None) = None, **kwargs):
@@ -323,10 +382,8 @@ class Parsers:
 
         if app.decode_resp:
             if (encoding := app.response_headers.pop("content-encoding", None)):
-                if encoding == "br":
-                    app.decoder = app.brotli
-                elif encoding == "gzip":
-                    app.decoder = app.gzip
+                if (decoder := getattr(app, "%s_decoder" % encoding, None)):
+                    app.decoder = decoder
                 else:
                     app.decoder = None
             else:
@@ -421,7 +478,7 @@ class Parsers:
 
             if app.received_len >= app.content_length and not app.protocol.__stream__: break
 
-class Pushtools:
+class Pushtools(Encoders):
     __slots__ = ()
     def __init__(app): ...
 
@@ -444,7 +501,7 @@ class Pushtools:
         await app.protocol.push(Parsers.handle_chunked_endsig)
 
     async def eof(app, *args):
-        if app.write == app.write_chunked:
+        if app.default_writer == app.write_chunked:
             method = app.write_chunked_eof
         else:
             if args and args[0]:
@@ -454,7 +511,13 @@ class Pushtools:
 
         if method is not None: await method(*args)
 
-class Pulltools(Parsers):
+    async def write(app, data: (bytes, bytearray)):
+        if app.encoder:
+            data = await app.encoder(data)
+
+        return await app.default_writer(data)
+
+class Pulltools(Parsers, Decoders):
     __slots__ = ()
     def __init__(app): ...
 
@@ -508,42 +571,6 @@ class Pulltools(Parsers):
 
     async def json(app):
         return Dot_Dict(loads(await app.aread(True)))
-
-    async def brotli(app):
-        if not app.decompressor: app.decompressor = Decompressor()
-
-        buff = memarray()
-
-        async for chunk in app.handler():
-            buff.extend(chunk)
-
-            if len(buff) >= 1024:
-                if len(buff) >= 102400:
-                    chunk = await to_thread(app.decompressor.decompress, bytes(buff))
-                else:
-                    chunk = app.decompressor.decompress(bytes(buff))
-
-                yield chunk
-                buff = memarray(buff[len(buff):])
-
-        if buff: yield app.decompressor.decompress(bytes(buff))
-
-    async def gzip(app):
-        if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
-
-        buff = memarray()
-
-        async for chunk in app.handler():
-            buff.extend(chunk)
-
-            if len(buff) >= 1024:
-                yield app.decompressor.decompress(bytes(buff))
-                buff = memarray(buff[len(buff):])
-
-        if buff: yield app.decompressor.decompress(bytes(buff))
-
-        if (chunk := app.decompressor.flush()):
-            yield chunk
 
     async def save(app, filepath: str, mode: str = "wb"):
         if not app.is_prepared(): await app.prepare_http()
