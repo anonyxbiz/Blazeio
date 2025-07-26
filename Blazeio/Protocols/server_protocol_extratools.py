@@ -54,6 +54,10 @@ class Rutils(ContentDecoders):
 
     async def json(app):
         return Dot_Dict(loads(await app.aread(True)))
+    
+    def clear_protocol(app):
+        r = app.r()
+        r.__init__(r.on_client_connected, r.__evt__.loop, len(r.__buff__))
 
 class ExtraToolset:
     __slots__ = ()

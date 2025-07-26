@@ -276,7 +276,7 @@ class Request(Depreciated):
                 raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
         
         if not r.method:
-            raise Err("Request has no headers")
+            raise Eof("Request has no headers")
 
         return r
 
