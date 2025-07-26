@@ -316,14 +316,18 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     @classmethod
     @asynccontextmanager
     async def method_setter(app, method: str, *args, **kwargs):
-        exception = ()
+        exception = (None, None, None)
+        _yielded = 0
         try:
             app = app(*(args[0], method, *args[1:]), **kwargs)
-            yield await app.__aenter__()
+            _yield = await app.__aenter__()
+            _yielded = 1
+            yield _yield
         except Exception as e:
             exception = (type(e).__name__, str(e), e.__traceback__)
         finally:
             await app.__aexit__(*exception)
+            if not _yielded: yield app
 
     @classmethod
     async def fetch(app,*args, **kwargs):
@@ -463,13 +467,17 @@ class PooledSession:
     @asynccontextmanager
     async def method_setter(app, method: str, *args, **kwargs):
         exception = (None, None, None)
+        _yielded = 0
         try:
             instance = app(*(args[0], method, *args[1:]), **kwargs)
-            yield await instance.__aenter__()
+            _yield = await instance.__aenter__()
+            _yielded = 1
+            yield _yield
         except Exception as e:
             exception = (type(e).__name__, e, e.__traceback__)
         finally:
             await instance.__aexit__(*exception)
+            if not _yielded: yield instance
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool")
