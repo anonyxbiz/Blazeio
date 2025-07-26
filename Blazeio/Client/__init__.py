@@ -370,6 +370,7 @@ class __SessionPool__:
         instance["context"] = ioCondition()
         kwargs.update(dict(on_exit_callback = (app.release, instance["context"])))
         instance["session"] = Session(url, *args, **kwargs)
+        instance["session"]
         return instance
 
     async def get(app, url, *args, **kwargs):
@@ -397,7 +398,7 @@ class __SessionPool__:
                     waiters = [i["context"].waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
-        if (not instance["session"].protocol) or (instance["session"].protocol and not instance["session"].protocol.transport.is_closing()):
+        if (not instance["session"].protocol) or (instance["session"].protocol and not instance["session"].protocol.transport.is_closing() and not instance["session"].protocol.__wait_closed__.is_set()):
             async with instance["context"]:
                 await instance["context"].wait()
 
