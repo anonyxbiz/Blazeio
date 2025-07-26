@@ -289,6 +289,113 @@ if not ioConf.gen_payload:
 
     ioConf.gen_payload = OtherUtils.gen_payload
 
+class Extractors:
+    __slots__ = ()
+    def __init__(app): ...
+
+    @classmethod
+    async def aread_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
+        app = ClientContext.r()
+        buff, started = bytearray(), 0
+
+        async for chunk in app.pull():
+            buff.extend(chunk)
+
+            if not started:
+                if (idx := buff.find(start)) == -1:
+                    buff = buff[-len(start):]
+                    continue
+
+                started = 1
+
+                if not cont:
+                    idx += len(start)
+
+                buff = buff[idx:]
+
+            if (ide := buff.find(end)) == -1: continue
+
+            if cont:
+                ide += len(end)
+
+            buff = buff[:ide]
+            break
+
+        if decode:
+            buff = buff.decode()
+
+        return buff
+
+    @classmethod
+    async def stream_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
+        app = ClientContext.r()
+        buff, started, ended = bytearray(), 0, 0
+
+        async for chunk in app.pull():
+            if not started:
+                buff.extend(chunk)
+                if (idx := buff.find(start)) == -1:
+                    buff = buff[-len(start):]
+                    continue
+                
+                started = 1
+
+                if not cont:
+                    idx += len(start)
+
+                chunk, buff = bytes(memoryview(buff)[idx:]), None
+
+            if (ide := chunk.find(end)) != -1:
+                ended = 1
+                if cont:
+                    ide += len(end)
+                chunk = chunk[:ide]
+            
+            yield chunk
+
+            if ended: break
+
+    @classmethod
+    async def find(cls, *args):
+        app = ClientContext.r()
+        data, start, end, cont = args
+        while (idx := data.find(start)) != -1:
+            data = data[idx + len(start):]
+
+            if (ids := data.find(end)) != -1:
+                chunk, data = data[:ids], data[ids + len(end):]
+
+                if start in chunk:
+                    async for i in app.find(chunk, *args[1:]):
+                        yield (start + i + end if cont else i, data)
+                else:
+                    yield (start + chunk + end if cont else chunk, data)
+    
+    @classmethod
+    async def aextract(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont=True):
+        app = ClientContext.r()
+        data = bytearray()
+        async for chunk in app.pull():
+            data.extend(chunk)
+            async for x, data in app.find(data, start, end, cont):
+                yield x
+
+    @classmethod
+    async def extract(cls, *args, **kwargs):
+        app = ClientContext.r()
+        async for chunk in app.aextract(*args, **kwargs):
+            return chunk
+
+class Extrautils:
+    __slots__ = ()
+    utils = (Extractors,)
+    def __init__(app):
+        ...
+
+    def __getattr__(app, key, *args):
+        for util in app.utils:
+            if (val := getattr(util, key, None)): return val
+
 class StaticStuff:
     __slots__ = ()
     
@@ -519,6 +626,7 @@ class Pushtools(Encoders):
 
 class Pulltools(Parsers, Decoders):
     __slots__ = ()
+    utils = Extrautils()
     def __init__(app): ...
 
     async def pull(app, *args, http=True, **kwargs):
@@ -634,101 +742,6 @@ class Pulltools(Parsers, Decoders):
 
     async def drain_pipe(app):
         async for chunk in app.pull(): ...
-
-class Extractors:
-    @classmethod
-    async def aread_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
-        app = ClientContext.r()
-        buff, started = bytearray(), 0
-
-        async for chunk in app.pull():
-            buff.extend(chunk)
-
-            if not started:
-                if (idx := buff.find(start)) == -1:
-                    buff = buff[-len(start):]
-                    continue
-
-                started = 1
-
-                if not cont:
-                    idx += len(start)
-
-                buff = buff[idx:]
-
-            if (ide := buff.find(end)) == -1: continue
-
-            if cont:
-                ide += len(end)
-
-            buff = buff[:ide]
-            break
-
-        if decode:
-            buff = buff.decode()
-
-        return buff
-
-    @classmethod
-    async def stream_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
-        app = ClientContext.r()
-        buff, started, ended = bytearray(), 0, 0
-
-        async for chunk in app.pull():
-            if not started:
-                buff.extend(chunk)
-                if (idx := buff.find(start)) == -1:
-                    buff = buff[-len(start):]
-                    continue
-                
-                started = 1
-
-                if not cont:
-                    idx += len(start)
-
-                chunk, buff = bytes(memoryview(buff)[idx:]), None
-
-            if (ide := chunk.find(end)) != -1:
-                ended = 1
-                if cont:
-                    ide += len(end)
-                chunk = chunk[:ide]
-            
-            yield chunk
-
-            if ended: break
-
-    @classmethod
-    async def find(cls, *args):
-        app = ClientContext.r()
-        data, start, end, cont = args
-        while (idx := data.find(start)) != -1:
-            data = data[idx + len(start):]
-
-            if (ids := data.find(end)) != -1:
-                chunk, data = data[:ids], data[ids + len(end):]
-
-                if start in chunk:
-                    async for i in app.find(chunk, *args[1:]):
-                        yield (start + i + end if cont else i, data)
-                else:
-                    yield (start + chunk + end if cont else chunk, data)
-    
-    @classmethod
-    async def aextract(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont=True):
-        app = ClientContext.r()
-        data = bytearray()
-        async for chunk in app.pull():
-            data.extend(chunk)
-            async for x, data in app.find(data, start, end, cont):
-                yield x
-
-    @classmethod
-    async def extract(cls, *args, **kwargs):
-        app = ClientContext.r()
-        async for chunk in app.aextract(*args, **kwargs):
-            return chunk
-
 
 if __name__ == "__main__":
     ...
