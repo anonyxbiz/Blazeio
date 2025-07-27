@@ -55,7 +55,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
     
-    known_ext_types = (BlazeioException, KeyboardInterrupt, CancelledError, RuntimeError, str)
+    known_ext_types = (BlazeioException, Eof, KeyboardInterrupt, CancelledError, RuntimeError, str)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
@@ -348,7 +348,7 @@ class DynamicRequestResponse(type):
             setattr(app, name, dynamic_method)
             return dynamic_method
         else:
-            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+            raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class __Request__(metaclass=DynamicRequestResponse):
     def __init__(app): pass
@@ -423,6 +423,9 @@ class SessionPool:
             pool_memory["pool"] = (pool := __SessionPool__(max_conns=app.max_conns, max_contexts=app.max_contexts))
 
         return pool
+    
+    def __getattr__(app, key):
+        raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
     async def __aenter__(app):
         app.session = await app.pool.get(*app.args, **app.kwargs)
@@ -458,7 +461,7 @@ class PooledSession:
         if dynamic_method:
             return dynamic_method
         else:
-            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+            raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
     def __call__(app, *args, **kwargs):
         app._super.pool = SessionPool(*args, max_conns = app._super.max_conns, max_contexts = app._super.max_contexts, pool_memory = app._super.pool_memory, **kwargs)
