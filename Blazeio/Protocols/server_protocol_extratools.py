@@ -10,8 +10,19 @@ class Rutils(ContentDecoders):
     def __init__(app):
         ...
 
-    def __getattr__(app, *args):
-        return getattr(Request, *args)
+    def __getattr__(app, *_args):
+        def method(*args, **kwargs):
+            func = getattr(Request, *_args)
+            
+            if args:
+                if not "Blazeio" in args[0].__class__.__name__:
+                    args = (Context._r(), *args)
+            else:
+                args = (Context._r(),)
+
+            return func(*args, **kwargs)
+
+        return method
 
     def r(app):
         return Context._r()
@@ -19,22 +30,24 @@ class Rutils(ContentDecoders):
     def multipart(app, *args):
         return Multipartdemux(*args)
 
-    async def aread(app, decode=False):
-        r = app.r()
-        if r.content_length: return await app.read_exactly(r.content_length, decode)
+    @classmethod
+    async def aread(cls, app = None, decode=False):
+        if not app: app = Context._r()
+        if app.content_length: return await cls.read_exactly(app, app.content_length, decode)
 
         data = bytearray()
-        async for chunk in r.pull(): data.extend(chunk)
+        async for chunk in app.pull(): data.extend(chunk)
         
-        if (encoding := r.headers.get("Content-encoding", None)) and (decoder := getattr(app, "%s_decoder" % encoding, None)):
+        if (encoding := app.headers.get("Content-encoding", None)) and (decoder := getattr(app, "%s_decoder" % encoding, None)):
             data = await decoder(bytes(data))
 
         return data if not decode else data.decode()
     
-    async def read_exactly(app, size: int, decode=False):
-        r = app.r()
+    @classmethod
+    async def read_exactly(cls, app = None, size: int = 0, decode=False):
+        if not app: app = Context._r()
         data, point = memarray(size), 0
-        async for chunk in r.pull():
+        async for chunk in app.pull():
             len_ = len(chunk)
             rem = (size-point)
 
@@ -48,16 +61,21 @@ class Rutils(ContentDecoders):
             if point >= size: break
 
         return data if not decode else data.decode()
-
-    async def text(app):
-        return await app.aread(True)
-
-    async def json(app):
-        return Dot_Dict(loads(await app.aread(True)))
     
-    def clear_protocol(app, r = None):
-        if not r: r = app.r()
-        r.__init__(r.on_client_connected, r.__evt__.loop, len(r.__buff__))
+    @classmethod
+    async def text(cls, app = None):
+        if not app: app = Context._r()
+        return await cls.aread(app, True)
+    
+    @classmethod
+    async def json(cls, app = None):
+        if not app: app = Context._r()
+        return Dot_Dict(loads(await cls.aread(app, True)))
+    
+    @classmethod
+    def clear_protocol(cls, app = None):
+        if not app: app = Context._r()
+        app.__init__(app.on_client_connected, app.__evt__.loop, len(app.__buff__))
 
 class ExtraToolset:
     __slots__ = ()
@@ -79,6 +97,22 @@ class ExtraToolset:
             payload += b"%s: %s%s" % (str(key).encode(), str(val).encode(), app.prepare_http_sepr1)
     
         return payload + app.prepare_http_sepr1
+    
+    def __iadd__(app, data: (bytes, bytearray)):
+        if not app.__prepared_headers__:
+            app.__prepared_headers__ = bytearray(b"")
+        return app.__prepared_headers__.extend(data)
+
+    def __getattr__(app, *_args):
+        def method(*args, **kwargs):
+            func = getattr(app.utils, *_args)
+
+            if (not args) or (args[0] is app):
+                args = (app, *args)
+                
+            return func(*args, **kwargs)
+
+        return method
 
     async def write_raw(app, data: (bytes, bytearray)):
         if app.encoder: data = await app.encoder(data)
@@ -158,9 +192,7 @@ class ExtraToolset:
         if http_only: http_only = "HttpOnly; "
         else: http_only = ""
 
-        if not app.__cookie__: app.__cookie__ = bytearray(b"")
-
-        app.__cookie__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
+        app.__prepared_headers__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
 
     async def handle_raw(app, *args, **kwargs):
         if app.headers is None: await app.reprepare()
@@ -177,7 +209,9 @@ class ExtraToolset:
     async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True):
         payload = ('HTTP/1.1 %d %s\r\n' % (status, StatusReason.reasons.get(status, "Unknown"))).encode()
 
-        if app.__cookie__: payload += app.__cookie__
+        if app.__prepared_headers__:
+            payload += app.__prepared_headers__
+            app.__prepared_headers__.clear()
 
         await app.writer(payload)
         

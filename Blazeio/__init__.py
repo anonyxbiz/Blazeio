@@ -297,11 +297,18 @@ class Httpkeepalive:
     def get_handler(app):
         return app.__default_handler__ or app.web.__default_handler__
 
+    def prepare_keepalive(app, r):
+        r += b"Connection: keep-alive\r\n"
+
     async def __main_handler__(app, r):
         while True:
             try:
                 exc = None
+                app.prepare_keepalive(r)
                 await app.get_handler()(r)
+                
+                if r.headers:
+                    await r.eof()
             except Abort as e:
                 await e.text(r)
             except Exception as e:
@@ -311,7 +318,7 @@ class Httpkeepalive:
 
                 if exc: raise exc
 
-                if (not r.headers or r.transport.is_closing() or r.headers.get("Connection") != "keep-alive"): break
+                if r.transport.is_closing(): break
 
                 r.utils.clear_protocol(r)
 
@@ -379,7 +386,7 @@ class Server:
     def used(app):
         return app._server_closing.is_set()
     
-    def http_keepalive(app, *args, **kwargs):
+    def with_keepalive(app, *args, **kwargs):
         app.attach(Httpkeepalive(app, *args, **kwargs))
 
     async def exit(app, e = None, exception_handled = False, terminate = NotImplemented):

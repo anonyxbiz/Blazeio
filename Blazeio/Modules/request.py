@@ -208,11 +208,11 @@ class Request(Depreciated):
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod
-    async def url_decode(app, value: str):
+    async def url_decode(app, *args, value: str):
         return app.url_decode_sync(value)
 
     @classmethod
-    async def url_encode(app, value: str):
+    async def url_encode(app, *args, value: str):
         return app.url_encode_sync(value)
 
     @classmethod
@@ -220,8 +220,8 @@ class Request(Depreciated):
         return app.get_params_sync(*args, **kwargs)
 
     @classmethod
-    def params(app):
-        return Dot_Dict(app.get_params_sync(Context.r_sync()))
+    def params(app, r = None):
+        return ddict(app.get_params_sync(r or Context._r()))
 
     @classmethod
     async def set_method(app, r, server, chunk):
@@ -290,8 +290,8 @@ class Request(Depreciated):
             return await app.get_json(r)
 
     @classmethod
-    async def dotdict(app):
-        r = Context.r_sync()
+    async def dotdict(app, r = None):
+        if not r: r = Context.r_sync()
         datadict = Dot_Dict()
         if r.method not in r.non_bodied_methods:
             datadict.update(await app.get_json(r))
@@ -300,8 +300,8 @@ class Request(Depreciated):
         return datadict
 
     @classmethod
-    async def bop(app):
-        r = Context.r_sync()
+    async def bop(app, r = None):
+        if not r: r = Context.r_sync()
         if r.method in r.non_bodied_methods:
             return app.get_params_sync(r)
         else:
