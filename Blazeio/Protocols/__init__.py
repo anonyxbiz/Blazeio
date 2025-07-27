@@ -48,3 +48,7 @@ class BlazeioProtocol:
                 app.transport.resume_reading()
 
             await app.__evt__.wait_clear()
+
+    def __await__(app):
+        yield from app.ensure_reading().__await__()
+        return app.__stream__.popleft() if app.__stream__ else None
