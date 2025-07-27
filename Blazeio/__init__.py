@@ -281,6 +281,31 @@ class Serverctx:
         app.in_ctx = False
         ioConf.run_callbacks()
 
+class Httpkeepalive:
+    def __init__(app, web, after_middleware = None):
+        app.web, app.after_middleware = web, after_middleware
+        if not app.after_middleware:
+            if (after_middleware := app.web.declared_routes.pop("after_middleware", None)):
+                app.after_middleware = after_middleware.get("func")
+
+    async def __main_handler__(app, r):
+        while True:
+            try:
+                exc = None
+                await app.web.__default_handler__(r)
+            except Abort as e:
+                await e.text(r)
+            except Exception as e:
+                exc = e
+            finally:
+                if app.after_middleware: await app.after_middleware(r)
+
+                if exc: raise exc
+
+                if (not r.headers or r.transport.is_closing() or r.headers.get("Connection") != "keep-alive"): break
+
+                r.utils.clear_protocol(r)
+
 class Server:
     def __init__(app):
         ...
@@ -344,6 +369,9 @@ class Server:
 
     def used(app):
         return app._server_closing.is_set()
+    
+    def http_keepalive(app, *args, **kwargs):
+        app.attach(Httpkeepalive(app, *args, **kwargs))
 
     async def exit(app, e = None, exception_handled = False, terminate = NotImplemented):
         await app.wait_started()
