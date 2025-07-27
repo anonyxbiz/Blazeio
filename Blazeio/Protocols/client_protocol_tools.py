@@ -444,6 +444,8 @@ class Parsers:
     async def prepare_http(app):
         if app.is_prepared(): return True
         buff, headers, idx, valid = memarray(), None, -1, False
+        
+        if not app.protocol: raise ServerDisconnected()
 
         async for chunk in app.protocol.pull():
             buff.extend(chunk)

@@ -315,6 +315,7 @@ class WebhookClient:
         if not in_try:
             try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, in_try = True, **kw)
             except RuntimeError: return
+            except io.ServerDisconnected: return 
             except Exception as e: return await io.traceback_logger(e)
 
         if (idx := host.rfind(":")) != -1:
