@@ -282,8 +282,10 @@ class Serverctx:
         ioConf.run_callbacks()
 
 class Httpkeepalive:
-    def __init__(app, web, after_middleware = None):
+    def __init__(app, web, after_middleware = None, timeout: int = 60*60*5, _max: int = 1000**2):
         app.web, app.after_middleware, app.__default_handler__ = web, after_middleware, None
+        app.timeout, app._max = timeout, _max
+
         if not app.after_middleware:
             if (after_middleware := app.web.declared_routes.pop("after_middleware", None)):
                 app.after_middleware = after_middleware.get("func")
@@ -298,7 +300,10 @@ class Httpkeepalive:
         return app.__default_handler__ or app.web.__default_handler__
 
     def prepare_keepalive(app, r):
-        r += b"Connection: keep-alive\r\n"
+        r += (
+            b"Connection: Keep-Alive\r\n"
+            b"Keep-Alive: timeout=%d, max=%d\r\n" % (app.timeout, app._max)
+        )
 
     async def __main_handler__(app, r):
         while True:
@@ -388,6 +393,11 @@ class Server:
     
     def with_keepalive(app, *args, **kwargs):
         app.attach(Httpkeepalive(app, *args, **kwargs))
+        sock = app.sock()
+        sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 60)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 60)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 10)
 
     async def exit(app, e = None, exception_handled = False, terminate = NotImplemented):
         await app.wait_started()
