@@ -283,16 +283,25 @@ class Serverctx:
 
 class Httpkeepalive:
     def __init__(app, web, after_middleware = None):
-        app.web, app.after_middleware = web, after_middleware
+        app.web, app.after_middleware, app.__default_handler__ = web, after_middleware, None
         if not app.after_middleware:
             if (after_middleware := app.web.declared_routes.pop("after_middleware", None)):
                 app.after_middleware = after_middleware.get("func")
+
+        app.configure()
+
+    def configure(app):
+        if app.web.__main_handler__ is not NotImplemented:
+            app.__default_handler__ = app.web.__main_handler__
+
+    def get_handler(app):
+        return app.__default_handler__ or app.web.__default_handler__
 
     async def __main_handler__(app, r):
         while True:
             try:
                 exc = None
-                await app.web.__default_handler__(r)
+                await app.get_handler()(r)
             except Abort as e:
                 await e.text(r)
             except Exception as e:
