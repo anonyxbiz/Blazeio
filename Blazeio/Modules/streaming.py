@@ -19,6 +19,10 @@ class Context:
     @classmethod
     async def from_task(app, task):
         return task.get_coro().cr_frame.f_locals.get("app")
+        
+    @classmethod
+    def is_prot(app, r):
+        return "Blazeio" in r.__class__.__name__
 
 class ClientContext:
     def __init__(app): ...

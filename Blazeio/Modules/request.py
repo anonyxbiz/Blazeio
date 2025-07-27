@@ -143,7 +143,7 @@ class Request(Depreciated):
 
     @classmethod
     async def get_cookie(app, r, val: str = ""):
-        if isinstance(r, str):
+        if not Context.is_prot(r):
             val, r = r, Context.r_sync()
 
         val += "="
@@ -161,7 +161,7 @@ class Request(Depreciated):
 
     @classmethod
     def get_cookie_sync(app, r, val: str = ""):
-        if isinstance(r, str):
+        if not Context.is_prot(r):
             val, r = r, Context.r_sync()
 
         val += "="
@@ -196,7 +196,7 @@ class Request(Depreciated):
         return data if not decode else data.decode()
 
     @classmethod
-    async def get_json(app, r = None):
+    async def get_json(app, r = None, *args):
         if not r: r = Context.r_sync()
         if r.content_length:
             payload = await app.read_exactly(r, r.content_length)
@@ -220,7 +220,7 @@ class Request(Depreciated):
         return app.get_params_sync(*args, **kwargs)
 
     @classmethod
-    def params(app, r = None):
+    def params(app, r = None, *args):
         return ddict(app.get_params_sync(r or Context._r()))
 
     @classmethod
@@ -281,7 +281,7 @@ class Request(Depreciated):
         return r
 
     @classmethod
-    async def body_or_params(app, r: (BlazeioProtocol, None) = None):
+    async def body_or_params(app, r: (BlazeioProtocol, None) = None, *args):
         if not r: r = Context.r_sync()
 
         if r.method in r.non_bodied_methods:
@@ -290,7 +290,7 @@ class Request(Depreciated):
             return await app.get_json(r)
 
     @classmethod
-    async def dotdict(app, r = None):
+    async def dotdict(app, r = None, *args):
         if not r: r = Context.r_sync()
         datadict = Dot_Dict()
         if r.method not in r.non_bodied_methods:
@@ -300,7 +300,7 @@ class Request(Depreciated):
         return datadict
 
     @classmethod
-    async def bop(app, r = None):
+    async def bop(app, r = None, *args):
         if not r: r = Context.r_sync()
         if r.method in r.non_bodied_methods:
             return app.get_params_sync(r)
@@ -308,7 +308,7 @@ class Request(Depreciated):
             return await app.get_json(r)
 
     @classmethod
-    async def form_data(app, r: (BlazeioProtocol, None) = None):
+    async def form_data(app, r: (BlazeioProtocol, None) = None, *args):
         if not r: r = Context.r_sync()
         data, json_data = memarray(), {}
 

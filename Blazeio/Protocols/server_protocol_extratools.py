@@ -14,11 +14,12 @@ class Rutils(ContentDecoders):
         def method(*args, **kwargs):
             func = getattr(Request, *_args)
             
-            if args:
-                if not "Blazeio" in args[0].__class__.__name__:
-                    args = (Context._r(), *args)
-            else:
-                args = (Context._r(),)
+            if not "url_" in func.__name__:
+                if args:
+                    if not Context.is_prot(args[0]):
+                        args = (Context._r(), *args)
+                else:
+                    args = (Context._r(),)
 
             return func(*args, **kwargs)
 
@@ -66,7 +67,7 @@ class Rutils(ContentDecoders):
     async def text(cls, app = None):
         if not app: app = Context._r()
         return await cls.aread(app, True)
-    
+
     @classmethod
     async def json(cls, app = None):
         if not app: app = Context._r()
@@ -109,7 +110,7 @@ class ExtraToolset:
 
             if (not args) or (args[0] is app):
                 args = (app, *args)
-                
+            
             return func(*args, **kwargs)
 
         return method
