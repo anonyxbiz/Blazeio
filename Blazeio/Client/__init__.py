@@ -66,10 +66,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         app.args, app.kwargs = args, kwargs
 
     def __getattr__(app, key, *args):
-        if (method := getattr(app.protocol, key, None)):
+        if hasattr(app.protocol, key):
+            method = getattr(app.protocol, key)
             ...
         elif (val := StaticStuff.dynamic_attrs.get(key)):
             method = getattr(app, val)
+        elif (method := app.__utilsgetattr__(key, None)):
+            ...
         else:
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 

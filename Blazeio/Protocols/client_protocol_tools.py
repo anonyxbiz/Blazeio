@@ -294,8 +294,7 @@ class Extractors:
     def __init__(app): ...
 
     @classmethod
-    async def aread_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
-        app = ClientContext.r()
+    async def aread_partial(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False, decode = False):
         buff, started = bytearray(), 0
 
         async for chunk in app.pull():
@@ -327,8 +326,7 @@ class Extractors:
         return buff
 
     @classmethod
-    async def stream_partial(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
-        app = ClientContext.r()
+    async def stream_partial(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont = False):
         buff, started, ended = bytearray(), 0, 0
 
         async for chunk in app.pull():
@@ -356,8 +354,7 @@ class Extractors:
             if ended: break
 
     @classmethod
-    async def find(cls, *args):
-        app = ClientContext.r()
+    async def find(cls, app, *args):
         data, start, end, cont = args
         while (idx := data.find(start)) != -1:
             data = data[idx + len(start):]
@@ -372,8 +369,7 @@ class Extractors:
                     yield (start + chunk + end if cont else chunk, data)
     
     @classmethod
-    async def aextract(cls, start: (bytes, bytearray), end: (bytes, bytearray), cont=True):
-        app = ClientContext.r()
+    async def aextract(cls, app, start: (bytes, bytearray), end: (bytes, bytearray), cont=True):
         data = bytearray()
         async for chunk in app.pull():
             data.extend(chunk)
@@ -381,20 +377,20 @@ class Extractors:
                 yield x
 
     @classmethod
-    async def extract(cls, *args, **kwargs):
-        app = ClientContext.r()
+    async def extract(cls, app, *args, **kwargs):
         async for chunk in app.aextract(*args, **kwargs):
             return chunk
 
 class Extrautils:
     __slots__ = ()
-    utils = (Extractors,)
+    utils = (Extractors(),)
     def __init__(app):
         ...
 
     def __getattr__(app, key, *args):
         for util in app.utils:
-            if (val := getattr(util, key, None)): return val
+            if (val := getattr(util, key, *args)):
+                return val
 
 class StaticStuff:
     __slots__ = ()
@@ -628,8 +624,17 @@ class Pushtools(Encoders):
 
 class Pulltools(Parsers, Decoders):
     __slots__ = ()
-    utils = Extrautils()
+    _utils = Extrautils()
     def __init__(app): ...
+
+    def __utilsgetattr__(app, key, *_args):
+        if key == "utils": return app
+
+        def method(*args, **kwargs):
+            func = getattr(app._utils, key, *_args)
+            return func(app, *args, **kwargs)
+
+        return method
 
     async def pull(app, *args, http=True, **kwargs):
         if http and not app.is_prepared(): await app.prepare_http()
@@ -652,8 +657,6 @@ class Pulltools(Parsers, Decoders):
         if not app.is_prepared(): await app.prepare_http()
 
         if app.handler == app.protocol.pull and app.protocol.__class__.__name__ == "BlazeioClientProtocol": return
-
-        if app.content_length: return await app.read_exactly(app.content_length, decode)
 
         data = bytearray()
         async for chunk in app.pull(): data.extend(chunk)

@@ -568,13 +568,14 @@ class Errdetail(BlazeioException):
         except: return str(detail)
 
 class Ehandler:
-    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err")
+    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err", "on_exit_cbs")
     def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False):
         app.onerr = onerr
         app.ignore = ignore
         app._raise = _raise
         app.exit_on_err = exit_on_err
         app.err = None
+        app.on_exit_cbs = []
 
         for attr in ("ignore", "_raise"):
             if not isinstance(val := getattr(app, attr), list):
@@ -598,9 +599,17 @@ class Ehandler:
                 fut = run_coroutine_threadsafe(traceback_logger(exc_v, frame = 5), get_event_loop())
                 if app.onerr: fut.add_done_callback(lambda fut: app.onerr())
 
+        if app.on_exit_cbs:
+            for func, args, kwargs in app.on_exit_cbs:
+                func(*args, **kwargs)
+
+        if exc_v is not None:
             if app.should_raise(exc_v): raise exc_v
             if app.exit_on_err: return False
             return True
+
+    def on_exit(app, func, *args, **kwargs):
+        app.on_exit_cbs.append((func, args, kwargs))
 
     async def __aenter__(app):
         return app
@@ -611,7 +620,12 @@ class Ehandler:
             if not app.should_ignore(exc_v):
                 await traceback_logger(exc_v, frame = 5)
                 if app.onerr: create_task(app.onerr())
+        
+        if app.on_exit_cbs:
+            for func, args, kwargs in app.on_exit_cbs:
+                await func(*args, **kwargs)
 
+        if exc_v is not None:
             if app.should_raise(exc_v): raise exc_v
             if app.exit_on_err: return False
             return True

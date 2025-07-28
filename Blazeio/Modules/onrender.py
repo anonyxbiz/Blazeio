@@ -5,9 +5,8 @@ is_on_render = lambda: environ.get("RENDER")
 class RenderFreeTierPatch:
     _is_on_render = is_on_render()
     def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 5):
-        # if not app._is_on_render: return
+        if not app._is_on_render: return
         app.host_resolved = SharpEvent()
-        app.pool = createSessionPool()
 
         for method, value in locals().items():
             if method == app: continue
@@ -26,7 +25,7 @@ class RenderFreeTierPatch:
         await Log.debug("keep_alive_render initiated...")
 
         while True:
-            async with app.pool.Session.get("%s/hello/world" % app.host, ) as r: await r.aread()
+            async with io.Session.get("%s/hello/world" % app.rnd_host, ) as r: await r.aread()
             await sleep(app.asleep)
 
     async def before_middleware(app, r):
