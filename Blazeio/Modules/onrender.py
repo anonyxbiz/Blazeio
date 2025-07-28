@@ -1,14 +1,13 @@
-from ..Dependencies import *
-from .streaming import *
-from ..Client import Session
+from Blazeio import *
 
 is_on_render = lambda: environ.get("RENDER")
 
 class RenderFreeTierPatch:
     _is_on_render = is_on_render()
-    def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 60):
-        if not app._is_on_render:
-            return
+    def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 5):
+        # if not app._is_on_render: return
+        app.host_resolved = SharpEvent()
+        app.pool = createSessionPool()
 
         for method, value in locals().items():
             if method == app: continue
@@ -22,24 +21,15 @@ class RenderFreeTierPatch:
 
     async def keep_alive_render(app):
         await Log.debug("keep_alive_render initiating...")
+        await app.host_resolved.wait_clear()
+
         await Log.debug("keep_alive_render initiated...")
 
         while True:
-            if not app.host:
-                await sleep(5)
-                continue
-            try:
-                async with Session("%s/hello/world" % app.host, "GET") as r: await r.aread()
-            except CancelledError as e:
-                raise e
-            except Exception as e:
-                await Log.critical(e)
-
+            async with app.pool.Session.get("%s/hello/world" % app.host, ) as r: await r.aread()
             await sleep(app.asleep)
 
     async def before_middleware(app, r):
-        if not app._is_on_render: return
-
         if not app.rnd_host and not app.host:
             if not (host := r.headers.get("Referer", r.headers.get("Origin"))):
                 return
@@ -56,10 +46,4 @@ class RenderFreeTierPatch:
             app.host = host
 
             await p("Added host as: %s" % app.rnd_host)
-
-            if not app.production:
-                try:
-                    app.task.cancel()
-                    await app.task
-                except CancelledError:
-                    await Log.debug("Quitted RenderFreeTierPatch as the app is not in production")
+            app.host_resolved.set()
