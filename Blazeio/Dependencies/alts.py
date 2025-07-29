@@ -568,20 +568,26 @@ class Errdetail(BlazeioException):
         except: return str(detail)
 
 class Ehandler:
-    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err", "on_exit_cbs")
+    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err", "on_exit_cbs", "kwargs", "entered")
     def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False):
-        app.onerr = onerr
-        app.ignore = ignore
-        app._raise = _raise
-        app.exit_on_err = exit_on_err
-        app.err = None
-        app.on_exit_cbs = []
+        app.kwargs = ddict(onerr=onerr, ignore=ignore, _raise=_raise, exit_on_err=exit_on_err)
+        app.entered = False
+        app(app.kwargs)
+
+    def __call__(app, kwargs):
+        for key in kwargs:
+            setattr(app, key, kwargs[key])
 
         for attr in ("ignore", "_raise"):
             if not isinstance(val := getattr(app, attr), list):
                 setattr(app, attr, [val])
 
+        app.err = None
+        app.on_exit_cbs = []
+
     def __enter__(app):
+        if app.entered: app(app.kwargs)
+        app.entered = True
         return app
 
     def should_ignore(app, exc_v):
@@ -612,6 +618,8 @@ class Ehandler:
         app.on_exit_cbs.append((func, args, kwargs))
 
     async def __aenter__(app):
+        if app.entered: app(app.kwargs)
+        app.entered = True
         return app
 
     async def __aexit__(app, exc_t, exc_v, tb):
@@ -644,6 +652,11 @@ def to_repr(__class__, _type = str):
         return ", ".join(["(%s = %s)" % (str(key), str(getattr(__class__, key))) for key in keys])
     elif _type == dict:
         return {str(key): str(getattr(__class__, key)) for key in keys}
+
+def perf_timer(start = None):
+    if not start:
+        start = perf_counter()
+    return lambda start = start: perf_counter() - start
 
 if __name__ == "__main__":
     pass

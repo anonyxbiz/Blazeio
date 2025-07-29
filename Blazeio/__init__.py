@@ -106,13 +106,18 @@ class Handler:
             await app.__main_handler__(r)
 
         except Abort as e:
-            try: await e.text(r)
-            except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
-        except (Err, ServerGotInTrouble) as e: await Log.warning(r, e)
-        except (ClientDisconnected, Eof, ServerDisconnected): pass
-        except KeyboardInterrupt: raise
-        except (ConnectionResetError, BrokenPipeError, CancelledError) as e: pass
-        except Exception as e: await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
+            await e.text(r)
+
+        except (Err, ServerGotInTrouble) as e:
+            await Log.warning(r, e)
+        except (ClientDisconnected, Eof, ServerDisconnected):
+            ...
+        except KeyboardInterrupt:
+            raise
+        except (ConnectionResetError, BrokenPipeError, CancelledError):
+            ...
+        except Exception as e:
+            await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
 
         if app.ServerConfig.__log_requests__:
             await Log.debug(r, "Completed with status %s in %s seconds" % (str(r.__status__), round(perf_counter() - r.__perf_counter__, 4)))
@@ -311,7 +316,7 @@ class Httpkeepalive:
                 exc = None
                 app.prepare_keepalive(r)
                 await app.get_handler()(r)
-                
+
                 if r.headers:
                     await r.eof()
             except Abort as e:

@@ -492,5 +492,25 @@ class createSessionPool:
         app.Session = PooledSession(app)
         app.SessionPool = app.Session
 
+class Keepalive_Session:
+    __slots__ = ()
+    def __init__(app): ...
+
+    def __pool__(app):
+        task = current_task()
+        if not (pool := getattr(task, "__Blazeio__Keepalive_Session__", None)):
+            pool = createSessionPool(max_contexts=1, max_conns=100)
+            task.__Blazeio_pool__ = pool
+
+        return pool
+
+    def __getattr__(app, key):
+        return getattr(app.__pool__().Session, key)
+
+    def __call__(app, *args, **kwargs):
+        return app.__pool__().Session(*args, **kwargs)
+
+KeepaliveSession = Keepalive_Session()
+
 if __name__ == "__main__":
     pass
