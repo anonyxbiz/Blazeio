@@ -11,8 +11,8 @@ class RenderFreeTierPatch:
 
         if any([app.production, app.production == NotImplemented]):
             app.task = loop.create_task(app.keep_alive_render())
-        if not app._is_on_render: return
         app.host_resolved = SharpEvent()
+        if not app._is_on_render: return
 
     async def _hello_world(app, r):
         await Deliver.text("Hello World")
