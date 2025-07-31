@@ -8,8 +8,9 @@ from .Modules.request import *
 from .Modules.reasons import *
 from .Client import *
 from .Modules.templatify import *
-from .Modules.onrender import *
 from .Other._refuture import *
+
+is_on_render = lambda: environ.get("RENDER")
 
 class Handler:
     def __init__(app):
@@ -201,6 +202,16 @@ class Add_Route:
             return wrapped_func
 
         return decor
+
+class Routemanager(ddict):
+    def normalize_funcname(app, funcname: str):
+        for i, x in ioConf.default_http_server_config["funcname_normalizers"].items():
+            funcname = funcname.replace(i, x)
+        return funcname
+
+    def add(app, fn, *args, **kwargs):
+        app[app.normalize_funcname(fn.__name__)] = (fn, args, kwargs)
+        return fn
 
 class Deprecated:
     def __init__(app):

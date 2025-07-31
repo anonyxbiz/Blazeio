@@ -503,7 +503,7 @@ class createSessionPool:
         if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
-class Keepalive_Session:
+class get_Session:
     __slots__ = ()
     def __init__(app): ...
 
@@ -521,7 +521,7 @@ class Keepalive_Session:
     def __call__(app, *args, **kwargs):
         return app.pool().Session(*args, **kwargs)
 
-KeepaliveSession = Keepalive_Session()
+getSession = get_Session()
+KeepaliveSession = getSession
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...

@@ -9,7 +9,7 @@ ssl_context.verify_mode = CERT_NONE
 
 class __Rvtools__:
     __slots__ = ()
-    headers = {
+    _headers = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-language': 'en-US,en;q=0.9',
         'cache-control': 'no-cache',
@@ -29,6 +29,18 @@ class __Rvtools__:
 
     def dh(app, url: str):
         return {'accept': '*/*', 'accept-language': 'en-US,en;q=0.9', 'origin': url, 'priority': 'u=1, i', 'referer': url, 'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"%s"' % os_name, 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'cors', 'sec-fetch-site': 'same-origin', 'user-agent': 'BlazeI/O', 'connection': 'keep-alive'}
+
+    def __getattr__(app, key, *args):
+        key = "_%s" % key
+        if not hasattr(app, key): raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+
+        item = getattr(app, key, *args)
+
+        if isinstance(item, (dict, list)):
+            item = ddict(item)
+
+        return item
+
 
 Rvtools = __Rvtools__()
 
@@ -715,7 +727,8 @@ class Pulltools(Parsers, Decoders):
     
                     await app.prepare()
 
-    async def close(app, *args, **kwargs): return await app.__aexit__(*args, **kwargs)
+    async def close(app, *args, **kwargs):
+        return await app.__aexit__(*args, **kwargs)
     
     async def data(app):
         if not app.is_prepared(): await app.prepare_http()

@@ -658,5 +658,6 @@ def perf_timer(start = None):
         start = perf_counter()
     return lambda start = start: perf_counter() - start
 
+
 if __name__ == "__main__":
     pass
