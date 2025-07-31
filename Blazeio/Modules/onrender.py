@@ -5,17 +5,15 @@ is_on_render = lambda: environ.get("RENDER")
 class RenderFreeTierPatch:
     _is_on_render = is_on_render()
     def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 5):
-        if not app._is_on_render: return
-        app.rnd_host, app.host = None, None
-        app.host_resolved = SharpEvent()
-
         for method, value in locals().items():
             if method == app: continue
             setattr(app, method, value)
 
         if any([app.production, app.production == NotImplemented]):
             app.task = loop.create_task(app.keep_alive_render())
-    
+        if not app._is_on_render: return
+        app.host_resolved = SharpEvent()
+
     async def _hello_world(app, r):
         await Deliver.text("Hello World")
 
