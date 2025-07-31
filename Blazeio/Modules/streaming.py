@@ -92,16 +92,17 @@ class __Deliver__:
 Deliver = __Deliver__()
 
 class Abort(BlazeioException):
-    __slots__ = ('args', 'r',)
-    def __init__(app, *args):
+    __slots__ = ('args', 'r', 'kwargs')
+    def __init__(app, *args, **kwargs):
         app.args = args
+        app.kwargs = kwargs
         app.r = None
 
     def text(app, r = None):
         app.r = r or Context.r_sync()
         message = (app.args[0] if len(app.args) >= 1 else "Something went wrong").encode()
         status = app.args[1] if len(app.args) >= 2 else 403
-        headers = app.args[2] if len(app.args) >= 3 else None
+        headers = app.args[2] if len(app.args) >= 3 else app.kwargs
 
         return Deliver.text(app.r, memoryview(message), status, headers or {})
 

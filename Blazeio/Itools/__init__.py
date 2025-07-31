@@ -19,7 +19,7 @@ class DotDict(Dot_Dict_Base):
         super().__init__(**dictionary)
 
     def token_urlsafe(app, *a, **kw):
-        while (token := token_urlsafe(*a, **kw)) in app: pass
+        while (token := token_urlsafe(*a, **kw)) in app: ...
         return token
 
     def json(app):
@@ -137,7 +137,7 @@ def Dotify(_dict_=None, **kwargs):
         _dict_ = kwargs
     
     if isinstance(_dict_, dict):
-        result = Dot_Dict()
+        result = DotDict()
         for key, val in _dict_.items():
             if isinstance(val, (dict, list)):
                 val = Dotify(val)

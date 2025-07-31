@@ -77,6 +77,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
         return method
+    
+    def __await__(app):
+        _app = yield from app.__aenter__().__await__()
+        return _app
 
     async def __aenter__(app, create_connection = True):
         if (task := current_task()):
@@ -339,7 +343,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
 class DynamicRequestResponse(type):
     response_types = {"text", "json"}
-
     def __getattr__(app, name):
         if (response_type := name.lower()) in app.response_types:
             async def dynamic_method(*args, **kwargs):
@@ -372,12 +375,12 @@ class __SessionPool__:
         async with context:
             context.notify(1)
 
-    def create_instance(app, url, *args, **kwargs):
-        instance = {}
-        instance["context"] = ioCondition()
-        kwargs.update(dict(on_exit_callback = (app.release, instance["context"])))
-        instance["session"] = Session(url, *args, **kwargs)
-        instance["session"]
+    def create_instance(app, *args, **kwargs):
+        instance = ddict()
+        instance.context = ioCondition()
+        kwargs.update(ddict(on_exit_callback = (app.release, instance.context)))
+        instance.session = Session(*args, **kwargs)
+        instance.session
         return instance
 
     async def get(app, url, *args, **kwargs):
@@ -386,30 +389,30 @@ class __SessionPool__:
         if not (instances := app.sessions.get(key := (host, port))):
             if len(app.sessions) >= app.max_conns:
                 inst = app.sessions.pop(list(app.sessions.keys())[-1])
-                inst["session"].close_on_exit = True
-                await inst["context"].wait()
-                await inst["session"].__aenter__(create_connection = False)
-                await inst["session"].__aexit__()
+                inst.session.close_on_exit = True
+                await inst.context.wait()
+                await inst.session.__aenter__(create_connection = False)
+                await inst.session.__aexit__()
 
             app.sessions[key] = (instances := [])
-            instances.append(instance := app.create_instance(url, *args, **kwargs))
+            instances.append(instance := app.create_instance(*args, **kwargs))
         else:
             for instance in instances:
-                if instance["context"].event.is_set(): break
+                if instance.context.event.is_set(): break
                 else: instance = None
 
             if not instance:
                 if len(instances) < app.max_contexts:
                     instances.append(instance := app.create_instance(url, *args, **kwargs))
                 else:
-                    waiters = [i["context"].waiter_count for i in instances]
+                    waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
-        if (not instance["session"].protocol) or (instance["session"].protocol and not instance["session"].protocol.transport.is_closing() and not instance["session"].protocol.__wait_closed__.is_set()):
-            async with instance["context"]:
-                await instance["context"].wait()
+        if (not instance.session.protocol) or (instance.session.protocol and not instance.session.protocol.transport.is_closing() and not instance.session.protocol.__wait_closed__.is_set()):
+            async with instance.context:
+                await instance.context.wait()
 
-        return instance["session"]
+        return instance.session
 
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
@@ -442,6 +445,10 @@ class SessionPool:
     async def __aexit__(app, *args, **kwargs):
         return await app.session.__aexit__(*args, **kwargs)
 
+    def __await__(app):
+        _app = yield from app.__aenter__().__await__()
+        return _app
+
 class PooledSession:
     __slots__ = ("_super",)
     HTTP_METHODS = (
@@ -464,7 +471,7 @@ class PooledSession:
         if dynamic_method:
             return dynamic_method
         else:
-            raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+            return getattr(app._super, key)
 
     def __call__(app, *args, **kwargs):
         app._super.pool = SessionPool(*args, max_conns = app._super.max_conns, max_contexts = app._super.max_contexts, pool_memory = app._super.pool_memory, **kwargs)
@@ -492,23 +499,27 @@ class createSessionPool:
         app.Session = PooledSession(app)
         app.SessionPool = app.Session
 
+    def __getattr__(app, key):
+        if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
+        raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+
 class Keepalive_Session:
     __slots__ = ()
     def __init__(app): ...
 
-    def __pool__(app):
+    def pool(app):
         task = current_task()
         if not (pool := getattr(task, "__Blazeio__Keepalive_Session__", None)):
             pool = createSessionPool(max_contexts=1, max_conns=100)
             task.__Blazeio_pool__ = pool
 
         return pool
-
+    
     def __getattr__(app, key):
-        return getattr(app.__pool__().Session, key)
+        return getattr(app.pool().Session, key)
 
     def __call__(app, *args, **kwargs):
-        return app.__pool__().Session(*args, **kwargs)
+        return app.pool().Session(*args, **kwargs)
 
 KeepaliveSession = Keepalive_Session()
 

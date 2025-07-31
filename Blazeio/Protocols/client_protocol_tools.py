@@ -577,6 +577,8 @@ class Parsers:
             if end: break
 
     async def handle_raw(app, *args, **kwargs):
+        if not app.content_length: return
+
         async for chunk in app.protocol.pull():
             app.received_len += len(chunk)
             yield chunk

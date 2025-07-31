@@ -133,6 +133,17 @@ class ExtraToolset:
 
             await app.write_chunked_eof()
 
+    async def write_event_stream(app, data, start: bytes = b"data: ", end: bytes = b"\n\n"):
+        if app.encoder: data = await app.encoder(data)
+
+        if isinstance(data, dict):
+            data = dumps(data, indent=0).encode()
+        
+        if bytes(memoryview(data)[0:len(start)]) != start:
+            data = b"%b%b%b" % (start, data, end)
+
+        return await app.writer(data)
+
     async def write_chunked_eof(app, data: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None):
         if data:
             await app.write(data)
@@ -235,6 +246,8 @@ class ExtraToolset:
             app.write = app.write_chunked
         elif headers_view.get("Content-length"):
             app.write = app.write_raw
+        elif headers_view.get("Content-type") == "text/event-stream":
+            app.write = app.write_event_stream
         else:
             app.write = app.write_raw
 

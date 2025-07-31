@@ -23,6 +23,10 @@ class Simpleserve:
 
         elif (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
             raise Abort("Not Modified", 304)
+    
+    def __await__(app):
+        yield from app.prepare_metadata().__await__()
+        return app
 
     async def prepare_metadata(app):
         if not hasattr(app, "file_size"):

@@ -480,11 +480,6 @@ class __ReMonitor__:
         except KeyboardInterrupt: raise
         except Exception as e: await Log.warning("Blazeio", str(e))
 
-        try:
-            if msg: await Log.warning(Payload, msg)
-        except:
-            pass
-
     async def inspect_task(app, task):
         if hasattr(task, "__BlazeioProtocol__"):
             Payload = task.__BlazeioProtocol__
