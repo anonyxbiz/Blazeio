@@ -6,6 +6,7 @@ class RenderFreeTierPatch:
     _is_on_render = is_on_render()
     def __init__(app, production = NotImplemented, host = None, rnd_host = None, asleep = 5):
         if not app._is_on_render: return
+        app.rnd_host, app.host = None, None
         app.host_resolved = SharpEvent()
 
         for method, value in locals().items():
