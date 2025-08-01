@@ -517,7 +517,7 @@ class get_Session:
     def pool(app):
         task = current_task()
         if not (pool := getattr(task, "__Blazeio__Keepalive_Session__", None)):
-            pool = createSessionPool(max_contexts=1, max_conns=100)
+            pool = createSessionPool(max_contexts=10, max_conns=10000)
             task.__Blazeio_pool__ = pool
 
         return pool
