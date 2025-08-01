@@ -56,6 +56,7 @@ class __ioConf__:
             "__http_request_heading_end_seperator__": b"\r\n\r\n",
             "__http_request_heading_end_seperator_len__": 4,
             "__http_request_max_buff_size__": 102400,
+            "__http_request_buff_size": 4096*2,
             "__http_request_initial_separatir__": b' ',
             "__http_request_auto_header_parsing__": True,
             "funcname_normalizers": {

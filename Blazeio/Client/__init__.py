@@ -130,13 +130,14 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     def conn(app, *a, **k): return app.prepare(*args, **kwargs)
 
-    async def prepare(app, *args, **kwargs):
+    async def prepare(app, *args, clean = 0, **kwargs):
         if app.close_on_exit != False:
             app.close_on_exit = False
 
         if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
 
         if args: app.args = (*args, *app.args[len(args):])
+        elif clean: app.args = args
         if kwargs: app.kwargs.update(kwargs)
 
         return await app.create_connection(*app.args, **app.kwargs)
@@ -387,12 +388,18 @@ class __SessionPool__:
         host, port, path = ioConf.url_to_host(url, {})
 
         if not (instances := app.sessions.get(key := (host, port))):
-            if len(app.sessions) >= app.max_conns:
-                inst = app.sessions.pop(list(app.sessions.keys())[-1])
-                inst.session.close_on_exit = True
-                await inst.context.wait()
-                await inst.session.__aenter__(create_connection = False)
-                await inst.session.__aexit__()
+            while len(app.sessions) >= app.max_conns:
+                for inst in app.sessions: ...
+                sessions = app.sessions.pop(inst)
+                for inst in sessions:
+                    inst.session.close_on_exit = True
+    
+                    if (not inst.session.protocol) or (inst.session.protocol and not inst.session.protocol.transport.is_closing() and not inst.session.protocol.__wait_closed__.is_set()):
+                        async with inst.context:
+                            await inst.context.wait()
+
+                    await inst.session.__aenter__(create_connection = False)
+                    await inst.session.__aexit__()
 
             app.sessions[key] = (instances := [])
             instances.append(instance := app.create_instance(*args, **kwargs))
@@ -440,7 +447,7 @@ class SessionPool:
 
         await app.session.__aenter__(create_connection = False)
 
-        return await app.session.prepare(*app.args, **app.kwargs)
+        return await app.session.prepare(*app.args, clean=1, **app.kwargs)
  
     async def __aexit__(app, *args, **kwargs):
         return await app.session.__aexit__(*args, **kwargs)

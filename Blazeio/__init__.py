@@ -16,6 +16,7 @@ class Handler:
     def __init__(app):
         app.__main_handler__ = NotImplemented
         app.__default_handler__ = NotImplemented
+        app.__default_parser__ = Request.prepare_http_request
 
     async def log_request(app, r):
         r.__perf_counter__ = perf_counter()
@@ -57,7 +58,7 @@ class Handler:
             app.__main_handler__ = app.__default_handler__
 
     async def serve_route_with_middleware(app, r, prepare = True):
-        if prepare: await Request.prepare_http_request(r, app)
+        if prepare: await app.__default_parser__(r, app)
 
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
@@ -74,7 +75,7 @@ class Handler:
             await after_middleware.get("func")(r)
 
     async def serve_route_no_middleware(app, r, prepare = True):
-        if prepare: await Request.prepare_http_request(r, app)
+        if prepare: await app.__default_parser__(r, app)
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
         if route := app.declared_routes.get(r.path): await route.get("func")(r)

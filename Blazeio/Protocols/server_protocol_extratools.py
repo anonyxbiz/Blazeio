@@ -218,7 +218,7 @@ class ExtraToolset:
 
             if app.current_length >= app.content_length: break
 
-    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True):
+    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True, encode_event_stream: bool = True):
         payload = ('HTTP/1.1 %d %s\r\n' % (status, StatusReason.reasons.get(status, "Unknown"))).encode()
 
         if app.__prepared_headers__:
@@ -246,7 +246,7 @@ class ExtraToolset:
             app.write = app.write_chunked
         elif headers_view.get("Content-length"):
             app.write = app.write_raw
-        elif headers_view.get("Content-type") == "text/event-stream":
+        elif headers_view.get("Content-type") == "text/event-stream" and encode_event_stream:
             app.write = app.write_event_stream
         else:
             app.write = app.write_raw
