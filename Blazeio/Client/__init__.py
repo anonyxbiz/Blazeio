@@ -369,7 +369,7 @@ Session.request = __Request__
 
 class __SessionPool__:
     __slots__ = ("sessions", "loop", "max_conns", "max_contexts",)
-    def __init__(app, evloop = None, max_conns = 100, max_contexts = 2):
+    def __init__(app, evloop = None, max_conns = 10000, max_contexts = 2):
         app.sessions, app.loop, app.max_conns, app.max_contexts = {}, evloop or ioConf.loop, max_conns, max_contexts
 
     async def release(app, session, context):
@@ -423,7 +423,7 @@ class __SessionPool__:
 
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
-    def __init__(app, *args, max_conns = 100, max_contexts = 1, connection_made_callback = None, pool_memory = None, **kwargs):
+    def __init__(app, *args, max_conns = 10000, max_contexts = 1, connection_made_callback = None, pool_memory = None, **kwargs):
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
 
         app.pool, app.args, app.kwargs = app.get_pool(), args, kwargs
@@ -501,7 +501,7 @@ class PooledSession:
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool")
-    def __init__(app, max_conns: int = 100, max_contexts: int = 2):
+    def __init__(app, max_conns: int = 10000, max_contexts: int = 2):
         app.pool_memory, app.max_conns, app.max_contexts, app.pool = {}, max_conns, max_contexts, None
         app.Session = PooledSession(app)
         app.SessionPool = app.Session
@@ -517,7 +517,7 @@ class get_Session:
     def pool(app):
         task = current_task()
         if not (pool := getattr(task, "__Blazeio__Keepalive_Session__", None)):
-            pool = createSessionPool(max_contexts=10, max_conns=10000)
+            pool = createSessionPool(max_contexts=100)
             task.__Blazeio_pool__ = pool
 
         return pool

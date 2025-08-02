@@ -1,5 +1,6 @@
 from secrets import token_urlsafe
 from collections import deque, defaultdict, OrderedDict
+from asyncio import sleep
 
 class Dot_Dict_Base(dict):
     def __setattr__(app, key, value):
@@ -20,6 +21,11 @@ class DotDict(Dot_Dict_Base):
 
     def token_urlsafe(app, *a, **kw):
         while (token := token_urlsafe(*a, **kw)) in app: ...
+        return token
+
+    async def atoken_urlsafe(app, *a, **kw):
+        while (token := token_urlsafe(*a, **kw)) in app:
+            await sleep(0)
         return token
 
     def json(app):
