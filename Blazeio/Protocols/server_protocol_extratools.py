@@ -137,10 +137,7 @@ class ExtraToolset:
         if app.encoder: data = await app.encoder(data)
 
         if isinstance(data, dict):
-            data = dumps(data, indent=0).encode()
-        
-        if bytes(memoryview(data)[0:len(start)]) != start:
-            data = b"%b%b%b" % (start, data, end)
+            data = b"%b%b%b" % (start, dumps(data, indent=0).encode(), end)
 
         return await app.writer(data)
 

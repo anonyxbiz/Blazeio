@@ -128,9 +128,9 @@ class SharpEventLab:
         app._waiters.clear()
 
 class ioCondition:
-    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial", "_waiter_event")
+    __slots__ = ("event", "notify_count", "waiter_count", "_lock_event", "is_locked", "initial", "_waiter_event", "_acquire_event", "acquire_waiter_count")
     def __init__(app, evloop=loop, initial=True):
-        app.event, app._lock_event, app._waiter_event, app.notify_count, app.waiter_count, app.is_locked, app.initial = SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), 0, 0, False, initial
+        app.event, app._lock_event, app._waiter_event, app._acquire_event, app.notify_count, app.waiter_count, app.is_locked, app.initial, app.acquire_waiter_count = SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), SharpEvent(evloop = evloop), 0, 0, False, initial, 0
         app.event.set()
 
     def release(app):
@@ -165,9 +165,13 @@ class ioCondition:
         await app.acquire()
 
     async def acquire(app):
+        app.acquire_waiter_count += 1
+        app._acquire_event.set()
         while app.locked():
             await app._lock_event.wait()
         app.lock()
+        app.acquire_waiter_count -= 1
+        app._acquire_event.set()
         return app
 
     async def wait(app):
@@ -207,6 +211,9 @@ class ioCondition:
             app.release()
 
         return await app._waiter_event.wait_clear()
+
+    async def on_acquire_change(app):
+        return await app._acquire_event.wait_clear()
 
 class Asynchronizer:
     __slots__ = ("jobs", "idle_event", "start_event", "_thread", "loop", "perform_test",)
@@ -658,6 +665,26 @@ def perf_timer(start = None):
         start = perf_counter()
     return lambda start = start: perf_counter() - start
 
+class perf_timing:
+    __slots__ = ("elapsed",)
+    def __init__(app):
+        app.elapsed = perf_counter()
+
+    def __call__(app):
+        app.elapsed = float(perf_counter() - app.elapsed)
+
+    def __float__(app):
+        return float(app.elapsed)
+
+    def __int__(app):
+        return int(app.elapsed)
+    
+    def __enter__(app):
+        app.elapsed = perf_counter()
+        return app
+
+    def __exit__(app, exc_t, exc_v, tb):
+        app.__call__()
 
 if __name__ == "__main__":
     pass
