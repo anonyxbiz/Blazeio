@@ -452,7 +452,7 @@ class Parsers:
     async def prepare_http(app):
         if app.is_prepared(): return True
         buff, headers, idx, valid = memarray(), None, -1, False
-        
+
         if not app.protocol: raise ServerDisconnected()
 
         async for chunk in app.protocol.pull():
@@ -494,7 +494,7 @@ class Parsers:
             app.handler = app.handle_chunked
         elif app.response_headers.get("content-length"):
             app.handler = app.handle_raw
-        elif not hasattr(app, "handler") or not app.handler:
+        else:
             app.handler = app.protocol.pull
 
         if app.decode_resp:
@@ -629,6 +629,7 @@ class Pushtools(Encoders):
                 method = None
 
         if method is not None: await method(*args)
+        app.eof_sent = True
 
     async def write(app, data: (bytes, bytearray)):
         if app.encoder:

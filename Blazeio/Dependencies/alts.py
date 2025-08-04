@@ -666,19 +666,25 @@ def perf_timer(start = None):
     return lambda start = start: perf_counter() - start
 
 class perf_timing:
-    __slots__ = ("elapsed",)
+    __slots__ = ("elapsed", "rps")
     def __init__(app):
         app.elapsed = perf_counter()
+        app.rps = 0
 
     def __call__(app):
         app.elapsed = float(perf_counter() - app.elapsed)
+        app.rps = float(1.0/float(app))
+        return app
 
     def __float__(app):
         return float(app.elapsed)
 
+    def __dict__(app):
+        return {"elapsed": float(app), "rps": app.rps}
+
     def __int__(app):
         return int(app.elapsed)
-    
+
     def __enter__(app):
         app.elapsed = perf_counter()
         return app
