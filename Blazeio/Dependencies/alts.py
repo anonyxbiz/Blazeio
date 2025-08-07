@@ -191,6 +191,7 @@ class ioCondition:
 
             if app.notify_count:
                 app.notify_count -= 1
+                app.waiter_count -= 1
                 app._waiter_event.set()
                 break
             elif app.event.is_set() and app.waiter_count:

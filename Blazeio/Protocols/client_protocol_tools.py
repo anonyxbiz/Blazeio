@@ -68,11 +68,19 @@ class Decoders:
         if buff: yield app.decompressor.decompress(bytes(buff))
 
     async def br_decoder(app):
+        buff = bytearray()
         async for chunk in app.handler():
+            buff.extend(chunk)
             if len(chunk) >= 102400:
-                yield await to_thread(brotlicffi_decompress, bytes(chunk))
+                try:
+                    yield await to_thread(brotlicffi_decompress, bytes(buff))
+                    buff.clear()
+                except: ...
             else:
-                yield brotlicffi_decompress(bytes(chunk))
+                try:
+                    yield brotlicffi_decompress(bytes(buff))
+                    buff.clear()
+                except: ...
 
     async def gzip_decoder(app):
         if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)

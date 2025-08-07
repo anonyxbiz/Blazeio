@@ -42,11 +42,9 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent",)
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback")
 
-    __should_be_reset__ = ("decompressor", "compressor", "has_sent_headers",)
-
-    __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"),)
+    __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"), ("on_exit_callback", "on_exit_callback"))
 
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS", "DELETE"
@@ -58,7 +56,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     known_ext_types = (BlazeioException, Eof, KeyboardInterrupt, CancelledError, RuntimeError, str)
 
     def __init__(app, *args, **kwargs):
-        for key in app.__slots__: setattr(app, key, None)
+        for key in app.__slots__:
+            setattr(app, key, None)
+
         for key, set_key in app.__from_kwargs__:
             if key in kwargs:
                 setattr(app, set_key, kwargs.pop(key))
@@ -84,7 +84,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     
     def reset_protocol(app):
         if app.protocol.__stream__: app.protocol.__stream__.clear()
-        for key in app.__should_be_reset__: setattr(app, key, None)
         if app.protocol.transport.is_closing(): app.protocol = None
 
     async def __aenter__(app, create_connection = True):
@@ -100,18 +99,17 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             elif app.kwargs.get("connect_only"):
                 return app
 
-        return await app.create_connection(*app.args, **app.kwargs) if create_connection else create_connection
+        return await app.create_connection(*app.args, **app.kwargs) if create_connection else app
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         known = isinstance(exc_value, app.known_ext_types)
 
-        if (on_exit_callback := app.kwargs.get("on_exit_callback")):
-            func = on_exit_callback[0]
-            if len(on_exit_callback) > 1:
-                args = (app, *on_exit_callback[1:])
+        if app.on_exit_callback:
+            func = app.on_exit_callback[0]
+            if len(app.on_exit_callback) > 1:
+                args = (app, *app.on_exit_callback[1:])
             else:
                 args = (app,)
-
             await func(*args) if iscoroutinefunction(func) else func(*args)
 
         if not known:
@@ -133,24 +131,20 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         return False
 
-    def conn(app, *a, **k): return app.prepare(*args, **kwargs)
+    def conn(app, *args, **kwargs): return app.prepare(*args, **kwargs)
 
-    async def prepare(app, *args, clean = 0, **kwargs):
+    async def prepare(app, *args, clean: bool = False, **kwargs):
         if app.close_on_exit != False:
             app.close_on_exit = False
 
         if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
 
-        if args: app.args = (*args, *app.args[len(args):])
-        elif clean: app.args = args
-        if kwargs: app.kwargs.update(kwargs)
-
-        return await app.create_connection(*app.args, **app.kwargs)
+        return await app.create_connection(*args, **kwargs)
 
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, form[key]) for key in form]).encode()
 
-    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, encoder: any = None, default_writer: any = None, eof_sent: bool = False, **kwargs):
+    async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, encoder: any = None, default_writer: any = None, eof_sent: bool = False, has_sent_headers: bool = False, decompressor: any = None, compressor: any = None, send_headers: bool = True, prepare_http: bool = True, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
             if (val := __locals__.get(key, NotImplemented)) == NotImplemented: continue
@@ -257,7 +251,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if body: payload += body
 
-        if kwargs.get("send_headers", True):
+        if send_headers:
             await app.protocol.push(payload)
 
         if not app.default_writer:
@@ -279,11 +273,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             else:
                 raise Err("content must be AsyncIterable | bytes | bytearray")
 
-            if kwargs.get("send_headers", True):
-                await app.prepare_http()
+            if prepare_http: await app.prepare_http()
 
         elif (method in app.NON_BODIED_HTTP_METHODS) or body:
-            if kwargs.get("send_headers", True): await app.prepare_http()
+            if prepare_http: await app.prepare_http()
 
         if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
             for callback in callbacks: await callback(app) if iscoroutinefunction(callback) else callback(app)
@@ -368,54 +361,100 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns", "max_contexts",)
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2):
-        app.sessions, app.loop, app.max_conns, app.max_contexts = {}, evloop or ioConf.loop, max_conns, max_contexts
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "keepalive", "keepalive_interval", "log", "timeout")
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 60**2*24):
+        app.sessions, app.loop, app.max_conns, app.max_contexts, app.keepalive, app.keepalive_interval, app.log, app.timeout = {}, evloop or ioConf.loop, max_conns, max_contexts, keepalive, keepalive_interval, log, timeout
 
-    async def release(app, session, instance):
+    async def release(app, session=None, instance=None):
         async with instance.context:
             instance.acquires -= 1
             instance.available.set()
             instance.perf_counter = perf_counter()
             instance.context.notify(1)
+    
+    async def keepalive_scheduler(app, instance):
+        async with Ehandler(ignore=CancelledError, exit_on_err = True) as e:
+            idle_count = 0
+            while True:
+                await sleep(app.keepalive_interval)
+                if (not instance.context.waiter_count and not instance.context.acquire_waiter_count) and instance.acquires < 1:
+                    await app.keepaliver(instance)
+                
+                if (not instance.context.waiter_count and not instance.context.acquire_waiter_count) and instance.acquires < 1:
+                    idle_count += 1
 
-    def create_instance(app, *args, **kwargs):
-        instance = ddict()
+                    if idle_count >= 360:
+                        app.sessions[instance.key].remove(instance)
+                        idle_count = 0
+                        return
+                else:
+                    idle_count = 0
+
+    async def keepaliver(app, instance):
+        async with instance.context:
+            await instance.context.wait()
+
+        await instance.session.__aenter__(create_connection = False)
+
+        await instance.session.create_connection(instance.url, "head", ddict(Connection="keep-alive"), prepare_http = False)
+        await instance.session.prepare_http()
+
+        if app.log:
+            await plog.magenta(dumps(instance.session.headers, indent=0))
+
+        async with instance.context:
+            instance.perf_counter = perf_counter()
+            instance.context.notify(1)
+
+    def create_instance(app, key, *args, **kwargs):
+        instance = ddict(url=args[0] if len(args) >= 1 else kwargs.get("url"))
         instance.acquires = 0
+        instance.key = key
         instance.available = SharpEvent()
         instance.context = ioCondition()
         instance.perf_counter = perf_counter()
-        instance.timeout = float(15)
-        kwargs.update(ddict(on_exit_callback = (app.release, instance)))
-        instance.session = Session(*args, **kwargs)
+        instance.timeout = float(app.timeout)
+        instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
+        instance.session.close_on_exit = False
+
+        if app.keepalive:
+            instance.keepalive_task = create_task(app.keepalive_scheduler(instance))
+
         return instance
 
     def get_instance(app, instances):
         for instance in instances:
-            if instance.context.event.is_set() and instance.available.is_set():
-                if not app.max_contexts and instance.acquires > 1: continue
-
+            if instance.available.is_set():
+                if (not app.max_contexts) and instance.acquires > 1: continue
                 instance.acquires += 1
+                instance.available.clear()
                 return instance
 
-    async def get(app, url, *args, **kwargs):
-        host, port, path = ioConf.url_to_host(url, {})
+    async def get(app, *args, **kwargs):
+        url = args[0] if len(args) >= 1 else kwargs.pop("url", None)
 
+        host, port, path = ioConf.url_to_host(url, {})
         if not (instances := app.sessions.get(key := (host, port))):
             app.sessions[key] = (instances := [])
-            instances.append(instance := app.create_instance(*args, **kwargs))
+            instances.append(instance := app.create_instance(key, url, *args, **kwargs))
         else:
             if not (instance := app.get_instance(instances)):
                 if (not app.max_contexts) or (len(instances) < app.max_contexts):
-                    instances.append(instance := app.create_instance(url, *args, **kwargs))
+                    instances.append(instance := app.create_instance(key, url, *args, **kwargs))
+
+                    if app.log:
+                        await plog.b_red(dumps(ddict({host: ddict(detail= "New connection created", host = host, port = port, connections = len(instances)), "connections": sum(len(session) for i, session in app.sessions.items())})))
                 else:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
-        if (not instance.session.protocol) or (instance.session.protocol and not instance.session.protocol.transport.is_closing() and not instance.session.protocol.__wait_closed__.is_set()) and float(perf_counter() - instance.perf_counter) < instance.timeout:
+        if instance.session.protocol:
+            if not instance.session.transport.is_reading(): instance.session.transport.resume_reading()
+
+        if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing() and float(perf_counter() - instance.perf_counter) < instance.timeout:
             async with instance.context:
                 await instance.context.wait()
-                instance.available.clear()
+
         else:
             instance.session = Session(url, *args, socket = instance.session.protocol.transport.get_extra_info("socket"), **kwargs)
             instance.available.clear()
@@ -428,17 +467,17 @@ class SessionPool:
     def __init__(app, *args, max_conns = 0, max_contexts = 0, connection_made_callback = None, pool_memory = None, **kwargs):
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
 
-        app.pool, app.args, app.kwargs = app.get_pool(), args, kwargs
+        app.pool, app.args, app.kwargs = app.get_pool(**kwargs), args, kwargs
 
-    def get_pool(app):
+    def get_pool(app, **kwargs):
         if (pool_memory := app.pool_memory) is None and (pool_memory := __memory__.get("SessionPool", None)) is None:
             __memory__["SessionPool"] = (pool_memory := {})
 
         if not (pool := pool_memory.get("pool")):
-            pool_memory["pool"] = (pool := __SessionPool__(max_conns=app.max_conns, max_contexts=app.max_contexts))
+            pool_memory["pool"] = (pool := __SessionPool__(max_conns=app.max_conns, max_contexts=app.max_contexts, **kwargs))
 
         return pool
-    
+
     def __getattr__(app, key):
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
@@ -449,7 +488,7 @@ class SessionPool:
 
         await app.session.__aenter__(create_connection = False)
 
-        return await app.session.prepare(*app.args, clean=1, **app.kwargs)
+        return await app.session.prepare(*app.args, **app.kwargs)
  
     async def __aexit__(app, *args, **kwargs):
         return await app.session.__aexit__(*args, **kwargs)
@@ -483,7 +522,7 @@ class PooledSession:
             return getattr(app._super, key)
 
     def __call__(app, *args, **kwargs):
-        app._super.pool = SessionPool(*args, max_conns = app._super.max_conns, max_contexts = app._super.max_contexts, pool_memory = app._super.pool_memory, **kwargs)
+        app._super.pool = SessionPool(*args, max_conns = app._super.max_conns, max_contexts = app._super.max_contexts, pool_memory = app._super.pool_memory,  **kwargs)
         return app._super.pool
 
     @asynccontextmanager
@@ -502,26 +541,32 @@ class PooledSession:
             if not _yielded: yield instance
 
 class createSessionPool:
-    __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool")
-    def __init__(app, max_conns: int = 0, max_contexts: int = 2):
-        app.pool_memory, app.max_conns, app.max_contexts, app.pool = {}, max_conns, max_contexts, None
+    __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool", "kwargs",)
+    def __init__(app, max_conns: int = 0, max_contexts: int = 2, **kwargs):
+        app.pool_memory, app.max_conns, app.max_contexts, app.pool, app.kwargs = {}, max_conns, max_contexts, None, kwargs
         app.Session = PooledSession(app)
         app.SessionPool = app.Session
 
     def __getattr__(app, key):
         if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
+        elif (val := app.kwargs.get(key)): return val
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
 class get_Session:
-    __slots__ = ()
-    def __init__(app): ...
+    __slots__ = ("session_pool",)
+    def __init__(app):
+        app.session_pool = createSessionPool(0, 0)
+        app.session_pool.Session()
+        app.instance().keepalive = True
+        app.instance().keepalive_interval = 5
 
     def pool(app):
-        task = current_task()
-        if not (pool := getattr(task, "__Blazeio_pool__", None)):
-            pool = createSessionPool(0, 0)
-            task.__Blazeio_pool__ = pool
+        try:
+            task = current_task()
+        except RuntimeError: return app.session_pool
 
+        if not (pool := getattr(task, "__Blazeio_pool__", None)):
+            task.__Blazeio_pool__ = (pool := app.session_pool)
         return pool
 
     def set_pool(app, pool):
@@ -534,6 +579,9 @@ class get_Session:
 
     def __call__(app, *args, **kwargs):
         return app.pool().Session(*args, **kwargs)
+
+    def instance(app):
+        return app.pool().pool.pool
 
 getSession = get_Session()
 KeepaliveSession = getSession
