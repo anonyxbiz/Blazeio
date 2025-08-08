@@ -457,7 +457,7 @@ class Parsers:
         
         return response_headers
 
-    async def prepare_http(app):
+    async def _prepare_http(app):
         if app.is_prepared(): return True
         buff, headers, idx, valid = memarray(), None, -1, False
 
@@ -532,6 +532,14 @@ class Parsers:
             return await app.prepare(location)
 
         return True
+
+    async def prepare_http(app):
+        await app._prepare_http()
+
+        if app.status_code == 0:
+            app.protocol = None
+            await app.prepare()
+            return await app._prepare_http()
 
     async def prepare_connect(app, method, headers):
         buff, idx = memarray(), -1

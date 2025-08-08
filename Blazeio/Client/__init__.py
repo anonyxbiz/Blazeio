@@ -3,6 +3,7 @@ from ..Dependencies import *
 from ..Dependencies.alts import *
 from ..Modules.request import *
 from ..Protocols.client_protocol import *
+from socket import SOL_SOCKET, SO_KEEPALIVE, IPPROTO_TCP, TCP_KEEPIDLE, TCP_KEEPINTVL
 
 __memory__ = {}
 
@@ -138,6 +139,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             app.close_on_exit = False
 
         if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
+        
+        if not args and not kwargs:
+            args, kwargs = app.args, app.kwargs
+        else:
+            app.args, app.kwargs = args, kwargs
 
         return await app.create_connection(*args, **kwargs)
 
@@ -236,6 +242,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 port=remote_port,
                 ssl=ssl,
             )
+
+            sock = app.protocol.transport.get_extra_info("socket")
+            sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+            sock.setsockopt(IPPROTO_TCP,TCP_KEEPIDLE, 5)
+            sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 5)
+
         elif not app.protocol and connect_only:
             transport, app.protocol = await app.loop.create_connection(
                 lambda: client_protocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in client_protocol.__slots__}),
@@ -273,10 +285,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             else:
                 raise Err("content must be AsyncIterable | bytes | bytearray")
 
-            if prepare_http: await app.prepare_http()
+            if prepare_http:
+                await app.prepare_http()
 
         elif (method in app.NON_BODIED_HTTP_METHODS) or body:
-            if prepare_http: await app.prepare_http()
+            if prepare_http:
+                await app.prepare_http()
 
         if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
             for callback in callbacks: await callback(app) if iscoroutinefunction(callback) else callback(app)
@@ -361,9 +375,9 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "keepalive", "keepalive_interval", "log", "timeout")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 60**2*24):
-        app.sessions, app.loop, app.max_conns, app.max_contexts, app.keepalive, app.keepalive_interval, app.log, app.timeout = {}, evloop or ioConf.loop, max_conns, max_contexts, keepalive, keepalive_interval, log, timeout
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout")
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3600):
+        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout
 
     async def release(app, session=None, instance=None):
         async with instance.context:
@@ -371,43 +385,9 @@ class __SessionPool__:
             instance.available.set()
             instance.perf_counter = perf_counter()
             instance.context.notify(1)
-    
-    async def keepalive_scheduler(app, instance):
-        async with Ehandler(ignore=CancelledError, exit_on_err = True) as e:
-            idle_count = 0
-            while True:
-                await sleep(app.keepalive_interval)
-                if (not instance.context.waiter_count and not instance.context.acquire_waiter_count) and instance.acquires < 1:
-                    await app.keepaliver(instance)
-                
-                if (not instance.context.waiter_count and not instance.context.acquire_waiter_count) and instance.acquires < 1:
-                    idle_count += 1
-
-                    if idle_count >= 360:
-                        app.sessions[instance.key].remove(instance)
-                        idle_count = 0
-                        return
-                else:
-                    idle_count = 0
-
-    async def keepaliver(app, instance):
-        async with instance.context:
-            await instance.context.wait()
-
-        await instance.session.__aenter__(create_connection = False)
-
-        await instance.session.create_connection(instance.url, "head", ddict(Connection="keep-alive"), prepare_http = False)
-        await instance.session.prepare_http()
-
-        if app.log:
-            await plog.magenta(dumps(instance.session.headers, indent=0))
-
-        async with instance.context:
-            instance.perf_counter = perf_counter()
-            instance.context.notify(1)
 
     def create_instance(app, key, *args, **kwargs):
-        instance = ddict(url=args[0] if len(args) >= 1 else kwargs.get("url"))
+        instance = ddict()
         instance.acquires = 0
         instance.key = key
         instance.available = SharpEvent()
@@ -416,10 +396,6 @@ class __SessionPool__:
         instance.timeout = float(app.timeout)
         instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
-
-        if app.keepalive:
-            instance.keepalive_task = create_task(app.keepalive_scheduler(instance))
-
         return instance
 
     def get_instance(app, instances):
@@ -429,6 +405,10 @@ class __SessionPool__:
                 instance.acquires += 1
                 instance.available.clear()
                 return instance
+    
+    async def ensure_connected(app, url, session):
+        await session.__aenter__(create_connection = False)
+        await session.prepare(url, "head", {})
 
     async def get(app, *args, **kwargs):
         url = args[0] if len(args) >= 1 else kwargs.pop("url", None)
@@ -448,16 +428,16 @@ class __SessionPool__:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
-        if instance.session.protocol:
-            if not instance.session.transport.is_reading(): instance.session.transport.resume_reading()
-
-        if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing() and float(perf_counter() - instance.perf_counter) < instance.timeout:
+        if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing():
+            async with instance.context:
+                await instance.context.wait()
+        else:
+            instance.session.protocol = None
             async with instance.context:
                 await instance.context.wait()
 
-        else:
-            instance.session = Session(url, *args, socket = instance.session.protocol.transport.get_extra_info("socket"), **kwargs)
-            instance.available.clear()
+        if (perf_counter() - instance.perf_counter) >= 10.0:
+            await app.ensure_connected(url, instance.session)
 
         instance.perf_counter = perf_counter()
         return instance.session
@@ -488,7 +468,9 @@ class SessionPool:
 
         await app.session.__aenter__(create_connection = False)
 
-        return await app.session.prepare(*app.args, **app.kwargs)
+        app.session = await app.session.prepare(*app.args, **app.kwargs)
+
+        return app.session
  
     async def __aexit__(app, *args, **kwargs):
         return await app.session.__aexit__(*args, **kwargs)
@@ -554,11 +536,9 @@ class createSessionPool:
 
 class get_Session:
     __slots__ = ("session_pool",)
-    def __init__(app):
+    def __init__(app, keepalive = False):
         app.session_pool = createSessionPool(0, 0)
         app.session_pool.Session()
-        app.instance().keepalive = True
-        app.instance().keepalive_interval = 5
 
     def pool(app):
         try:
