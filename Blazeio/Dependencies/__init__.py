@@ -410,16 +410,19 @@ Log = __log__()
 p, log = Log.info, logger
 
 class __ReMonitor__:
-    __slots__ = ("Monitoring_thread", "event_loop", "event_loops", "Monitoring_thread_loop", "_start_monitoring", "servers", "main", "stopped_event", "terminated_event", "started_event", "tasks")
+    __slots__ = ("Monitoring_thread", "event_loop", "event_loops", "Monitoring_thread_loop", "_start_monitoring", "servers", "stopped_event", "terminated_event", "started_event", "tasks", "callbacks", "scheduler_interval", "_async_stopped_event")
     default_payload_timeout = float(60*60)
-    def __init__(app):
+    def __init__(app, scheduler_interval: int = 30, event_loop: any = loop, event_loops: list = [], servers: list = [], tasks: list = []):
         ioConf.add_shutdown_callback(app.Monitoring_thread_join)
-        app.tasks = []
-        app.event_loop = loop
-        app.event_loops = [app.event_loop]
-        app.servers = []
-        app.main = None
+        app.tasks = tasks
+        app.scheduler_interval = scheduler_interval
+        app.event_loop = event_loop
+        app.event_loops = event_loops
+        app.event_loops.append(app.event_loop)
+        app.servers = servers
+        app.callbacks = []
         app._start_monitoring = SharpEvent(evloop = app.event_loop)
+        app._async_stopped_event = SharpEvent()
         app.started_event = Tevent()
         app.stopped_event = Tevent()
         app.terminated_event = Tevent()
@@ -446,27 +449,54 @@ class __ReMonitor__:
     def stop(app):
         if app.terminated_event.is_set(): return
         app.terminated_event.set()
+        app._async_stopped_event.loop.call_soon_threadsafe(app._async_stopped_event.set)
         app.stopped_event.wait()
 
     def Monitoring_thread_join(app):
         app.stop()
         app.Monitoring_thread.join()
 
+    def create_task(app, *args, **kwargs):
+        app.tasks.append(task := app.Monitoring_thread_loop.create_task(*args, **kwargs))
+        return task
+
     def Monitoring_thread_monitor(app, parent=None):
         app.Monitoring_thread_loop = new_event_loop()
-        app.main = app.Monitoring_thread_loop.create_task(app.__monitor_loop__())
-        app.tasks.append(app.main)
-        app.Monitoring_thread_loop.run_until_complete(app.main)
+        for coro in (app.cb_scheduler(), app.__monitor_loop__()):
+            app.create_task(coro)
+
+        app.Monitoring_thread_loop.run_until_complete(app.wait_stopped())
+
+    def add_callback(app, delay, fn, *args, **kwargs):
+        app.callbacks.append(cb := (get_event_loop(), perf_counter(), float(delay), fn, args, kwargs))
+        return cb
+
+    def rm_callback(app, cb):
+        if cb in app.callbacks:
+            app.callbacks.remove(cb)
+    
+    def calc_interval(app):
+        delays = []
+        for evloop, creation_time, delay, fn, args, kwargs in app.callbacks: delays.append(delay)
+
+        if delays:
+            delay = float(min(delays))
+            if delay < app.scheduler_interval: return delay
+
+        return app.scheduler_interval
+
+    async def wait_stopped(app):
+        await wrap_future(run_coroutine_threadsafe(app._async_stopped_event.wait_clear(), app._async_stopped_event.loop))
 
     async def __monitor_loop__(app):
         try:
             app.started_event.set()
             await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
-
             while not app.terminated_event.is_set():
                 for server in app.servers:
                     await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
-                    app.terminated_event.wait(server.ServerConfig.__timeout_check_freq__)
+
+                app.terminated_event.wait(server.ServerConfig.__timeout_check_freq__)
         finally:
             app.stopped_event.set()
 
@@ -507,5 +537,17 @@ class __ReMonitor__:
                     except AttributeError: ...
                     except KeyboardInterrupt: raise
                     except Exception as e: await Log.b_red("Blazeio.analyze_protocols", str(e))
+
+    async def cb_scheduler(app):
+        while True:
+            try:
+                await sleep(app.calc_interval())
+                for cb in app.callbacks:
+                    evloop, creation_time, delay, fn, args, kwargs = cb
+                    if (perf_counter() - creation_time) >= float(delay):
+                        app.rm_callback(cb)
+                        await wrap_future(run_coroutine_threadsafe(fn(*args, **kwargs), evloop)) if iscoroutinefunction(fn) else evloop.call_soon_threadsafe(fn, *args, **kwargs)
+
+            except Exception as e: await Log.b_red("Blazeio.cb_scheduler", str(e))
 
 ReMonitor = __ReMonitor__()

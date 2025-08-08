@@ -528,10 +528,16 @@ class Parsers:
         if app.follow_redirects and app.status_code in app.http_redirect_status_range and (location := app.response_headers.get("location", None)):
             if location.startswith("/"):
                 location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
-
-            return await app.prepare(location)
+            
+            args, kwargs = app.join_to_current_params(location)
+            return await app.prepare(*args, **kwargs)
 
         return True
+
+    def join_to_current_params(app, *args, **kwargs):
+        args = (*args, *app.args[len(args):]) if len(app.args) > len(args) else args
+        kwargs = dict(**{i:app.kwargs[i] for i in app.kwargs if i not in kwargs}, **kwargs)
+        return (args, kwargs)
 
     async def prepare_http(app):
         await app._prepare_http()

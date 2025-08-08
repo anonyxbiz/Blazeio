@@ -375,9 +375,9 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3600):
-        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances")
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3600, max_instances: int = 100):
+        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances
 
     async def release(app, session=None, instance=None):
         async with instance.context:
@@ -385,6 +385,16 @@ class __SessionPool__:
             instance.available.set()
             instance.perf_counter = perf_counter()
             instance.context.notify(1)
+
+    def clean_instance(app, instance):
+        if (len(app.sessions.get(instance.key)) < app.max_instances) or (not instance.available.is_set()) or (not app.max_contexts and instance.acquires > 1):
+            instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
+            return
+
+        instance.acquires += 1
+        instance.available.clear()
+        instance.session.transport.close()
+        app.sessions.get(key).remove(instance)
 
     def create_instance(app, key, *args, **kwargs):
         instance = ddict()
@@ -396,6 +406,8 @@ class __SessionPool__:
         instance.timeout = float(app.timeout)
         instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
+        instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
+
         return instance
 
     def get_instance(app, instances):
@@ -405,22 +417,20 @@ class __SessionPool__:
                 instance.acquires += 1
                 instance.available.clear()
                 return instance
-    
+
     async def ensure_connected(app, url, session):
         await session.__aenter__(create_connection = False)
         await session.prepare(url, "head", {})
 
-    async def get(app, *args, **kwargs):
-        url = args[0] if len(args) >= 1 else kwargs.pop("url", None)
-
+    async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
         if not (instances := app.sessions.get(key := (host, port))):
             app.sessions[key] = (instances := [])
-            instances.append(instance := app.create_instance(key, url, *args, **kwargs))
+            instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
         else:
             if not (instance := app.get_instance(instances)):
                 if (not app.max_contexts) or (len(instances) < app.max_contexts):
-                    instances.append(instance := app.create_instance(key, url, *args, **kwargs))
+                    instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
 
                     if app.log:
                         await plog.b_red(dumps(ddict({host: ddict(detail= "New connection created", host = host, port = port, connections = len(instances)), "connections": sum(len(session) for i, session in app.sessions.items())})))
@@ -436,7 +446,7 @@ class __SessionPool__:
             async with instance.context:
                 await instance.context.wait()
 
-        if float(perf_counter() - instance.perf_counter) >= 10.0:
+        if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
             await app.ensure_connected(url, instance.session)
 
         return instance.session
@@ -527,6 +537,7 @@ class createSessionPool:
         app.pool_memory, app.max_conns, app.max_contexts, app.pool, app.kwargs = {}, max_conns, max_contexts, None, kwargs
         app.Session = PooledSession(app)
         app.SessionPool = app.Session
+        app.Session()
 
     def __getattr__(app, key):
         if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
@@ -539,13 +550,11 @@ class get_Session:
         app.session_pool = createSessionPool(0, 0)
 
     def pool(app):
-        try:
-            task = current_task()
-        except RuntimeError: return app.session_pool
-        if not (pool := getattr(task, "__Blazeio_pool__", None)):
-            task.__Blazeio_pool__ = (pool := createSessionPool(0, 0))
+        task = current_task()
+        if not hasattr(task, "__Blazeio_pool__"):
+            task.__Blazeio_pool__ = app.session_pool
 
-        return pool
+        return task.__Blazeio_pool__
 
     def set_pool(app, pool):
         task = current_task()
