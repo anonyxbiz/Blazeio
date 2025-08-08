@@ -474,16 +474,6 @@ class __ReMonitor__:
     def rm_callback(app, cb):
         if cb in app.callbacks:
             app.callbacks.remove(cb)
-    
-    def calc_interval(app):
-        delays = []
-        for evloop, creation_time, delay, fn, args, kwargs in app.callbacks: delays.append(delay)
-
-        if delays:
-            delay = float(min(delays))
-            if delay < app.scheduler_interval: return delay
-
-        return app.scheduler_interval
 
     async def wait_stopped(app):
         await wrap_future(run_coroutine_threadsafe(app._async_stopped_event.wait_clear(), app._async_stopped_event.loop))
@@ -541,7 +531,7 @@ class __ReMonitor__:
     async def cb_scheduler(app):
         while True:
             try:
-                await sleep(app.calc_interval())
+                await sleep(app.scheduler_interval)
                 for cb in app.callbacks:
                     evloop, creation_time, delay, fn, args, kwargs = cb
                     if (perf_counter() - creation_time) >= float(delay):
