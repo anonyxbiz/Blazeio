@@ -1,7 +1,7 @@
 import Blazeio as io
 
 class RenderFreeTierPatch:
-    def __init__(app, host = None, rnd_host = None, asleep = 30):
+    def __init__(app, host = None, rnd_host = None, asleep = 60):
         for method, value in locals().items():
             if method == app: continue
             setattr(app, method, value)
