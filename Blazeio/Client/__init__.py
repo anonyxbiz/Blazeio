@@ -537,15 +537,14 @@ class get_Session:
     __slots__ = ("session_pool",)
     def __init__(app, keepalive = False):
         app.session_pool = createSessionPool(0, 0)
-        app.session_pool.Session()
 
     def pool(app):
         try:
             task = current_task()
         except RuntimeError: return app.session_pool
-
         if not (pool := getattr(task, "__Blazeio_pool__", None)):
-            task.__Blazeio_pool__ = (pool := app.session_pool)
+            task.__Blazeio_pool__ = (pool := createSessionPool(0, 0))
+
         return pool
 
     def set_pool(app, pool):
