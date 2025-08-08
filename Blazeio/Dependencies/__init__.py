@@ -484,7 +484,6 @@ class __ReMonitor__:
     async def inspect_task(app, task):
         if hasattr(task, "__BlazeioProtocol__"):
             Payload = task.__BlazeioProtocol__
-        elif hasattr(task, "__BlazeioClientProtocol__"): Payload = task.__BlazeioClientProtocol__
         else:
             return
 
