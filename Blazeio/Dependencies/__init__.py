@@ -484,20 +484,18 @@ class __ReMonitor__:
     async def inspect_task(app, task):
         if hasattr(task, "__BlazeioProtocol__"):
             Payload = task.__BlazeioProtocol__
-        elif hasattr(task, "__BlazeioClientProtocol__"):
-            Payload = task.__BlazeioClientProtocol__
+        elif hasattr(task, "__BlazeioClientProtocol__"): Payload = task.__BlazeioClientProtocol__
         else:
             return
-
-        if not hasattr(Payload, "__perf_counter__"):
-            Payload.__perf_counter__ = perf_counter()
 
         if await app.enforce_health(Payload, task): return
 
         if not Payload.__timeout__: return
 
-        duration = float(perf_counter() - getattr(Payload, "__perf_counter__"))
+        if not isinstance(Payload.__perf_counter__, float):
+            Payload.__perf_counter__ = perf_counter()
 
+        duration = float(perf_counter() - Payload.__perf_counter__)
         condition = duration >= Payload.__timeout__
 
         if condition: await app.cancel(Payload, task, "BlazeioTimeout:: Task [%s] cancelled due to Timeout exceeding the limit of (%s), task took (%s) seconds." % (task.get_name(), str(Payload.__timeout__), str(duration)))
@@ -507,8 +505,8 @@ class __ReMonitor__:
             for task in all_tasks(loop=event_loop):
                 if task not in app.tasks:
                     try: await app.inspect_task(task)
-                    except AttributeError: pass
+                    except AttributeError: ...
                     except KeyboardInterrupt: raise
-                    except Exception as e: print(e)
+                    except Exception as e: await Log.b_red("Blazeio.analyze_protocols", str(e))
 
 ReMonitor = __ReMonitor__()

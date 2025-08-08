@@ -136,8 +136,11 @@ class ExtraToolset:
     async def write_event_stream(app, data, start: bytes = b"data: ", end: bytes = b"\n\n"):
         if app.encoder: data = await app.encoder(data)
 
-        if isinstance(data, dict):
-            data = b"%b%b%b" % (start, dumps(data, indent=0).encode(), end)
+        if isinstance(data, (dict, list)):
+            data = dumps(data, indent=0).encode()
+
+        if data[:len(start)] != start:
+            data = b"%b%b%b" % (start, data, end)
 
         return await app.writer(data)
 

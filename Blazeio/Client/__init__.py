@@ -78,7 +78,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
         return method
-    
+
     def __await__(app):
         _app = yield from app.__aenter__().__await__()
         return _app
@@ -436,10 +436,9 @@ class __SessionPool__:
             async with instance.context:
                 await instance.context.wait()
 
-        if (perf_counter() - instance.perf_counter) >= 10.0:
+        if float(perf_counter() - instance.perf_counter) >= 10.0:
             await app.ensure_connected(url, instance.session)
 
-        instance.perf_counter = perf_counter()
         return instance.session
 
 class SessionPool:
