@@ -138,8 +138,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if app.close_on_exit != False:
             app.close_on_exit = False
 
-        if app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
-        
+        if app.protocol and app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
+
         if not args and not kwargs:
             args, kwargs = app.args, app.kwargs
         else:
