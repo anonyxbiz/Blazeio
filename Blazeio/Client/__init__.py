@@ -391,10 +391,9 @@ class __SessionPool__:
             instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
             return
 
-        instance.acquires += 1
+        app.sessions.get(key).remove(instance)
         instance.available.clear()
         instance.session.transport.close()
-        app.sessions.get(key).remove(instance)
 
     def create_instance(app, key, *args, **kwargs):
         instance = ddict()
@@ -413,14 +412,14 @@ class __SessionPool__:
     def get_instance(app, instances):
         for instance in instances:
             if instance.available.is_set():
-                if (not app.max_contexts) and instance.acquires > 1: continue
+                if (not app.max_contexts) and instance.context.waiter_count >= 1: continue
                 instance.acquires += 1
                 instance.available.clear()
                 return instance
 
     async def ensure_connected(app, url, session):
         await session.__aenter__(create_connection = False)
-        await session.prepare(url, "head", {})
+        await session.prepare(url, "HEAD", {})
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
@@ -443,8 +442,6 @@ class __SessionPool__:
                 await instance.context.wait()
         else:
             instance.session.protocol = None
-            async with instance.context:
-                await instance.context.wait()
 
         if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
             await app.ensure_connected(url, instance.session)
@@ -552,7 +549,7 @@ class get_Session:
     def pool(app):
         task = current_task()
         if not hasattr(task, "__Blazeio_pool__"):
-            task.__Blazeio_pool__ = app.session_pool
+            task.__Blazeio_pool__ = createSessionPool(0, 0)
 
         return task.__Blazeio_pool__
 
