@@ -693,5 +693,11 @@ class perf_timing:
     def __exit__(app, exc_t, exc_v, tb):
         app.__call__()
 
-if __name__ == "__main__":
-    pass
+    async def __aenter__(app):
+        app.elapsed = perf_counter()
+        return app
+
+    async def __aexit__(app, exc_t, exc_v, tb):
+        app.__call__()
+
+if __name__ == "__main__": ...

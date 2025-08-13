@@ -452,7 +452,6 @@ class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
     def __init__(app, *args, max_conns = 0, max_contexts = 0, connection_made_callback = None, pool_memory = None, **kwargs):
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
-
         app.pool, app.args, app.kwargs = app.get_pool(**kwargs), args, kwargs
 
     def get_pool(app, **kwargs):
@@ -494,6 +493,7 @@ class PooledSession:
 
     def __init__(app, _super):
         app._super = _super
+        app()
 
     def __getattr__(app, key):
         if key in app.HTTP_METHODS:
@@ -526,7 +526,6 @@ class PooledSession:
             exception = (type(e).__name__, e, e.__traceback__)
         finally:
             await instance.__aexit__(*exception)
-            # if not _yielded: yield instance
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool", "kwargs",)
@@ -534,7 +533,6 @@ class createSessionPool:
         app.pool_memory, app.max_conns, app.max_contexts, app.pool, app.kwargs = {}, max_conns, max_contexts, None, kwargs
         app.Session = PooledSession(app)
         app.SessionPool = app.Session
-        app.Session()
 
     def __getattr__(app, key):
         if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
@@ -550,7 +548,6 @@ class get_Session:
         task = current_task()
         if not hasattr(task, "__Blazeio_pool__"):
             task.__Blazeio_pool__ = createSessionPool(0, 0)
-
         return task.__Blazeio_pool__
 
     def set_pool(app, pool):
