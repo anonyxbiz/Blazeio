@@ -432,7 +432,7 @@ class Server:
             return main_process.terminate()
 
     async def cancelloop(app, loop, except_tasks):
-        async with Ehandler(ignore = CancelledError):
+        async with Ehandler(ignore = (CancelledError, Eof)):
             cancelled_tasks = []
             for task in list(all_tasks(loop=app.loop)):
                 if (not task in except_tasks):

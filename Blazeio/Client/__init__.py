@@ -526,7 +526,7 @@ class PooledSession:
             exception = (type(e).__name__, e, e.__traceback__)
         finally:
             await instance.__aexit__(*exception)
-            if not _yielded: yield instance
+            # if not _yielded: yield instance
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool", "kwargs",)

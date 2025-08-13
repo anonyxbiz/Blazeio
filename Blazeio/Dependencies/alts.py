@@ -587,7 +587,7 @@ class Ehandler:
             setattr(app, key, kwargs[key])
 
         for attr in ("ignore", "_raise"):
-            if not isinstance(val := getattr(app, attr), list):
+            if not isinstance(val := getattr(app, attr), (list, tuple)):
                 setattr(app, attr, [val])
 
         app.err = None
