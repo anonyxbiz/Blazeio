@@ -452,6 +452,7 @@ class Stream_Server(Stream, io.BlazeioPayloadUtils, io.ExtraToolset):
         app.__miscellaneous__ = None
         app.store = None
         app.__timeout__ = None
+        app.__prepared_headers__ = None
         app.cancel_on_disconnect = True
         app.request, app.writer = app.__pull__, app.__writer__
 

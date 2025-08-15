@@ -203,6 +203,9 @@ class ExtraToolset:
 
         if http_only: http_only = "HttpOnly; "
         else: http_only = ""
+        
+        if app.__prepared_headers__ is None:
+            app.__prepared_headers__ = bytearray()
 
         app.__prepared_headers__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
 

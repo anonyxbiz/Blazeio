@@ -2,7 +2,7 @@ import Blazeio as io
 from os import mkdir, access as os_access, R_OK as os_R_OK, W_OK as os_W_OK, X_OK as os_X_OK, makedirs
 from pathlib import Path
 from ssl import TLSVersion
-from Blazeio.Protocols.multiplexer import BlazeioClientProtocol, BlazeioServerProtocol
+from Blazeio.Protocols.multiplexer import Protocols
 
 scope = io.Dot_Dict(
     tls_record_size = 256,
@@ -78,8 +78,9 @@ class Transporters:
     __slots__ = ()
     __conn__ = io.ioCondition(evloop = io.loop)
     __serialize__ = io.ioCondition(evloop = io.loop)
+    exclude_headers = ("Transfer-encoding",)
 
-    def __init__(app): pass
+    def __init__(app): ...
 
     async def puller(app, r, resp):
         async with resp.protocol:
@@ -99,9 +100,9 @@ class Transporters:
     async def _conn(app, srv):
         async with app.__conn__:
             if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
-                srv["conn"] = (conn := await io.Session(srv.get("remote"), client_protocol = BlazeioClientProtocol, connect_only = 1).__aenter__())
+                srv.conn = await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1)
 
-        return conn.create_stream()
+            return srv.conn.create_stream()
 
     async def conn(app, srv):
         try:
@@ -112,74 +113,32 @@ class Transporters:
 
     async def no_tls_transporter(app, r, srv: dict):
         r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
-        async with io.Session(srv.get("remote") + r.tail, r.method, r.headers, decode_resp=False, add_host = False, use_protocol = await app.conn(srv)) as resp:
+
+        async with io.Session(srv.remote + r.tail, r.method, {i: r.headers[i] for i in r.headers if i not in app.exclude_headers}, decode_resp = False, use_protocol = await app.conn(srv)) as resp:
             r.store.telemetry.ttc = r.store.telemetry.ttfb()
 
             if r.method not in r.non_bodied_methods:
                 r.store.task = io.create_task(app.puller(r, resp))
             else:
-                await resp.__eof__()
+                async with resp.protocol: ...
 
             if not resp.is_prepared(): await resp.prepare_http()
 
             r.store.telemetry.ttfb = r.store.telemetry.ttfb()
 
-            await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False)
+            await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False, encode_event_stream = False)
 
             async for chunk in resp.__pull__():
-                await r.writer(chunk)
+                await r.write(chunk)
 
-            if r.store.task: await r.store.task
-    
-    async def __write_chunks__(app, r, chunk = b"", chunk_size = 1024):
-        if r.store.buff or len(chunk) < scope.tls_record_size:
-            if chunk:
-                r.store.buff.extend(chunk)
-                if len(r.store.buff) < scope.tls_record_size:
-                    return
-                else:
-                    chunk = b""
-
-            chunk = bytes(r.store.buff) + chunk
-            r.store.buff.clear()
-
-        while chunk and len(chunk) >= chunk_size:
-            _, chunk = bytes(memoryview(chunk)[:chunk_size]), bytes(memoryview(chunk)[chunk_size:])
-            await r.writer(_)
-
-        if chunk:
-            await r.writer(chunk)
-
-    async def tls_transporter(app, r, srv: dict):
-        r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
-
-        async with io.Session(srv.get("remote") + r.tail, r.method, r.headers, decode_resp=False, add_host = False, use_protocol = await app.conn(srv)) as resp:
-            r.store.telemetry.ttc = r.store.telemetry.ttfb()
-
-            if r.method not in r.non_bodied_methods:
-                r.store.task = io.create_task(app.puller(r, resp))
-            else:
-                async with resp.protocol: pass
-
-            if not resp.is_prepared(): await resp.prepare_http()
-
-            r.store.telemetry.ttfb = r.store.telemetry.ttfb()
-
-            await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False)
-
-            r.store.buff = bytearray()
-
-            async for chunk in resp.__pull__():
-                await app.__write_chunks__(r, chunk)
-
-            await app.__write_chunks__(r)
+            await r.eof()
 
             if r.store.task: await r.store.task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics", "fresh")
 
-    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = {scope.server_name: {}}, fresh: bool = False):
+    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), fresh: bool = False):
         for key in (__locals__ := locals()):
             if key not in app.__slots__: continue
             if getattr(app, key, NotImplemented) != NotImplemented: continue
@@ -194,7 +153,7 @@ class App(Sslproxy, Transporters):
 
         app.tasks.append(io.ioConf.loop.create_task(app.update_mem_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.protocol_manager()))
-    
+
     def json(app):
         data = {}
         for key in app.__slots__:
@@ -215,12 +174,12 @@ class App(Sslproxy, Transporters):
         if not io.path.exists(app.blazeio_proxy_hosts) or app.fresh: return
 
         async with io.async_open(app.blazeio_proxy_hosts, "rb") as f:
-            app.hosts.update(io.loads(await f.read()))
+            app.hosts.update(io.Dotify(io.loads(await f.read())))
 
         await io.plog.cyan("update_mem_db", "loaded: %s" % io.dumps(app.hosts, indent=4, escape_forward_slashes = False))
 
     async def _remote_webhook(app, r):
-        app.hosts.update(json := await io.Request.get_json(r))
+        app.hosts.update(io.Dotify(json := await io.Request.get_json(r)))
 
         await app.update_file_db()
 
@@ -275,7 +234,7 @@ class App(Sslproxy, Transporters):
 
     async def __main_handler__(app, r):
         # r.transport.set_write_buffer_limits(0)
-        r.store = io.Dot_Dict()
+        r.store = io.Dot_Dict(task = None)
         r.store.telemetry = io.Dot_Dict()
 
         app.protocol_count += 1
@@ -349,8 +308,9 @@ class WebhookClient:
         ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
 
         host_data = {
-            "remote": "http://%s:%d" % (hostname, port),
+            "hostname": hostname,
             "port": port,
+            "remote": "http://%s:%d" % (hostname, port),
             "certfile": certfile,
             "keyfile": keyfile,
             "server_address": "%s://%s:%d" % ("https" if ssl else "http", host,  int(state.get("Blazeio.Other.proxy.port")))
@@ -388,13 +348,15 @@ def runner(args, web_runner = None):
 
     io.ioConf.INBOUND_CHUNK_SIZE, io.ioConf.OUTBOUND_CHUNK_SIZE = args.INBOUND_CHUNK_SIZE, args.OUTBOUND_CHUNK_SIZE
 
-    scope.web.attach(app := App(proxy_port = args.port, fresh = args.fresh))
+    scope.web.attach(app := App(proxy_port = args.port, fresh = args.__dict__.get("fresh")))
 
     conf = io.Dot_Dict()
 
     if args.ssl:
         app.transporter = app.tls_transporter
         conf.ssl = app.configure_ssl()
+    else:
+        conf.ssl = None
 
     state = app.json()
 
@@ -411,10 +373,11 @@ def runner(args, web_runner = None):
     scope.web.sock().setsockopt(io.SOL_SOCKET, io.SO_REUSEPORT, 1)
     scope.server_set.set()
 
-    if not web_runner: web_runner = scope.web.run
-    else: web_runner = scope.web.runner
-
-    return web_runner(**conf._dict)
+    if not web_runner:
+        return scope.web.run(**conf._dict)
+    
+    with scope.web:
+        scope.web.runner(**conf._dict)
 
 if __name__ == "__main__":
     from argparse import ArgumentParser

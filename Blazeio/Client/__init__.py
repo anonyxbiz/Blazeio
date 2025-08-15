@@ -375,9 +375,9 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3600, max_instances: int = 100):
-        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected")
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3600, max_instances: int = 100, should_ensure_connected: bool = True):
+        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
         async with instance.context:
@@ -442,9 +442,10 @@ class __SessionPool__:
                 await instance.context.wait()
         else:
             instance.session.protocol = None
-
-        if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
-            await app.ensure_connected(url, instance.session)
+        
+        if app.should_ensure_connected:
+            if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
+                await app.ensure_connected(url, instance.session)
 
         return instance.session
 
