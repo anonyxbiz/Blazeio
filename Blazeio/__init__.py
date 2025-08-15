@@ -313,14 +313,16 @@ class Httpkeepalive:
         if app.web.__main_handler__ is not NotImplemented:
             app.__default_handler__ = app.web.__main_handler__
 
+        app.keepalive_headers = (
+            b"Connection: Keep-Alive\r\n"
+            b"Keep-Alive: timeout=%d, max=%d\r\n" % (app.timeout, app._max)
+        )
+
     def get_handler(app):
         return app.__default_handler__ or app.web.__default_handler__
 
     def prepare_keepalive(app, r):
-        r += (
-            b"Connection: Keep-Alive\r\n"
-            b"Keep-Alive: timeout=%d, max=%d\r\n" % (app.timeout, app._max)
-        )
+        r += app.keepalive_headers
 
     async def __main_handler__(app, r):
         while True:
