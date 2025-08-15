@@ -53,6 +53,9 @@ class __ioConf__:
     def __init__(app, **kwargs):
         app.add(shutdown_callbacks = [])
         app.add(default_http_server_config = {
+            "__http_request_heading_start__": b"HTTP/1.1",
+            "__http_request_heading_start_lower__": b"http/1.1",
+            "__http_request_methods__": (b"GET", b"HEAD", b"POST", b"PUT", b"DELETE", b"CONNECT", b"OPTIONS", b"TRACE", b"PATCH"),
             "__http_request_heading_end_seperator__": b"\r\n\r\n",
             "__http_request_heading_end_seperator_len__": 4,
             "__http_request_max_buff_size__": 102400,
@@ -60,6 +63,7 @@ class __ioConf__:
             "__http_request_initial_separatir__": b' ',
             "__http_request_auto_header_parsing__": True,
             "funcname_normalizers": {
+                "__dot__": ".",
                 "_": "/"
             }
         })

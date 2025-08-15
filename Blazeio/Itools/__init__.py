@@ -19,12 +19,12 @@ class DotDict(Dot_Dict_Base):
         dictionary = dictionary or kw or {}
         super().__init__(**dictionary)
 
-    def token_urlsafe(app, *a, **kw):
-        while (token := token_urlsafe(*a, **kw)) in app: ...
+    def token_urlsafe(app, _len: int, *a, **kw):
+        while (token := token_urlsafe(_len, *a, **kw)[:_len]) in app: ...
         return token
 
-    async def atoken_urlsafe(app, *a, **kw):
-        while (token := token_urlsafe(*a, **kw)) in app:
+    async def atoken_urlsafe(app, _len: int, *a, **kw):
+        while (token := token_urlsafe(_len, *a, **kw)[:_len]) in app:
             await sleep(0)
         return token
 

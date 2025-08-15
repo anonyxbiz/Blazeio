@@ -106,6 +106,9 @@ class Abort(BlazeioException):
 
         return Deliver.text(app.r, memoryview(message), status, headers or {})
 
+class NotFoundErr(Abort):
+    __slots__ = ()
+
 class Eof(BlazeioException):
     __slots__ = ()
     def __init__(app, *args): pass

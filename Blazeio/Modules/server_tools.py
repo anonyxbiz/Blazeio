@@ -3,15 +3,15 @@ from .request import *
 from .streaming import *
 
 class Simpleserve:
-    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status')
+    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers')
     compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
     
-    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, **kwargs):
+    headers_demux = ddict(content_type = "Content-Type", content_length = "Content-Length", content_disposition = "Content-Disposition", last_modified_str = "Last-Modified", etag = "Etag")
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), **kwargs):
         if r and file:
-            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status = r, file, CHUNK_SIZE, dict(headers), cache_control, status
+            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers
+            if not path.exists(app.file): raise NotFoundErr("Not Found", 404)
 
-            if not path.exists(app.file): raise Abort("Not Found", 404)
-    
     def initialize(app, *args, **kwargs):
         if args or kwargs: app.__init__(*args, **kwargs)
 
@@ -53,12 +53,9 @@ class Simpleserve:
             app.content_type = "application/octet-stream"
             app.content_disposition = 'attachment; filename="%s"' % app.filename
 
-        app.headers.update({
-            "Content-Type": app.content_type,
-            "Content-Disposition": app.content_disposition,
-            "Last-Modified": app.last_modified_str,
-            "Etag": app.etag
-        })
+        for i in app.headers_demux:
+            if i not in app.exclude_headers and i in app.__slots__:
+                app.headers[app.headers_demux[i]] = getattr(app, i)
 
         if app.cache_control:
             app.headers["Cache-control"] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
@@ -73,7 +70,10 @@ class Simpleserve:
             app.status = 206
         else:
             app.start, app.end, app.range_ = 0, app.file_size, range_
-            app.headers["Content-Length"] = str(app.file_size)
+
+            if not app.headers_demux.content_length in app.exclude_headers:
+                app.headers[app.headers_demux.content_length] = str(app.file_size)
+
             app.status = 200
 
     @classmethod
@@ -102,6 +102,16 @@ class Simpleserve:
                 if app.start >= app.end: break
                 app.start += len(chunk)
                 f.seek(app.start)
+    
+    async def __aenter__(app):
+        await app.prepare_metadata()
+        return app
+
+    async def __aexit__(app, ext_t, ext_v, tb):
+        if ext_v: raise ext_v
+
+    async def __aiter__(app):
+        async for chunk in app.pull(): yield chunk
 
 if __name__ == "__main__":
     pass

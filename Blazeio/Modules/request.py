@@ -221,7 +221,15 @@ class Request(Depreciated):
 
     @classmethod
     def params(app, r = None, *args):
-        return ddict(app.get_params_sync(r or Context._r()))
+        if not r: r = Context._r()
+
+        if isinstance(r.__miscellaneous__, ddict) and (params := r.__miscellaneous__.get("params", None)) is not None: return params
+
+        params = ddict(app.get_params_sync(r))
+        if not r.__miscellaneous__:
+            r.__miscellaneous__ = ddict(params=params)
+
+        return params
 
     @classmethod
     async def set_method(app, r, server, chunk):
@@ -254,6 +262,12 @@ class Request(Depreciated):
                     r.pull = r.handle_raw
 
         return r
+    
+    @classmethod
+    def buff_limit_reached(app, server, __buff__, _raise = True):
+        if len(__buff__) >= server.__server_config__["__http_request_max_buff_size__"]:
+            if _raise: raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
+            else: return True
 
     @classmethod
     async def prepare_http_request(app, r, server=None):
@@ -272,8 +286,7 @@ class Request(Depreciated):
 
                 break
 
-            elif len(__buff__) >= server.__server_config__["__http_request_max_buff_size__"]:
-                raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
+            elif app.buff_limit_reached(server, __buff__): ...
         
         if not r.method:
             raise Eof("Request has no headers")

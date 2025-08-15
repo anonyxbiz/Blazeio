@@ -328,11 +328,13 @@ class Httpkeepalive:
                 exc = None
                 app.prepare_keepalive(r)
                 await app.get_handler()(r)
+                if r.headers: await r.eof()
 
-                if r.headers:
-                    await r.eof()
-            except Abort as e:
-                await e.text(r)
+            except (Abort, Eof, Err, ServerGotInTrouble) as e:
+                if isinstance(e, Abort):
+                    await e.text(r)
+                else:
+                    if r.headers: await r.eof()
             except Exception as e:
                 exc = e
             finally:
