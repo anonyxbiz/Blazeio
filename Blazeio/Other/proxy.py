@@ -18,7 +18,7 @@ class Pathops:
 
 scope.HOME = Pathops().parent
 
-scope.getSession = io.createSessionPool(1000, 100)
+scope.getSession = io.createSessionPool(1000, 0)
 scope.Session = scope.getSession.Session
 scope.getSession.pool.pool.should_ensure_connected = False
 
@@ -26,7 +26,7 @@ class Sslproxy:
     __slots__ = ()
     ssl_configs = {"certfile": "proxytest.cert", "keyfile": "proxytest.pem"}
     cert_dir = io.path.join(scope.HOME, "cert_dir")
-    
+
     makedirs(cert_dir, exist_ok=True)
 
     ssl_contexts = {}
