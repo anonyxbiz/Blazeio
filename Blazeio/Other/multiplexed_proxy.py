@@ -359,6 +359,9 @@ add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k
 available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 def runner(args, web_runner = None):
+    with io.Ehandler():
+        io.set_event_loop_policy(DefaultEventLoopPolicy())
+
     scope.web = io.App(args.host, args.port, __timeout__ = float((60**2) * 24))
 
     io.ioConf.INBOUND_CHUNK_SIZE, io.ioConf.OUTBOUND_CHUNK_SIZE = args.INBOUND_CHUNK_SIZE, args.OUTBOUND_CHUNK_SIZE
