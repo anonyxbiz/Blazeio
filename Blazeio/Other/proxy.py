@@ -81,6 +81,11 @@ class Sslproxy:
 class Transporters:
     __slots__ = ()
     def __init__(app): ...
+    
+    def pop_keepalive_headers(app, headers, to_pop = ("connection", "keep-alive")):
+        for i in to_pop:
+            if i in headers:
+                headers.pop(i)
 
     async def puller(app, r, resp):
         async for chunk in r.pull():
@@ -88,6 +93,7 @@ class Transporters:
         await resp.eof()
 
     def prepare(app, r, headers, *args, **kwargs):
+        app.pop_keepalive_headers(headers)
         headers = {key.capitalize(): val for key, val in headers.items()}
 
         headers.update({"Blazeio.other.proxy.protocol.telemetry.%s" % key: val for key, val in r.store.telemetry.items()})
@@ -137,7 +143,6 @@ class Transporters:
             r.store.telemetry.ttfb = r.store.telemetry.ttfb()
 
             await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False, encode_event_stream = False)
-            
 
             r.store.buff, tls_record_size = bytearray(), scope.tls_record_size if resp.headers.get("content-type") != "text/event-stream" else 0
 
@@ -271,7 +276,7 @@ class App(Sslproxy, Transporters):
         host = r.headers.get("Host", "")
         if (idx := host.rfind(":")) != -1:
             host = host[:idx]
-
+        r.headers["Blazeio_host"] = host
         r.store.telemetry.host_derivation = r.store.telemetry.host_derivation()
 
         if app.is_from_home(r, host):
