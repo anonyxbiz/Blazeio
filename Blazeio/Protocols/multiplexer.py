@@ -486,11 +486,10 @@ class BlazeioClientProtocol(BlazeioMuxProtocol(io.BlazeioClientProtocol)):
     __stream_closed_exception__ = io.ServerDisconnected
 
     def __getattr__(app, name):
-        return getattr(app.multiplexer, name, None)
+        return getattr(app.multiplexer, name)
 
     def create_stream(app, _id: (None, bytes) = None):
         return app.multiplexer.enter_stream(_id, Blazeio_Stream_Client)
-        return
 
     def close(app):
         app.transport.close()
