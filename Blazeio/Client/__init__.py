@@ -391,7 +391,7 @@ class __SessionPool__:
             instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
             return
 
-        app.sessions.get(key).remove(instance)
+        app.sessions.get(instance.key).remove(instance)
         instance.available.clear()
         instance.session.transport.close()
 
