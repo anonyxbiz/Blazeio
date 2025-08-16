@@ -129,7 +129,7 @@ class Transporters:
             r.store.telemetry.payload_write = io.perf_timing()
 
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
-            
+
             r.store.telemetry.payload_write()
 
             if r.method not in r.non_bodied_methods:
