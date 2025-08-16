@@ -360,7 +360,7 @@ available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 def runner(args, web_runner = None):
     with io.Ehandler():
-        io.set_event_loop_policy(DefaultEventLoopPolicy())
+        io.set_event_loop_policy(io.DefaultEventLoopPolicy())
 
     scope.web = io.App(args.host, args.port, __timeout__ = float((60**2) * 24))
 
