@@ -102,7 +102,9 @@ class ExtraToolset:
     def __iadd__(app, data: (bytes, bytearray)):
         if not app.__prepared_headers__:
             app.__prepared_headers__ = bytearray(b"")
-        return app.__prepared_headers__.extend(data)
+        try:
+            return app.__prepared_headers__.extend(data)
+        except: ...
 
     def __getattr__(app, *_args):
         def method(*args, **kwargs):

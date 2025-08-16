@@ -250,16 +250,17 @@ class Request(Depreciated):
                     r.__miscellaneous__.append(chunk)
 
         if r.headers:
-            if (content_length := r.headers.get("Content-length")):
-                r.content_length = int(content_length)
-                r.pull = r.handle_raw
-            elif (transfer_encoding := r.headers.get("Transfer-encoding")):
-                r.transfer_encoding = transfer_encoding
-                r.pull = r.handle_chunked
-            else:
-                r.content_length = 0
-                if not hasattr(r, "pull"):
+            if not r.pull:
+                if (content_length := r.headers.get("Content-length")):
+                    r.content_length = int(content_length)
                     r.pull = r.handle_raw
+                elif (transfer_encoding := r.headers.get("Transfer-encoding")):
+                    r.transfer_encoding = transfer_encoding
+                    r.pull = r.handle_chunked
+                else:
+                    r.content_length = 0
+                    if not hasattr(r, "pull"):
+                        r.pull = r.handle_raw
 
         return r
     

@@ -23,7 +23,7 @@ from os import stat, kill, getpid, path, environ, name as os_name, getcwd
 from os import path as os_path
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
-from threading import Thread, Lock as T_lock, Event as Tevent
+from threading import Thread, Lock as T_lock, Event as Tevent, main_thread
 from html import escape
 
 from traceback import extract_tb, format_exc
@@ -48,6 +48,35 @@ except:
 debug_mode = environ.get("BlazeioDev", None)
 
 main_process = psutilProcess(pid := getpid())
+
+class __Scope__:
+    __slots__ = ()
+    def __init__(app):
+        ...
+
+    # Make keys unique to avoid overriding main_thread scope
+    def mux(app, key):
+        return "\x00%s\x00" % key
+
+    def __setattr__(app, key, value):
+        return setattr(main_thread(), app.mux(key), value)
+
+    def __setitem__(app, *args):
+        return app.__setattr__(*args)
+
+    def __getattr__(app, key, *args):
+        return getattr(main_thread(), app.mux(key), *args)
+
+    def __getitem__(app, *args):
+        return app.__getattr__(*args)
+
+    def __contains__(app, key):
+        return hasattr(main_thread(), app.mux(key))
+
+    def get(app, key, default = None):
+        return app.__getattr__(key, default)
+
+Scope = __Scope__()
 
 class __ioConf__:
     def __init__(app, **kwargs):
@@ -480,7 +509,9 @@ class __ReMonitor__:
             app.callbacks.remove(cb)
 
     async def wait_stopped(app):
-        await wrap_future(run_coroutine_threadsafe(app._async_stopped_event.wait_clear(), app._async_stopped_event.loop))
+        try:
+            await wrap_future(run_coroutine_threadsafe(app._async_stopped_event.wait_clear(), app._async_stopped_event.loop))
+        except CancelledError: ...
 
     async def __monitor_loop__(app):
         try:

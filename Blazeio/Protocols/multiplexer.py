@@ -361,6 +361,12 @@ class Stream:
             if not app.__stream_closed__:
                 await app.__evt__.wait_clear()
 
+    def __await__(app):
+        app.check_busy_stream()
+        yield from app.ensure_reading().__await__()
+        __stream__ = app.choose_stream()
+        return __stream__.popleft() if __stream__ else None
+
     async def __pull__(app):
         app.check_busy_stream()
         while True:
@@ -392,6 +398,7 @@ class Stream:
             raise app.protocol.protocol.__stream_closed_exception__()
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
+        if not data: return
         if not app.can_write(): raise app.protocol.protocol.__stream_closed_exception__()
 
         if not app._used: app._used = True
@@ -436,27 +443,13 @@ class Stream:
         if not app.__stream_closed__:
             app.protocol.protocol.stream_closed(app)
 
-class Stream_Server(Stream, io.BlazeioPayloadUtils, io.ExtraToolset):
+class Blazeio_Stream_Server(Stream, io.BlazeioPayloadUtils, io.ExtraToolset):
     def __init__(app, *args):
         Stream.__init__(app, *args)
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.__is_prepared__ = False
-        app.__status__ = 0
-        app.content_length = None
-        app.transfer_encoding = None
-        app.current_length = 0
-        app.__cookie__ = None
-        app.__miscellaneous__ = None
-        app.store = None
-        app.__timeout__ = None
-        app.__prepared_headers__ = None
-        app.cancel_on_disconnect = True
+        io.ServerProtocolEssentials.defaults(app)
         app.request, app.writer = app.__pull__, app.__writer__
 
-class Stream_Client(Stream,):
+class Blazeio_Stream_Client(Stream,):
     def __init__(app, *args):
         Stream.__init__(app, *args)
         app.__timeout__ = None
@@ -496,18 +489,32 @@ class BlazeioClientProtocol(BlazeioMuxProtocol(io.BlazeioClientProtocol)):
         return getattr(app.multiplexer, name)
 
     def create_stream(app, _id: (None, bytes) = None):
-        return app.multiplexer.enter_stream(_id, Stream_Client)
+        return app.multiplexer.enter_stream(_id, Blazeio_Stream_Client)
         return
 
     def close(app):
         app.transport.close()
+
+class BlazeioServerProtocol_Config:
+    __slots__ = ("srv", "__default_main_handler__",)
+    def __init__(app, srv):
+        app.srv = srv
+        app.srv.add_on_start_callback(app.configure)
+
+    def configure(app):
+        app.__default_main_handler__ = app.srv.__main_handler__
+        app.srv.__main_handler__ = app.__main_handler__
+
+    def __main_handler__(app, r):
+        r.pull = r.__pull__
+        return app.__default_main_handler__(r)
 
 class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
     __slots__ = ("multiplexer", "transport")
     __stream_closed_exception__ = io.ClientDisconnected
 
     def create_stream(app, _id):
-        app.multiplexer.__tasks__.append(task := io.loop.create_task(app.__transporter__(r := app.multiplexer.enter_stream(_id, Stream_Server))))
+        app.multiplexer.__tasks__.append(task := io.loop.create_task(app.__transporter__(r := app.multiplexer.enter_stream(_id, Blazeio_Stream_Server))))
         task.__BlazeioProtocol__ = r
         return r
 
@@ -521,6 +528,10 @@ class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
         finally:
             await r.__eof__()
             await r.__close__()
+    
+    @classmethod
+    def configure_server(app, web):
+        return BlazeioServerProtocol_Config(web)
 
 Protocols = io.Dot_Dict(server = BlazeioServerProtocol, client = BlazeioClientProtocol)
 

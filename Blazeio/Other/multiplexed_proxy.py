@@ -78,7 +78,6 @@ class Transporters:
     __slots__ = ()
     __conn__ = io.ioCondition(evloop = io.loop)
     __serialize__ = io.ioCondition(evloop = io.loop)
-    exclude_headers = ("Transfer-encoding",)
 
     def __init__(app): ...
 
@@ -87,51 +86,61 @@ class Transporters:
             async for chunk in r.pull():
                 await resp.writer(chunk)
 
-    def prepare(app, r, headers, *args, **kwargs):
-        headers = {key.capitalize(): val for key, val in headers.items()}
-
-        headers.update({"Blazeio.other.proxy.protocol.telemetry.%s" % key: val for key, val in r.store.telemetry._dict.items()})
-
-        if "Server" in headers:
-            headers["Blazeio.other.proxy.protocol.remote.server"] = headers.pop("Server")
-
-        return r.prepare(headers, *args, **kwargs)
-
-    async def _conn(app, srv):
-        async with app.__conn__:
-            if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
-                srv.conn = await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1)
-
-            return srv.conn.create_stream()
-
     async def conn(app, srv):
         try:
-            return await app._conn(srv)
+            async with app.__conn__:
+                if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
+                    srv.conn = await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1)
+                return srv.conn.create_stream()
         except OSError:
             srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
 
     async def no_tls_transporter(app, r, srv: dict):
-        r.store.telemetry.ttfb = lambda start = io.perf_counter(): (io.perf_counter() - start)
+        r.store.telemetry.ttc = io.perf_timing()
+        async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
+            r.store.telemetry.ttc()
+            r.store.telemetry.ttfb = io.perf_timing()
 
-        async with io.Session(srv.remote + r.tail, r.method, {i: r.headers[i] for i in r.headers if i not in app.exclude_headers}, decode_resp = False, use_protocol = await app.conn(srv)) as resp:
-            r.store.telemetry.ttc = r.store.telemetry.ttfb()
+            r.store.telemetry.payload_write = io.perf_timing()
+
+            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
+            
+            r.store.telemetry.payload_write()
 
             if r.method not in r.non_bodied_methods:
                 r.store.task = io.create_task(app.puller(r, resp))
             else:
                 async with resp.protocol: ...
 
-            if not resp.is_prepared(): await resp.prepare_http()
-
-            r.store.telemetry.ttfb = r.store.telemetry.ttfb()
-
-            await app.prepare(r, resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False, encode_event_stream = False)
+            r.store.telemetry.ttfb()
 
             async for chunk in resp.__pull__():
-                await r.write(chunk)
+                await r.writer(chunk)
 
-            await r.eof()
+            if r.store.task: await r.store.task
+
+    async def tls_transporter(app, r, srv: dict):
+        r.store.telemetry.ttc = io.perf_timing()
+        async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
+            r.store.telemetry.ttc()
+            r.store.telemetry.ttfb = io.perf_timing()
+
+            r.store.telemetry.payload_write = io.perf_timing()
+
+            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
+            
+            r.store.telemetry.payload_write()
+
+            if r.method not in r.non_bodied_methods:
+                r.store.task = io.create_task(app.puller(r, resp))
+            else:
+                async with resp.protocol: ...
+
+            r.store.telemetry.ttfb()
+
+            async for chunk in resp.__pull__():
+                await r.writer(chunk)
 
             if r.store.task: await r.store.task
 
@@ -241,27 +250,33 @@ class App(Sslproxy, Transporters):
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
 
-        r.store.telemetry.prepare_http_request = lambda start = io.perf_counter(): (io.perf_counter() - start)
-
+        r.store.telemetry.prepare_http_request = io.perf_timing()
         await io.Request.prepare_http_request(r)
+        r.store.telemetry.prepare_http_request()
 
-        r.store.telemetry.prepare_http_request = r.store.telemetry.prepare_http_request()
-        r.store.telemetry.host_derivation = lambda start = io.perf_counter(): (io.perf_counter() - start)
+        r.store.telemetry.host_derivation = io.perf_timing()
 
         host = r.headers.get("Host", "")
         if (idx := host.rfind(":")) != -1:
             host = host[:idx]
 
-        r.store.telemetry.host_derivation = r.store.telemetry.host_derivation()
+        r.store.telemetry.host_derivation()
+
+        r.store.telemetry.home_route_derivation = io.perf_timing()
 
         if app.is_from_home(r, host):
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
-
             return await route(r)
+        
+        r.store.telemetry.home_route_derivation()
+
+        r.store.telemetry.srv_derivation = io.perf_timing()
 
         if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
+
+        r.store.telemetry.srv_derivation()
 
         try:
             app.protocols[r.identifier] = r
@@ -372,10 +387,12 @@ def runner(args, web_runner = None):
 
     scope.web.sock().setsockopt(io.SOL_SOCKET, io.SO_REUSEPORT, 1)
     scope.server_set.set()
+    
+    scope.web.with_keepalive()
 
     if not web_runner:
         return scope.web.run(**conf._dict)
-    
+
     with scope.web:
         scope.web.runner(**conf._dict)
 
