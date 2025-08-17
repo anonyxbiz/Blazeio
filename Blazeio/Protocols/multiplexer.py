@@ -250,7 +250,8 @@ class BlazeioMultiplexer:
     async def mux(app):
         app.clear_state()
         async for chunk in app.__pull__():
-            app._chunk_received(chunk)
+            try: app._chunk_received(chunk)
+            except ValueError: ...
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", )
