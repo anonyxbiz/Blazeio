@@ -5,7 +5,7 @@ from .streaming import *
 class Simpleserve:
     __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers')
     compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
-    
+
     headers_demux = ddict(content_type = "Content-Type", content_length = "Content-Length", content_disposition = "Content-Disposition", last_modified_str = "Last-Modified", etag = "Etag")
     def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), **kwargs):
         if r and file:

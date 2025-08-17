@@ -66,6 +66,7 @@ class BlazeioMultiplexer:
     )
     
     # b"\x00io_0\x01\x005\x01Hello"
+    _min_buff_size_ = 1024*100
 
     def __init__(app, protocol, _write_buffer_limits: tuple = (1048576, 256), evloop = None, encrypt_streams = False):
         app.protocol = protocol
@@ -86,6 +87,12 @@ class BlazeioMultiplexer:
         app.update_protocol_write_buffer_limits()
         app.create_task(app.mux())
         app.create_task(app.manage_callbacks())
+        app.check_buff()
+    
+    def check_buff(app):
+        if len(app.protocol.__buff__) < app._min_buff_size_:
+            app.protocol.__buff__ = bytearray(app._min_buff_size_)
+            app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
 
     def create_task(app, coro):
         app.__tasks__.append(task := app.loop.create_task(coro))
@@ -175,6 +182,7 @@ class BlazeioMultiplexer:
                     app.__stream_id_count__ += 1
 
         app.__streams__[_id] = (stream := instance(_id, app))
+
         return stream
 
     def metadata(app, _id: (bytes, bytearray), _len: int, __stream_opts: (bytes, bytearray, None) = None):
@@ -262,15 +270,12 @@ class BlazeioMultiplexer:
 
     async def batch_handle_callbacks(app, callbacks):
         for stream in callbacks:
-            try:
-                await stream.wfc()
-            except io.CancelledError:
-                ...
+            await stream.wfc()
 
     async def manage_callbacks(app):
         while True:
             await app.__stream_update.wait_clear()
-            if not (callbacks := [stream for stream_id in app.__streams__ if (stream := app.__streams__.get(stream_id)) and stream.__callbacks__]): continue
+            if not (callbacks := [stream for stream_id in app.__streams__ if (stream := app.__streams__.get(stream_id)) and stream.__callbacks__ and not stream.callback_manager]): continue
 
             (task := app.create_task(app.batch_handle_callbacks(callbacks))).add_done_callback(lambda task: app.__tasks__.remove(task))
 
@@ -300,7 +305,8 @@ class Stream:
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
         app.__busy_stream__.lock()
-        #app.callback_manager = io.loop.create_task(app.manage_callbacks())
+        
+        app.callback_manager = None # io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
         if ((chunk_size := int(len(app.protocol.protocol.__buff__)/5)) < app._chunk_size_base_*4) or (chunk_size > app._chunk_size_base_*7):
