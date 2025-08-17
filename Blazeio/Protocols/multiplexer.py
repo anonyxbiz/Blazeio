@@ -447,7 +447,7 @@ class Blazeio_Stream_Server(Stream, io.BlazeioPayloadUtils, io.ExtraToolset):
     def __init__(app, *args):
         Stream.__init__(app, *args)
         io.ServerProtocolEssentials.defaults(app)
-        app.request, app.writer = app.__pull__, app.__writer__
+        app.request, app.writer, app.pull = app.__pull__, app.__writer__, app.__pull__
 
 class Blazeio_Stream_Client(Stream,):
     def __init__(app, *args):
@@ -508,11 +508,6 @@ class BlazeioServerProtocol_Config:
 
     def configure(app):
         app.__default_main_handler__ = app.srv.__main_handler__
-        app.srv.__main_handler__ = app.__main_handler__
-
-    def __main_handler__(app, r):
-        r.pull = r.__pull__
-        return app.__default_main_handler__(r)
 
 class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
     __slots__ = ("multiplexer", "transport")
@@ -526,14 +521,13 @@ class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
     async def __transporter__(app, r):
         try:
             await app.on_client_connected(r)
-        except GeneratorExit:
-            pass
-        except StopIteration:
-            pass
+            await r.eof()
+        except GeneratorExit: ...
+        except StopIteration: ...
         finally:
             await r.__eof__()
             await r.__close__()
-    
+
     @classmethod
     def configure_server(app, web):
         return BlazeioServerProtocol_Config(web)

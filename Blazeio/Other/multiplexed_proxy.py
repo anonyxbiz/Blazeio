@@ -96,56 +96,21 @@ class Transporters:
             srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
 
-    async def no_tls_transporter(app, r, srv: dict):
-        r.store.telemetry.ttc = io.perf_timing()
+    async def transporter(app, r, srv: dict):
         async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            r.store.telemetry.ttc()
-            r.store.telemetry.ttfb = io.perf_timing()
-
-            r.store.telemetry.payload_write = io.perf_timing()
-
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
-            
-            r.store.telemetry.payload_write()
-
             if r.method not in r.non_bodied_methods:
                 r.store.task = io.create_task(app.puller(r, resp))
             else:
                 async with resp.protocol: ...
 
-            r.store.telemetry.ttfb()
-
             async for chunk in resp.__pull__():
-                await r.writer(chunk)
-
-            if r.store.task: await r.store.task
-
-    async def tls_transporter(app, r, srv: dict):
-        r.store.telemetry.ttc = io.perf_timing()
-        async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            r.store.telemetry.ttc()
-            r.store.telemetry.ttfb = io.perf_timing()
-
-            r.store.telemetry.payload_write = io.perf_timing()
-
-            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
-
-            r.store.telemetry.payload_write()
-
-            if r.method not in r.non_bodied_methods:
-                r.store.task = io.create_task(app.puller(r, resp))
-            else:
-                async with resp.protocol: ...
-
-            r.store.telemetry.ttfb()
-
-            async for chunk in resp.__pull__():
-                await r.writer(chunk)
+                if chunk: await r.writer(chunk)
 
             if r.store.task: await r.store.task
 
 class App(Sslproxy, Transporters):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "transporter", "track_metrics", "fresh")
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh")
 
     def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), fresh: bool = False):
         for key in (__locals__ := locals()):
@@ -157,8 +122,6 @@ class App(Sslproxy, Transporters):
 
         if app.log:
             io.loop.create_task(io.log.debug("blazeio_proxy_hosts: %s" % app.blazeio_proxy_hosts))
-
-        app.transporter = app.no_tls_transporter
 
         app.tasks.append(io.ioConf.loop.create_task(app.update_mem_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.protocol_manager()))
@@ -242,41 +205,23 @@ class App(Sslproxy, Transporters):
         return True
 
     async def __main_handler__(app, r):
-        # r.transport.set_write_buffer_limits(0)
-        r.store = io.Dot_Dict(task = None)
-        r.store.telemetry = io.Dot_Dict()
-
+        r.store = io.ddict(task = None)
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
-
-        r.store.telemetry.prepare_http_request = io.perf_timing()
         await io.Request.prepare_http_request(r)
-        r.store.telemetry.prepare_http_request()
-
-        r.store.telemetry.host_derivation = io.perf_timing()
 
         host = r.headers.get("Host", "")
         if (idx := host.rfind(":")) != -1:
             host = host[:idx]
 
-        r.store.telemetry.host_derivation()
-
-        r.store.telemetry.home_route_derivation = io.perf_timing()
-
         if app.is_from_home(r, host):
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
             return await route(r)
-        
-        r.store.telemetry.home_route_derivation()
-
-        r.store.telemetry.srv_derivation = io.perf_timing()
 
         if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
-
-        r.store.telemetry.srv_derivation()
 
         try:
             app.protocols[r.identifier] = r
@@ -368,7 +313,6 @@ def runner(args, web_runner = None):
     conf = io.Dot_Dict()
 
     if args.ssl:
-        app.transporter = app.tls_transporter
         conf.ssl = app.configure_ssl()
     else:
         conf.ssl = None
