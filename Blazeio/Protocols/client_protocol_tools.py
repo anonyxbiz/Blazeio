@@ -750,6 +750,33 @@ class Pulltools(Parsers, Decoders):
                         app.kwargs["headers"] = headers
     
                     await app.prepare()
+
+    async def adl(app):
+        if not app.is_prepared(): await app.prepare_http()
+        
+        while app.received_len < app.content_length:
+            async for chunk in app.pull():
+                yield chunk
+
+            if app.handler != app.handle_raw: break
+
+            if app.received_len < app.content_length:
+                Range = "bytes=%s-%s" % (str(app.received_len), str(app.content_length))
+
+                if (_args_len := len(app.args)) >= 3:
+                    headers = dict(app.args[2])
+                    headers["Range"] = Range
+    
+                    if _args_len > 3:
+                        app.args = (*app.args[:2], headers, *app.args[3:])
+                    else:
+                        app.args = (*app.args[:2], headers)
+
+                elif (headers := dict(app.kwargs.get("headers"))):
+                    headers["Range"] = Range
+                    app.kwargs["headers"] = headers
+
+                await app.prepare()
     
     async def save(app, *args, **kwargs):
         async for _ in app.__save__(*args, **kwargs): ...
