@@ -516,7 +516,13 @@ class BlazeioClientProtocol(BlazeioMuxProtocol(io.BlazeioClientProtocol)):
     __stream_closed_exception__ = io.ServerDisconnected
 
     def __getattr__(app, name):
-        return getattr(app.multiplexer, name)
+        try:
+            if hasattr(app, "multiplexer"):
+                return getattr(app.multiplexer, name)
+            else:
+                raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+        except RecursionError:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
     async def create_stream(app, _id: (None, bytes) = None):
         if not app.connection_made_evt.is_set():
