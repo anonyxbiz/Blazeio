@@ -1,6 +1,15 @@
 import Blazeio as io
 from socket import IPPROTO_TCP, TCP_NODELAY
 
+class BlazeioServerProtocol_Config:
+    __slots__ = ("srv", "__default_main_handler__",)
+    def __init__(app, srv):
+        app.srv = srv
+        app.srv.add_on_start_callback(app.configure)
+
+    def configure(app):
+        app.__default_main_handler__ = app.srv.__main_handler__
+
 class Ciphen:
     __slots__ = ("key",)
     def __init__(app, key: bytes):
@@ -45,7 +54,7 @@ class Utils:
         return view
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "__io_create_lock__", "encrypt_streams")
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update")
     _data_bounds_ = (
         b"\x00", # sof
         b"\x01", # eof
@@ -69,12 +78,14 @@ class BlazeioMultiplexer:
         app.__current_stream = None
         app.__buff = bytearray()
         app.__prepends__ = io.deque()
+        app.__stream_update = io.SharpEvent(evloop = app.loop)
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
-        app.__io_create_lock__ = io.T_lock()
+        app.__io_create_lock__ = io.ioCondition(evloop = app.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
         app.disable_nagle()
         app.update_protocol_write_buffer_limits()
         app.create_task(app.mux())
+        app.create_task(app.manage_callbacks())
 
     def create_task(app, coro):
         app.__tasks__.append(task := app.loop.create_task(coro))
@@ -152,21 +163,18 @@ class BlazeioMultiplexer:
             return bytes(remainder)
         return None
 
-    def stream_id_gen(app):
-        with app.__io_create_lock__:
-            _id = b"io_%X" % app.__stream_id_count__
-            app.__stream_id_count__ += 1
-            return _id
-
-    def enter_stream(app, _id: (None, bytes) = None, instance = None):
+    async def enter_stream(app, _id: (None, bytes) = None, instance = None):
         if not instance:
             instance = Stream
 
         if not _id:
-            _id = app.stream_id_gen()
+            async with app.__io_create_lock__:
+                while (_id := b"io_%X" % app.__stream_id_count__) in app.__streams__:
+                    app.__stream_id_count__ += 1
+                else:
+                    app.__stream_id_count__ += 1
 
         app.__streams__[_id] = (stream := instance(_id, app))
-
         return stream
 
     def metadata(app, _id: (bytes, bytearray), _len: int, __stream_opts: (bytes, bytearray, None) = None):
@@ -174,7 +182,6 @@ class BlazeioMultiplexer:
 
     def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
         __current_stream.received_size += len(chunk)
-
         if app.encrypt_streams:
             chunk = Ciphen(__current_stream.id).decrypt(chunk)
         __current_stream.__stream__.append(chunk)
@@ -186,11 +193,11 @@ class BlazeioMultiplexer:
                 return _
 
         return None
-    
+
     def _has_handshake(app):
         return app.__stream_opts == app._data_bounds_[6]
 
-    def _chunk_received(app, chunk: bytes):
+    async def _chunk_received(app, chunk: bytes):
         if app.__current_stream is NotImplemented:
             app.__buff.extend(chunk)
 
@@ -203,7 +210,7 @@ class BlazeioMultiplexer:
 
             if not (__current_stream := app.__streams__.get(app.__current_stream_id, None)):
                 if app._has_handshake():
-                    app.__current_stream = app.protocol.create_stream(app.__current_stream_id)
+                    app.__current_stream = await app.protocol.create_stream(app.__current_stream_id)
                 else:
                     app.__current_stream = None
             else:
@@ -229,6 +236,7 @@ class BlazeioMultiplexer:
 
             if app.__current_stream and app.__expected_size and not app.__current_stream.__stream_closed__:
                 app.__current_stream.add_callback(app.__current_stream.__send_ack__())
+                app.__stream_update.set()
 
             if app.__current_stream:
                 app.update_stream(app.__current_stream, chunk)
@@ -250,8 +258,21 @@ class BlazeioMultiplexer:
     async def mux(app):
         app.clear_state()
         async for chunk in app.__pull__():
-            try: app._chunk_received(chunk)
-            except ValueError: ...
+            await app._chunk_received(chunk)
+
+    async def batch_handle_callbacks(app, callbacks):
+        for stream in callbacks:
+            try:
+                await stream.wfc()
+            except io.CancelledError:
+                ...
+
+    async def manage_callbacks(app):
+        while True:
+            await app.__stream_update.wait_clear()
+            if not (callbacks := [stream for stream_id in app.__streams__ if (stream := app.__streams__.get(stream_id)) and stream.__callbacks__]): continue
+
+            (task := app.create_task(app.batch_handle_callbacks(callbacks))).add_done_callback(lambda task: app.__tasks__.remove(task))
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", )
@@ -279,7 +300,7 @@ class Stream:
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
         app.__busy_stream__.lock()
-        app.callback_manager = io.loop.create_task(app.manage_callbacks())
+        #app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
         if ((chunk_size := int(len(app.protocol.protocol.__buff__)/5)) < app._chunk_size_base_*4) or (chunk_size > app._chunk_size_base_*7):
@@ -318,8 +339,11 @@ class Stream:
             if app.__initial_handshake:
                 __stream_opts = __stream_opts or app.__initial_handshake
                 app.__initial_handshake = None
+            
+            if not isinstance(data, bytes):
+                data = bytes(data)
 
-            return app.transport.write(app.protocol.metadata(app.id, len(data), __stream_opts) + bytes(data))
+            return app.transport.write(app.protocol.metadata(app.id, len(data), __stream_opts) + data)
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
 
@@ -460,16 +484,21 @@ class Blazeio_Stream_Client(Stream,):
 def BlazeioMuxProtocol(base_class=object):
     class _BlazeioMuxProtocol(base_class):
         __slots__ = ()
+        def __initialize__(app):
+            app.connection_made_evt = io.SharpEvent(evloop = app.__evt__.loop)
+
         def connection_made(app, transport):
             transport.pause_reading()
             app.transport = transport
             app.multiplexer = BlazeioMultiplexer(app)
+            app.connection_made_evt.set()
 
         def stream_closed(app, stream):
             app.multiplexer.__streams__.pop(stream.id, None)
             stream.stream_closed()
 
-        def accept(app, *args): return app.create_stream(*args)
+        def accept(app, *args):
+            return app.create_stream(*args)
 
         def cancel(app):
             app.multiplexer.cancel()
@@ -483,39 +512,29 @@ def BlazeioMuxProtocol(base_class=object):
     return _BlazeioMuxProtocol
 
 class BlazeioClientProtocol(BlazeioMuxProtocol(io.BlazeioClientProtocol)):
-    __slots__ = ("multiplexer",)
+    __slots__ = ("multiplexer", "connection_made_evt")
     __stream_closed_exception__ = io.ServerDisconnected
 
     def __getattr__(app, name):
-        try:
-            if hasattr(app, "multiplexer"):
-                return getattr(app.multiplexer, name)
-            else:
-                raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
-        except RecursionError:
-            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
+        return getattr(app.multiplexer, name)
 
-    def create_stream(app, _id: (None, bytes) = None):
-        return app.multiplexer.enter_stream(_id, Blazeio_Stream_Client)
+    async def create_stream(app, _id: (None, bytes) = None):
+        if not app.connection_made_evt.is_set():
+            await app.connection_made_evt.wait()
+        if app.transport.is_closing():
+            raise app.__stream_closed_exception__
+
+        return await app.multiplexer.enter_stream(_id, Blazeio_Stream_Client)
 
     def close(app):
         app.transport.close()
 
-class BlazeioServerProtocol_Config:
-    __slots__ = ("srv", "__default_main_handler__",)
-    def __init__(app, srv):
-        app.srv = srv
-        app.srv.add_on_start_callback(app.configure)
-
-    def configure(app):
-        app.__default_main_handler__ = app.srv.__main_handler__
-
 class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
-    __slots__ = ("multiplexer", "transport")
+    __slots__ = ("multiplexer", "connection_made_evt")
     __stream_closed_exception__ = io.ClientDisconnected
 
-    def create_stream(app, _id):
-        app.multiplexer.__tasks__.append(task := io.loop.create_task(app.__transporter__(r := app.multiplexer.enter_stream(_id, Blazeio_Stream_Server))))
+    async def create_stream(app, _id):
+        app.multiplexer.__tasks__.append(task := io.loop.create_task(app.__transporter__(r := await app.multiplexer.enter_stream(_id, Blazeio_Stream_Server))))
         task.__BlazeioProtocol__ = r
         return r
 
@@ -535,5 +554,4 @@ class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
 
 Protocols = io.Dot_Dict(server = BlazeioServerProtocol, client = BlazeioClientProtocol)
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...

@@ -85,16 +85,25 @@ class Transporters:
         async with resp.protocol:
             async for chunk in r.pull():
                 await resp.writer(chunk)
-
-    async def conn(app, srv):
+    
+    def is_conn(app, srv):
+        if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()): return
+        return conn
+    
+    async def create_conn(app, srv):
         try:
-            async with app.__conn__:
-                if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()):
-                    srv.conn = await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1)
-                return srv.conn.create_stream()
+            return await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1)
         except OSError:
             srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
+
+    async def conn(app, srv):
+        if not (conn := app.is_conn(srv)):
+            async with app.__conn__:
+                if not (conn := app.is_conn(srv)):
+                    srv.conn = await app.create_conn(srv)
+
+        return await srv.conn.create_stream()
 
     async def transporter(app, r, srv: dict):
         async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:

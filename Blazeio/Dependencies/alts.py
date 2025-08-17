@@ -161,6 +161,8 @@ class ioCondition:
         if app.locked() or not app._lock_event.is_set():
             app.release()
 
+        if exc_value: raise exc_value
+
     async def __aenter__(app):
         await app.acquire()
 

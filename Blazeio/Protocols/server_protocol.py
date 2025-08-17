@@ -66,6 +66,7 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         app.__timeout__ = None
         app.__evt__ = SharpEvent(evloop = evloop)
         app.__overflow_evt__ = SharpEvent(evloop = evloop)
+        app.__initialize__()
 
     def connection_made(app, transport):
         transport.pause_reading()

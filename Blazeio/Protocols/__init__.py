@@ -52,3 +52,6 @@ class BlazeioProtocol:
     def __await__(app):
         yield from app.ensure_reading().__await__()
         return app.__stream__.popleft() if app.__stream__ else None
+
+    def __initialize__(app):
+        ...

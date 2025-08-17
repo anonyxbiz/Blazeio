@@ -407,7 +407,7 @@ ioConf.get_event_loop()
 class __log__:
     known_exceptions = ()
 
-    def __init__(app): pass
+    def __init__(app): ...
 
     def __getattr__(app, name):
         if name in logger.colors:

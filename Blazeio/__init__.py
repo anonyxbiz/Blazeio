@@ -331,10 +331,8 @@ class Httpkeepalive:
         while True:
             try:
                 exc = None
-                app.prepare_keepalive(r)
                 await app.get_handler()(r)
                 if r.headers: await r.eof()
-
             except (Abort, Eof, Err, ServerGotInTrouble) as e:
                 if isinstance(e, Abort):
                     await e.text(r)
@@ -350,24 +348,6 @@ class Httpkeepalive:
                 if r.transport.is_closing(): break
 
                 r.utils.clear_protocol(r)
-
-class Callbacks:
-    def __init__(app):
-        app.on_start_callbacks = []
-
-    def add_on_start_callback(app, fn, *args, **kwargs):
-        app.on_start_callbacks.append(cb := (fn, args, kwargs))
-        return cb
-
-    def rm_on_start_callback(app, cb):
-        if cb in app.on_start_callbacks:
-            app.on_start_callbacks.remove(cb)
-
-    async def on_start_callbacks_runner(app):
-        for cb in app.on_start_callbacks:
-            fn, args, kwargs = cb
-            app.rm_on_start_callback(cb)
-            await fn(*args, **kwargs) if iscoroutinefunction(fn) else fn(*args, **kwargs)
 
 class Server:
     def __init__(app):
@@ -450,7 +430,7 @@ class Server:
         return app.ServerConfig.server_protocol
 
     async def exit(app, e = None, exception_handled = False, terminate = NotImplemented):
-        await app.wait_started()
+        await app
         if e and isinstance(e, KeyboardInterrupt) and terminate is NotImplemented:
             terminate = True
 
@@ -485,9 +465,8 @@ class Server:
 
         shutdown_tasks.append(app.loop.create_task(plog.warning(":: %s" % "Shutting down gracefully.")))
 
-        app.server.close()
         app._server_closing.set()
-        await app.wait_closed.wait()
+        app.server.close()
 
         for callback in app.on_exit:
             async with Ehandler():
@@ -559,9 +538,45 @@ class Server:
     async def wait_started(app):
         return await app.is_server_running.wait()
 
-class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Serverctx, Callbacks):
-    def __init__(app, *args, **kwargs):
-        app.register_to_scope("Blazeio.App", app)
+class Callbacks:
+    def __init__(app):
+        app.on_start_callbacks = []
+
+    def add_on_start_callback(app, fn, *args, **kwargs):
+        app.on_start_callbacks.append(cb := (fn, args, kwargs))
+        return cb
+
+    def rm_on_start_callback(app, cb):
+        if cb in app.on_start_callbacks:
+            app.on_start_callbacks.remove(cb)
+
+    async def on_start_callbacks_runner(app):
+        for cb in app.on_start_callbacks:
+            fn, args, kwargs = cb
+            app.rm_on_start_callback(cb)
+            await fn(*args, **kwargs) if iscoroutinefunction(fn) else fn(*args, **kwargs)
+
+class Protocol_methods(Serverctx):
+    def __init__(app):
+        super().__init__()
+
+    def __getattr__(app, name):
+        if name == "route":
+            app.route = Add_Route(app)
+        elif name == "event_loop":
+            return app.loop
+        else:
+            return app.ServerConfig.__dict__.get(name)
+
+        return getattr(app, name)
+
+    def __await__(app):
+        yield from app.is_server_running.wait().__await__()
+        return app
+
+class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_methods):
+    def __init__(app, *args, name: str = "Blazeio_App", **kwargs):
+        app.register_to_scope(name, app)
         app.__server_config__ = kwargs.get("__server_config__") or dict(ioConf.default_http_server_config)
         app.loop = kwargs.get("evloop") or kwargs.get("loop") or ioConf.loop
         app.REQUEST_COUNT = 0
@@ -588,7 +603,7 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Serverctx,
 
         ReMonitor.add_server(app)
         Super(app).__init__()
-    
+
     def register_to_scope(app, key: str, instance: any):
         if Scope.get(key):
             if not isinstance(Scope.get(key), list):
@@ -597,16 +612,6 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Serverctx,
                 Scope[key].append(instance)
         else:
             Scope[key] = instance
-
-    def __getattr__(app, name):
-        if name == "route":
-            app.route = Add_Route(app)
-        elif name == "event_loop":
-            return app.loop
-        else:
-            return app.ServerConfig.__dict__.get(name)
-
-        return getattr(app, name)
 
     def normalize_funcname(app, funcname: str):
         for i, x in app.__server_config__["funcname_normalizers"].items():
