@@ -606,6 +606,7 @@ class Ehandler:
 
     def should_raise(app, exc_v):
         for ignore in app._raise:
+            if not ignore: return True
             if exc_v.__class__.__name__ == ignore.__name__: return True
 
     def __exit__(app, exc_t, exc_v, tb):

@@ -722,13 +722,14 @@ class Pulltools(Parsers, Decoders):
     async def json(app):
         return Dot_Dict(loads(await app.aread(True)))
 
-    async def save(app, filepath: str, mode: str = "wb"):
+    async def __save__(app, filepath: str, mode: str = "wb"):
         if not app.is_prepared(): await app.prepare_http()
 
         async with async_open(filepath, mode) as f:
             while app.received_len < app.content_length:
                 async for chunk in app.pull():
                     await f.write(bytes(chunk))
+                    yield 1
 
                 if app.handler != app.handle_raw: break
 
@@ -749,6 +750,12 @@ class Pulltools(Parsers, Decoders):
                         app.kwargs["headers"] = headers
     
                     await app.prepare()
+    
+    async def save(app, *args, **kwargs):
+        async for _ in app.__save__(*args, **kwargs): ...
+
+    async def asave(app, *args, **kwargs):
+        async for _ in app.__save__(*args, **kwargs): yield int((app.received_len / app.content_length) * 100)
 
     async def close(app, *args, **kwargs):
         return await app.__aexit__(*args, **kwargs)

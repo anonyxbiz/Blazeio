@@ -78,6 +78,34 @@ class __Scope__:
 
 Scope = __Scope__()
 
+class __Taskscope__:
+    __slots__ = ()
+    def __init__(app):
+        ...
+
+    def mux(app, key):
+        return "\x00%s\x00" % key
+
+    def __setattr__(app, key, value):
+        return setattr(current_task(), app.mux(key), value)
+
+    def __setitem__(app, *args):
+        return app.__setattr__(*args)
+
+    def __getattr__(app, key, *args):
+        return getattr(current_task(), app.mux(key), *args)
+
+    def __getitem__(app, *args):
+        return app.__getattr__(*args)
+
+    def __contains__(app, key):
+        return hasattr(current_task(), app.mux(key))
+
+    def get(app, key, default = None):
+        return app.__getattr__(key, default)
+
+Taskscope = __Taskscope__()
+
 class __ioConf__:
     def __init__(app, **kwargs):
         app.add(shutdown_callbacks = [])
