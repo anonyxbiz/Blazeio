@@ -66,7 +66,7 @@ class BlazeioMultiplexer:
     )
     
     # b"\x00io_0\x01\x005\x01Hello"
-    _min_buff_size_ = 1024*1024
+    _min_buff_size_ = 1024*100
 
     def __init__(app, protocol, _write_buffer_limits: tuple = (1048576, 256), evloop = None, encrypt_streams = False):
         app.protocol = protocol
@@ -88,7 +88,7 @@ class BlazeioMultiplexer:
         app.create_task(app.mux())
         app.create_task(app.manage_callbacks())
         app.check_buff()
-    
+
     def check_buff(app):
         if len(app.protocol.__buff__) < app._min_buff_size_:
             app.protocol.__buff__ = bytearray(app._min_buff_size_)
@@ -175,6 +175,9 @@ class BlazeioMultiplexer:
             instance = Stream
 
         if not _id:
+            if app.__stream_id_count__ >= 1000:
+                app.__stream_id_count__ = 0
+
             async with app.__io_create_lock__:
                 while (_id := b"io_%X" % app.__stream_id_count__) in app.__streams__:
                     app.__stream_id_count__ += 1
