@@ -66,7 +66,7 @@ class BlazeioMultiplexer:
     )
     
     # b"\x00io_0\x01\x005\x01Hello"
-    _min_buff_size_ = 1024*100
+    _min_buff_size_ = 1024*1024
 
     def __init__(app, protocol, _write_buffer_limits: tuple = (1048576, 256), evloop = None, encrypt_streams = False):
         app.protocol = protocol
