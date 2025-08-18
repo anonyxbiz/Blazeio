@@ -162,6 +162,7 @@ class ioCondition:
             app.release()
 
         if exc_value: raise exc_value
+        await sleep(0)
 
     async def __aenter__(app):
         await app.acquire()
