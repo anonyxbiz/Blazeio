@@ -270,8 +270,8 @@ class WebhookClient:
             return io.get_event_loop().run_in_executor(pool, lambda: subprocess_run(cmd, shell=True, check=True, capture_output=True))
 
     async def from_certbot(app, host):
-        certs = (await app.run_subprocess_sync("certbot certificates").stdout.decode().strip().split("Certificate Name: ")
-        
+        certs = (await app.run_subprocess_sync("certbot certificates")).stdout.decode().strip().split("Certificate Name: ")
+
         cert = None
         
         for i in certs:
