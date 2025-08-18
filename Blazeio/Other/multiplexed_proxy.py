@@ -122,11 +122,7 @@ class Transporters:
 
     async def tls_transporter(app, r, srv: dict):
         async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
-            if r.method not in r.non_bodied_methods:
-                r.store.task = io.create_task(app.puller(r, resp))
-            else:
-                async with resp.protocol: ...
+            r.store.task = io.create_task(app.puller(r, resp))
 
             async for chunk in resp.__pull__():
                 if chunk: await r.writer(chunk)
