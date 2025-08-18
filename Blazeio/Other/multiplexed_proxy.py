@@ -143,9 +143,9 @@ class App(Sslproxy, Transporters):
             io.loop.create_task(io.log.debug("blazeio_proxy_hosts: %s" % app.blazeio_proxy_hosts))
         
         if app.ssl:
-            app.handler = app.tls_transporter
+            app.handler = app.__tls_main_handler__
         else:
-            app.handler = app.plain_transporter
+            app.handler = app.__plain_main_handler__
 
         app.tasks.append(io.ioConf.loop.create_task(app.update_mem_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.protocol_manager()))
