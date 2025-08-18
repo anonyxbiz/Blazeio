@@ -87,7 +87,7 @@ class Transporters:
         async with resp.protocol:
             async for chunk in r.pull():
                 await resp.writer(chunk)
-    
+
     def is_conn(app, srv):
         if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()): return
         return conn
@@ -122,12 +122,13 @@ class Transporters:
 
     async def tls_transporter(app, r, srv: dict):
         async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            r.store.task = io.create_task(app.puller(r, resp))
-
+            task = io.create_task(app.puller(r, resp))
             async for chunk in resp.__pull__():
                 if chunk: await r.writer(chunk)
 
-            # if r.store.task: await r.store.task
+            if not task.done(): task.cancel()
+
+            await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh", "handler", "ssl")
@@ -256,7 +257,6 @@ class App(Sslproxy, Transporters):
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
     async def __tls_main_handler__(app, r):
-        r.store = io.ddict(task = None)
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
@@ -269,7 +269,7 @@ class App(Sslproxy, Transporters):
             return await route(r)
 
         if not (srv := app.hosts.get(sock.context.server_hostname)) or not (remote := srv.get("remote")):
-            await r
+            await io.Request.prepare_http_request(r)
             raise io.Abort("Server could not be found", 503)
 
         try:
