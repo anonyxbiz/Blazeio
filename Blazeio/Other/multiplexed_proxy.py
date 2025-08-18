@@ -89,8 +89,11 @@ class Transporters:
                 await resp.writer(chunk)
 
     async def tls_puller(app, r, resp):
-        async for chunk in r.pull():
-            await resp.writer(chunk)
+        try:
+            async for chunk in r.pull():
+                await resp.writer(chunk)
+        except io.CancelledError:
+            return
 
     def is_conn(app, srv):
         if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()): return
@@ -132,8 +135,7 @@ class Transporters:
                     if chunk: await r.writer(chunk)
 
                 if not task.done(): task.cancel()
-                try: await task
-                except io.CancelledError: ...
+                await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh", "handler", "ssl")
