@@ -130,8 +130,10 @@ class Transporters:
                 task = io.create_task(app.tls_puller(r, resp))
                 async for chunk in resp.__pull__():
                     if chunk: await r.writer(chunk)
+
                 if not task.done(): task.cancel()
-                await task
+                try: await task
+                except io.CancelledError: ...
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh", "handler", "ssl")
@@ -426,8 +428,9 @@ def runner(args, web_runner = None):
 
     scope.web.sock().setsockopt(io.SOL_SOCKET, io.SO_REUSEPORT, 1)
     scope.server_set.set()
-    
-    scope.web.with_keepalive()
+
+    if not args.ssl:
+        scope.web.with_keepalive()
 
     if not web_runner:
         return scope.web.run(**conf._dict)
