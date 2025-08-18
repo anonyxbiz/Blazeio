@@ -276,7 +276,7 @@ class App(Sslproxy, Transporters):
             return await route(r)
 
         if not (srv := app.hosts.get(sock.context.server_hostname)) or not (remote := srv.get("remote")):
-            await io.Request.prepare_http_request(r)
+            await r
             raise io.Abort("Server could not be found", 503)
 
         while True:
@@ -292,9 +292,11 @@ class App(Sslproxy, Transporters):
                 app.protocols.pop(r.identifier, None)
                 if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
-                if (exc or r.transport.is_closing()): break
+                if (exc or r.transport.is_closing()):
+                    if exc: raise exc
+                    break
 
-                # r.utils.clear_protocol(r)
+                r.utils.clear_protocol(r)
 
     def __main_handler__(app, r):
         return app.handler(r)
