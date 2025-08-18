@@ -107,7 +107,20 @@ class Transporters:
 
         return await srv.conn.create_stream()
 
-    async def transporter(app, r, srv: dict):
+    async def plain_transporter(app, r, srv: dict):
+        async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
+            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
+            if r.method not in r.non_bodied_methods:
+                r.store.task = io.create_task(app.puller(r, resp))
+            else:
+                async with resp.protocol: ...
+
+            async for chunk in resp.__pull__():
+                if chunk: await r.writer(chunk)
+
+            if r.store.task: await r.store.task
+
+    async def tls_transporter(app, r, srv: dict):
         async with io.Session(srv.remote, r.method, {}, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
             if r.method not in r.non_bodied_methods:
@@ -121,9 +134,8 @@ class Transporters:
             if r.store.task: await r.store.task
 
 class App(Sslproxy, Transporters):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh")
-
-    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), fresh: bool = False):
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh", "handler", "ssl")
+    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts_.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), fresh: bool = False, ssl: bool = False):
         for key in (__locals__ := locals()):
             if key not in app.__slots__: continue
             if getattr(app, key, NotImplemented) != NotImplemented: continue
@@ -133,6 +145,11 @@ class App(Sslproxy, Transporters):
 
         if app.log:
             io.loop.create_task(io.log.debug("blazeio_proxy_hosts: %s" % app.blazeio_proxy_hosts))
+        
+        if app.ssl:
+            app.handler = app.tls_transporter
+        else:
+            app.handler = app.plain_transporter
 
         app.tasks.append(io.ioConf.loop.create_task(app.update_mem_db()))
         app.tasks.append(io.ioConf.loop.create_task(app.protocol_manager()))
@@ -215,7 +232,7 @@ class App(Sslproxy, Transporters):
 
         return True
 
-    async def __main_handler__(app, r):
+    async def __plain_main_handler__(app, r):
         r.store = io.ddict(task = None)
         app.protocol_count += 1
         r.identifier = app.protocol_count
@@ -241,6 +258,35 @@ class App(Sslproxy, Transporters):
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+
+    async def __tls_main_handler__(app, r):
+        r.store = io.ddict(task = None)
+        app.protocol_count += 1
+        r.identifier = app.protocol_count
+        r.__perf_counter__ = io.perf_counter()
+        
+        sock = r.transport.get_extra_info("socket")
+
+        if app.is_from_home(r, sock.context.server_hostname):
+            await io.Request.prepare_http_request(r)
+            if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
+                raise io.Abort("Not Found", 404)
+            return await route(r)
+
+        if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
+            await r
+            raise io.Abort("Server could not be found", 503)
+
+        try:
+            app.protocols[r.identifier] = r
+            if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+            await app.tls_transporter(r, srv)
+        finally:
+            app.protocols.pop(r.identifier, None)
+            if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+
+    def __main_handler__(app, r):
+        return app.handler(r)
 
 class WebhookClient:
     __slots__ = ("conf", "availablity")
@@ -351,7 +397,7 @@ def runner(args, web_runner = None):
 
     io.ioConf.INBOUND_CHUNK_SIZE, io.ioConf.OUTBOUND_CHUNK_SIZE = args.INBOUND_CHUNK_SIZE, args.OUTBOUND_CHUNK_SIZE
 
-    scope.web.attach(app := App(proxy_port = args.port, fresh = args.__dict__.get("fresh")))
+    scope.web.attach(app := App(proxy_port = args.port, fresh = args.__dict__.get("fresh")), ssl = args.ssl)
 
     conf = io.Dot_Dict()
 
