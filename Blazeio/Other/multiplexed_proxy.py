@@ -281,8 +281,9 @@ class WebhookClient:
 
         if not cert: raise io.Err("cert for %s not found!" % host)
 
-        certfile = (certfile := cert.split("Certificate Path: ")[1])[:certfile.find(".pem")] + ".pem"
-        keyfile = (certfile := cert.split("Private Key Path: ")[1])[:certfile.find(".pem")] + ".pem"
+        certfile = (certfile := cert.split("Certificate Path: ")[0])[:certfile.find("\n")]
+        keyfile = (certfile := cert.split("Private Key Path: ")[0])[:certfile.find("\n")]
+
         certfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(certfile))
         keyfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(keyfile))
         
