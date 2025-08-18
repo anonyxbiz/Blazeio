@@ -559,17 +559,11 @@ class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
 
 class _Protocols:
     def __init__(app):
-        object.__setattr__(app, "loop_set", False)
         BlazeioMultiplexerConf.conf.server = BlazeioServerProtocol
         BlazeioMultiplexerConf.conf.client = BlazeioClientProtocol
 
     def __getattr__(app, key):
-        if not app.loop_set: app.set_loop()
         return BlazeioMultiplexerConf.conf.__getattr__(key)
-
-    def set_loop(app):
-        app.loop_set = True
-        # io.set_event_loop_policy(io.DefaultEventLoopPolicy())
 
     def __setattr__(app, key, value):
         return object.__setattr__(BlazeioMultiplexerConf.conf, key, value)

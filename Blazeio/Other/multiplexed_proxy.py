@@ -274,7 +274,7 @@ class WebhookClient:
             host = host[:idx]
 
         state = app.get_state()
-        ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
+        ssl = io.ssl_context if state.get("Blazeio.Other.multiplexed_proxy.ssl") else None
 
         host_data = {
             "hostname": hostname,
@@ -282,13 +282,13 @@ class WebhookClient:
             "remote": "http://%s:%d" % (hostname, port),
             "certfile": certfile,
             "keyfile": keyfile,
-            "server_address": "%s://%s:%d" % ("https" if ssl else "http", host,  int(state.get("Blazeio.Other.proxy.port")))
+            "server_address": "%s://%s:%d" % ("https" if ssl else "http", host,  int(state.get("Blazeio.Other.multiplexed_proxy.port")))
         }
 
         if not ow and state.get("hosts"):
             if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return host_data
 
-        async with io.Session.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
+        async with io.Session.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.multiplexed_proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
             if not ow: await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
         return host_data
@@ -329,8 +329,8 @@ def runner(args, web_runner = None):
     state = app.json()
 
     state.update({
-        "Blazeio.Other.proxy.port": args.port,
-        "Blazeio.Other.proxy.ssl": True if args.ssl else False,
+        "Blazeio.Other.multiplexed_proxy.port": args.port,
+        "Blazeio.Other.multiplexed_proxy.ssl": True if args.ssl else False,
         "server_name": scope.server_name,
         "server_address": "%s://127.0.0.1:%d" % ("https" if conf.ssl else "http", int(args.port)),
         **{str(key): str(val) for key,val in args.__dict__.items()}
@@ -358,7 +358,7 @@ if __name__ == "__main__":
     parser.add_argument("-INBOUND_CHUNK_SIZE", "--INBOUND_CHUNK_SIZE", type = int, default = 1024*4)
     parser.add_argument("-OUTBOUND_CHUNK_SIZE", "--OUTBOUND_CHUNK_SIZE", type = int, default = 1024*4)
     parser.add_argument("-host", "--host", default = "0.0.0.0")
-    
+
     for i in ("fresh",):
         parser.add_argument("-%s" % i, "--%s" % i, action = "store_true")
 
