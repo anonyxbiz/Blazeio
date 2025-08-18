@@ -175,11 +175,8 @@ class BlazeioMultiplexer:
             instance = Stream
 
         if not _id:
-            if app.__stream_id_count__ >= 1000:
-                app.__stream_id_count__ = 0
-
             async with app.__io_create_lock__:
-                while (_id := b"io_%X" % app.__stream_id_count__) in app.__streams__:
+                while (_id := b"io_%d" % app.__stream_id_count__) in app.__streams__:
                     app.__stream_id_count__ += 1
                 else:
                     app.__stream_id_count__ += 1
@@ -567,6 +564,21 @@ class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
     def configure_server(app, web):
         return BlazeioServerProtocol_Config(web)
 
-Protocols = io.Dot_Dict(server = BlazeioServerProtocol, client = BlazeioClientProtocol)
+class _Protocols:
+    def __init__(app):
+        app._server = BlazeioServerProtocol
+        app._client = BlazeioClientProtocol
+        app.loop_set = False
+
+    def __getattr__(app, name):
+        if not app.loop_set:
+            app.set_loop()
+        return getattr(app, "_%s" % name)
+
+    def set_loop(app):
+        app.loop_set = True
+        io.set_event_loop_policy(io.DefaultEventLoopPolicy())
+
+Protocols = _Protocols()
 
 if __name__ == "__main__": ...
