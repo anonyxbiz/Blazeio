@@ -280,11 +280,20 @@ class WebhookClient:
                 break
 
         if not cert: raise io.Err("cert for %s not found!" % host)
-        
+
         certfile = (certfile := cert.split("Certificate Path: ")[1])[:certfile.find(".pem")] + ".pem"
         keyfile = (certfile := cert.split("Private Key Path: ")[1])[:certfile.find(".pem")] + ".pem"
+        certfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(certfile))
+        keyfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(keyfile))
+        
+        if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
+            for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
+                async with io.async_open(parent, "rb") as f:
+                    content = await f.read()
+                async with io.async_open(new, "wb") as f:
+                    await f.write(content)
 
-        return (certfile, keyfile)
+        return (certfile_cp, keyfile_cp)
 
     async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, in_try: (int, bool) = False, **kw):
         if not in_try:
