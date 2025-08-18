@@ -294,7 +294,7 @@ class App(Sslproxy, Transporters):
 
                 if (exc or r.transport.is_closing()): break
 
-                r.utils.clear_protocol(r)
+                # r.utils.clear_protocol(r)
 
     def __main_handler__(app, r):
         return app.handler(r)
