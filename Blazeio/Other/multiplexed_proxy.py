@@ -331,7 +331,9 @@ class WebhookClient:
 
         try:
             state = app.get_state()
-            async with io.Session("%s://127.0.0.1:%d/discover" % ("https" if ssl else "http", int(state.get("Blazeio.Other.multiplexed_proxy.port"))), "get", headers = {"host": state.get("server_name"), "route": "/discover"}, ssl = io.ssl_context if state.get("Blazeio.Other.multiplexed_proxy.ssl") else None, add_host = False) as session:
+            
+            ssl = io.ssl_context if state.get("Blazeio.Other.multiplexed_proxy.ssl") else None
+            async with io.Session("%s://127.0.0.1:%d/discover" % ("https" if ssl else "http", int(state.get("Blazeio.Other.multiplexed_proxy.port"))), "get", headers = {"host": state.get("server_name"), "route": "/discover"}, ssl = ssl, add_host = False) as session:
                 app.availablity = await session.data()
 
         except (OSError, io.Errdetail):
