@@ -280,6 +280,8 @@ class WebhookClient:
                 break
 
         if not cert: raise io.Err("cert for %s not found!" % host)
+        
+        await io.plog.yellow(cert)
 
         certfile = (certfile := cert.split("Certificate Path: ")[0])[:certfile.find("\n")]
         keyfile = (certfile := cert.split("Private Key Path: ")[0])[:certfile.find("\n")]
