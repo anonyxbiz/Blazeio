@@ -260,18 +260,15 @@ class App(Sslproxy, Transporters):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
-        
-        sock = r.transport.get_extra_info("socket")
-        
-        host = sock.server_hostname
+        sock = r.transport.get_extra_info("ssl_object")
 
-        if app.is_from_home(r, host):
+        if app.is_from_home(r, sock.context.server_hostname):
             await io.Request.prepare_http_request(r)
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
             return await route(r)
 
-        if not (srv := app.hosts.get(host)) or not (remote := srv.get("remote")):
+        if not (srv := app.hosts.get(sock.context.server_hostname)) or not (remote := srv.get("remote")):
             await r
             raise io.Abort("Server could not be found", 503)
 
