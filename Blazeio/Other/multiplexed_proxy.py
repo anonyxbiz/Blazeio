@@ -270,25 +270,14 @@ class WebhookClient:
             return io.get_event_loop().run_in_executor(pool, lambda: subprocess_run(cmd, shell=True, check=True, capture_output=True))
 
     async def from_certbot(app, host):
-        certs = (await app.run_subprocess_sync("certbot certificates")).stdout.decode().strip().split("Certificate Name: ")
-
-        cert = None
+        certfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host
+        keyfile = "/etc/letsencrypt/live/%s/privkey.pem" % host
         
-        for i in certs:
-            if host in i:
-                cert = i
-                break
-
-        if not cert: raise io.Err("cert for %s not found!" % host)
-        
-        await io.plog.yellow(cert)
-
-        certfile = (certfile := cert.split("Certificate Path: ")[0])[:certfile.find("\n")]
-        keyfile = (certfile := cert.split("Private Key Path: ")[0])[:certfile.find("\n")]
+        if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
 
         certfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(certfile))
         keyfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(keyfile))
-        
+
         if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
             for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
                 async with io.async_open(parent, "rb") as f:
