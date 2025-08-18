@@ -54,7 +54,7 @@ class Utils:
         return view
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update")
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "transferred_data", "start_time", "analytics")
     _data_bounds_ = (
         b"\x00", # sof
         b"\x01", # eof
@@ -76,6 +76,8 @@ class BlazeioMultiplexer:
         app.__streams__ = {}
         app.__tasks__ = []
         app.__stream_id_count__ = 0
+        app.transferred_data = 0
+        app.start_time = io.perf_counter()
         app.__current_stream = None
         app.__buff = bytearray()
         app.__prepends__ = io.deque()
@@ -116,7 +118,12 @@ class BlazeioMultiplexer:
     def clear_state(app):
         app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream, app.__stream_opts = 0, NotImplemented, NotImplemented, NotImplemented, NotImplemented
 
+    def calc_analytics(app):
+        if (not app.transferred_data or not app.__stream_id_count__): return
+        app.analytics = {"transfer_rate(MB/sec)": ((app.transferred_data/1024**2)/(io.perf_counter() - app.start_time)), "sps(Streams_per_second)": (app.__stream_id_count__/(io.perf_counter() - app.start_time))}
+
     def state(app):
+        app.calc_analytics()
         return Utils.gen_state(app)
     
     def __prepend__(app, data):
@@ -266,6 +273,7 @@ class BlazeioMultiplexer:
     async def mux(app):
         app.clear_state()
         async for chunk in app.__pull__():
+            app.transferred_data += len(chunk)
             await app._chunk_received(chunk)
 
     async def batch_handle_callbacks(app, callbacks):
