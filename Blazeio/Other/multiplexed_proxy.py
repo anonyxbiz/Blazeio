@@ -3,6 +3,8 @@ from os import mkdir, access as os_access, R_OK as os_R_OK, W_OK as os_W_OK, X_O
 from pathlib import Path
 from ssl import TLSVersion
 from Blazeio.Protocols.multiplexer import Protocols
+from concurrent.futures import ThreadPoolExecutor
+from subprocess import PIPE, run as subprocess_run
 
 scope = io.Dot_Dict(
     tls_record_size = 256,
@@ -173,7 +175,7 @@ class App(Sslproxy, Transporters):
 
     async def _proxy_state(app, r):
         json = {}
-        
+
         for key in app.__slots__:
             val = getattr(app, key, None)
             
@@ -262,10 +264,31 @@ class WebhookClient:
                 except: state["hosts"] = {}
 
         return state 
+    
+    def run_subprocess_sync(app, cmd):
+        with ThreadPoolExecutor() as pool:
+            return io.get_event_loop().run_in_executor(pool, lambda: subprocess_run(cmd, shell=True, check=True, capture_output=True))
 
-    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, in_try: (int, bool) = False, **kw):
+    async def from_certbot(app, host):
+        certs = (await app.run_subprocess_sync("certbot certificates").stdout.decode().strip().split("Certificate Name: ")
+        
+        cert = None
+        
+        for i in certs:
+            if host in i:
+                cert = i
+                break
+
+        if not cert: raise io.Err("cert for %s not found!" % host)
+        
+        certfile = (certfile := cert.split("Certificate Path: ")[1])[:certfile.find(".pem")] + ".pem"
+        keyfile = (certfile := cert.split("Private Key Path: ")[1])[:certfile.find(".pem")] + ".pem"
+
+        return (certfile, keyfile)
+
+    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, in_try: (int, bool) = False, **kw):
         if not in_try:
-            try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, in_try = True, **kw)
+            try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, from_certbot, in_try = True, **kw)
             except RuntimeError: return
             except io.ServerDisconnected: return
             except Exception as e: return await io.traceback_logger(e)
@@ -275,6 +298,9 @@ class WebhookClient:
 
         state = app.get_state()
         ssl = io.ssl_context if state.get("Blazeio.Other.multiplexed_proxy.ssl") else None
+        
+        if from_certbot:
+            certfile, keyfile = await app.from_certbot(host)
 
         host_data = {
             "hostname": hostname,
