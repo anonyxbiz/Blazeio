@@ -272,13 +272,18 @@ class WebhookClient:
     async def from_certbot(app, host):
         certfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host
         keyfile = "/etc/letsencrypt/live/%s/privkey.pem" % host
-        
-        if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
+
+        if not io.path.exists(certfile) or not io.path.exists(keyfile):
+            proc = await app.run_subprocess_sync("sudo certbot certonly --standalone --domain %s" % host)
+
+            await io.plog.yellow(proc.stdout.decode(), proc.stderr.decode())
+
+            if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
 
         certfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(certfile))
         keyfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(keyfile))
 
-        if 1:#not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
+        if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
             for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
                 async with io.async_open(parent, "rb") as f:
                     content = await f.read()
