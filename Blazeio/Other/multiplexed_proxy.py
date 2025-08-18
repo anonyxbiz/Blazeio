@@ -127,7 +127,7 @@ class Transporters:
             async for chunk in resp.__pull__():
                 if chunk: await r.writer(chunk)
 
-            if r.store.task: await r.store.task
+            # if r.store.task: await r.store.task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh", "handler", "ssl")
@@ -273,6 +273,7 @@ class App(Sslproxy, Transporters):
             raise io.Abort("Server could not be found", 503)
 
         try:
+            r.pull = r.request
             app.protocols[r.identifier] = r
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
             await app.tls_transporter(r, srv)
