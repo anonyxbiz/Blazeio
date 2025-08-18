@@ -61,7 +61,7 @@ class Sslproxy:
 
             ssl_socket.context = ctx
             ssl_socket.context.server_hostname = server_name
-    
+
     def context(app):
         context = io.create_default_context(io.Purpose.CLIENT_AUTH)
         context.post_handshake_auth = False
@@ -262,8 +262,10 @@ class App(Sslproxy, Transporters):
         r.__perf_counter__ = io.perf_counter()
         
         sock = r.transport.get_extra_info("socket")
+        
+        host = sock.server_hostname
 
-        if app.is_from_home(r, sock.context.server_hostname):
+        if app.is_from_home(r, host):
             await io.Request.prepare_http_request(r)
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
