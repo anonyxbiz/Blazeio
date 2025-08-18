@@ -92,7 +92,7 @@ class Transporters:
         try:
             async for chunk in r.pull():
                 await resp.writer(chunk)
-        except io.CancelledError:
+        except:
             return
 
     def is_conn(app, srv):
@@ -134,7 +134,9 @@ class Transporters:
                 async for chunk in resp.__pull__():
                     if chunk: await r.writer(chunk)
 
-                if not task.done(): task.cancel()
+        if not task.done(): task.cancel()
+
+        # await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "fresh", "handler", "ssl")
@@ -275,7 +277,6 @@ class App(Sslproxy, Transporters):
             return await route(r)
 
         if not (srv := app.hosts.get(sock.context.server_hostname)) or not (remote := srv.get("remote")):
-            await r
             raise io.Abort("Server could not be found", 503)
 
         while True:
@@ -294,6 +295,8 @@ class App(Sslproxy, Transporters):
                 if (exc or r.transport.is_closing()):
                     if exc: raise exc
                     break
+
+                # break
 
                 r.utils.clear_protocol(r)
 

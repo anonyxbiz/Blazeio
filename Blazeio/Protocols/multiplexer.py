@@ -471,7 +471,7 @@ class Blazeio_Stream_Server(Stream, io.BlazeioPayloadUtils, io.ExtraToolset):
     def __init__(app, *args):
         Stream.__init__(app, *args)
         io.ServerProtocolEssentials.defaults(app)
-        app.request, app.writer, app.pull = app.__pull__, app.__writer__, app.__pull__
+        app.request, app.writer, app.pull = app.__pull__, app.__writer__, None
 
 class Blazeio_Stream_Client(Stream,):
     def __init__(app, *args):
