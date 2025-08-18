@@ -393,7 +393,7 @@ def runner(args, web_runner = None):
 
     io.ioConf.INBOUND_CHUNK_SIZE, io.ioConf.OUTBOUND_CHUNK_SIZE = args.INBOUND_CHUNK_SIZE, args.OUTBOUND_CHUNK_SIZE
 
-    scope.web.attach(app := App(proxy_port = args.port, fresh = args.__dict__.get("fresh")), ssl = args.ssl)
+    scope.web.attach(app := App(proxy_port = args.port, fresh = args.__dict__.get("fresh"), ssl = args.ssl))
 
     conf = io.Dot_Dict()
 
