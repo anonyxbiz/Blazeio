@@ -278,7 +278,7 @@ class WebhookClient:
         certfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(certfile))
         keyfile_cp = io.path.join(Sslproxy.cert_dir, io.path.basename(keyfile))
 
-        if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
+        if 1:#not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
             for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
                 async with io.async_open(parent, "rb") as f:
                     content = await f.read()
