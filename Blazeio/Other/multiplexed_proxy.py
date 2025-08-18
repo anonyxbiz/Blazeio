@@ -293,7 +293,7 @@ class App(Sslproxy, Transporters):
                 if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
                 if exc: break
-                await r.clear_protocol()
+                await r.utils.clear_protocol(r)
 
     def __main_handler__(app, r):
         return app.handler(r)
