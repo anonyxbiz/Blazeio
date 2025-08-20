@@ -10,7 +10,7 @@ __memory__ = {}
 class Gen:
     __slots__ = ()
     def __init__(app):
-        pass
+        ...
     
     @classmethod
     async def file(app, file_path: str, chunk_size: (bool, int) = None):
@@ -225,7 +225,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 normalized_headers["Content-length"] = str(len(content))
 
         if proxy: await app.proxy_config(stdheaders, proxy)
-        ssl = ssl_context if app.port == 443 else kwargs.get("ssl", None)
+        ssl = ssl_context if app.port == 443 else kwargs.pop("ssl", None)
 
         if app.proxy_port:
             ssl = ssl_context if app.proxy_port == 443 else None
@@ -238,9 +238,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if not app.protocol and not connect_only:
             transport, app.protocol = await app.loop.create_connection(
                 lambda: client_protocol(evloop=app.loop, **kwargs),
-                host=remote_host,
-                port=remote_port,
-                ssl=ssl,
+                host = remote_host,
+                port = remote_port,
+                ssl = ssl,
+                **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__}
             )
 
             sock = app.protocol.transport.get_extra_info("socket")
@@ -251,10 +252,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         elif not app.protocol and connect_only:
             transport, app.protocol = await app.loop.create_connection(
                 lambda: client_protocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in client_protocol.__slots__}),
-                host=remote_host,
-                port=remote_port,
-                ssl=ssl if not kwargs.get("ssl") else kwargs.get("ssl"),
-                **{a:b for a,b in kwargs.items() if a not in client_protocol.__slots__ and a not in app.__slots__ and a != "ssl"}
+                host = remote_host,
+                port = remote_port,
+                ssl = ssl,
+                **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__}
             )
 
             return app
@@ -265,11 +266,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if send_headers:
             await app.protocol.push(payload)
+        
+        app.configure_writer(normalized_headers)
 
-        if not app.default_writer:
-            if "Transfer-encoding" in normalized_headers: app.default_writer = app.write_chunked
-            else:
-                app.default_writer = app.protocol.push
         if proxy:
             await app.prepare_connect(method, stdheaders)
         
@@ -298,6 +297,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         app.has_sent_headers = True
 
         return app
+
+    def configure_writer(app, normalized_headers):
+        if not app.default_writer:
+            if "Transfer-encoding" in normalized_headers: app.default_writer = app.write_chunked
+            else:
+                app.default_writer = app.protocol.push
 
     async def proxy_config(app, headers, proxy):
         username, password = None, None

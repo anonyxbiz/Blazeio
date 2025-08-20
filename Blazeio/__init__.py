@@ -27,7 +27,7 @@ class Handler:
                 r.path
             )
         )
-    
+
     def __set_main_handler__(app, func: Callable):
         app.__main_handler__ = func
         return func

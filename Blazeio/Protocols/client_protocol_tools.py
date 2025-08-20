@@ -309,6 +309,18 @@ if not ioConf.gen_payload:
 
     ioConf.gen_payload = OtherUtils.gen_payload
 
+class Inchunked:
+    __slots__ = ("r")
+    def __init__(app, r):
+        app.r = r
+
+    async def __aenter__(app):
+        return app
+
+    async def __aexit__(app, *args):
+        await app.r.eof()
+        if args[1]: raise args[1]
+
 class Extractors:
     __slots__ = ()
     def __init__(app): ...
@@ -622,6 +634,9 @@ class Parsers:
 class Pushtools(Encoders):
     __slots__ = ()
     def __init__(app): ...
+
+    def inchunked(app):
+        return Inchunked(app)
 
     async def write_chunked(app, data: (tuple[bool, AsyncIterable[bytes | bytearray]])):
         if isinstance(data, (bytes, bytearray)):
