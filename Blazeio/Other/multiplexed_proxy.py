@@ -144,6 +144,7 @@ class Transporters:
             async with resp.protocol:
                 task = io.create_task(app.tls_puller(r, resp))
                 async for chunk in resp.__pull__():
+                    if resp.eof_received: task.cancel()
                     if chunk: await r.writer(chunk)
 
         if task:
@@ -151,8 +152,8 @@ class Transporters:
             await task
 
 class App(Sslproxy, Transporters):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__")
-    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), ssl: bool = False):
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive")
+    def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), ssl: bool = False, keepalive: bool = True):
         io.Super(app).__init__()
         for key in (__locals__ := locals()):
             if key not in app.__slots__: continue
@@ -286,7 +287,7 @@ class App(Sslproxy, Transporters):
                     if exc: raise exc
                     break
                 
-                # break
+                if not app.keepalive: break
 
                 r.utils.clear_protocol(r)
 
@@ -405,7 +406,7 @@ def runner(**kwargs):
     if (INBOUND_CHUNK_SIZE := args.get("INBOUND_CHUNK_SIZE")): io.ioConf.INBOUND_CHUNK_SIZE = INBOUND_CHUNK_SIZE
     if (OUTBOUND_CHUNK_SIZE := args.get("INBOUND_CHUNK_SIZE")): io.ioConf.OUTBOUND_CHUNK_SIZE = OUTBOUND_CHUNK_SIZE
 
-    scope.web.attach(app := App(proxy_port = args.port, ssl = args.ssl, log = args.get("log")))
+    scope.web.attach(app := App(proxy_port = args.port, ssl = args.ssl, log = args.get("log"), keepalive = args.get("keepalive")))
 
     conf = io.ddict()
 
@@ -450,7 +451,7 @@ if __name__ == "__main__":
     parser.add_argument("-OUTBOUND_CHUNK_SIZE", "--OUTBOUND_CHUNK_SIZE", type = int, default = 1024*4)
     parser.add_argument("-host", "--host", default = "0.0.0.0")
 
-    for i in ("ssl", "fresh", "web_runner"):
+    for i in ("ssl", "fresh", "web_runner", "keepalive"):
         parser.add_argument("-%s" % i, "--%s" % i, action = "store_true")
 
     runner(**parser.parse_args().__dict__)
