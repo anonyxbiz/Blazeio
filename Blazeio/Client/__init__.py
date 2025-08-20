@@ -117,8 +117,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if exc_type or exc_value or traceback:
                 await plog.b_red(app.__class__.__name__, "\nException occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\nexc_type: %s.\ntext: %s.\n" % (*extract_tb(traceback)[-1], str(exc_type), exc_value))
 
-        if isinstance(exc_value, BlazeioException):
-            raise exc_value
+        if exc_value and isinstance(exc_value, BlazeioException): raise exc_value
 
         if not isinstance(exc_value, CancelledError):
             if app.close_on_exit == False: return True
@@ -348,10 +347,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             _yielded = 1
             yield _yield
         except Exception as e:
-            exception = (type(e).__name__, str(e), e.__traceback__)
+            exception = (type(e).__name__, e, e.__traceback__)
         finally:
             await app.__aexit__(*exception)
-            if not _yielded: yield app
 
     @classmethod
     async def fetch(app,*args, **kwargs):
