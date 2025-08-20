@@ -69,12 +69,12 @@ class BlazeioMultiplexer:
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
         app.__io_create_lock__ = io.ioCondition(evloop = app.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
-        app.disable_nagle()
+        # app.disable_nagle()
         app.update_protocol_write_buffer_limits()
         app.check_buff()
         app.init_analytics()
         app.create_task(app.mux())
-    
+
     def init_analytics(app):
         if not app.perf_analytics: return
         app.analytics = io.ddict(enter_stream = io.ddict(total_enter_stream_durations = 0.0, streams = 0), transfer_rate = io.ddict(bytes_transferred = 0.0), start_time = io.perf_counter())
@@ -314,7 +314,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        app.__busy_stream__.lock()
+        # app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
