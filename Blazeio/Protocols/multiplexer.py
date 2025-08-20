@@ -87,6 +87,7 @@ class BlazeioMultiplexer:
         return sid
 
     def check_buff(app):
+        # return
         if len(app.protocol.__buff__) < app._min_buff_size_:
             app.protocol.__buff__ = bytearray(app._min_buff_size_)
             app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
@@ -172,6 +173,16 @@ class BlazeioMultiplexer:
             app.__current_stream.__stream_ack__.set()
             return bytes(remainder)
         return None
+    
+    async def ensure_buff_enough(app):
+        stream_count = len(app.__streams__)
+        buff_size = (4096*stream_count)
+        if len(app.protocol.__buff__) < buff_size:
+            diff = buff_size - len(app.protocol.__buff__)
+            app.protocol.__buff__ = bytearray(app.protocol.__buff__ + bytearray(diff))
+            app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
+
+        await io.sleep(0)
 
     async def enter_stream(app, _id: (None, bytes) = None, instance = None):
         if app.perf_analytics:
@@ -186,8 +197,10 @@ class BlazeioMultiplexer:
                 else:
                     app.__stream_id_count__ += 1
 
+                await app.ensure_buff_enough()
+
         app.__streams__[_id] = (stream := instance(_id, app))
-        
+
         if app.perf_analytics:
             app.analytics.enter_stream.total_enter_stream_durations += (io.perf_counter() - start_time)
             app.analytics.enter_stream.streams += 1
@@ -347,7 +360,7 @@ class Stream:
         app.__callback_added__.set()
 
     def gen_sid(app):
-        sid = b"<<%X>>" % app.sids
+        sid = b"%X" % app.sids
         app.sids += 1
         return sid
 
