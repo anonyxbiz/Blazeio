@@ -85,6 +85,9 @@ class Sslproxy:
 
 class Transporters:
     __slots__ = ()
+    chunk_tools = io.ddict(http = io.ddict(methods = (b"GET", b"DELETE", b"HEAD", b"OPTIONS", b"TRACE", b"CONNECT", b"POST", b"PUT", b"PATCH"), prot_sep = b"\r\n", header_sep = b"\r\n\r\n"), max_buff_size = 1024*10)
+    chunk_tools.http.non_bodied_methods = chunk_tools.http.methods[:5]
+
     def __init__(app):
         app.__conn__ = io.ioCondition(evloop = io.loop)
         app.__serialize__ = io.ioCondition(evloop = io.loop)
@@ -96,9 +99,41 @@ class Transporters:
         except:
             return
 
+    def get_method(app, buff):
+        idy, method = 0, 0
+        for i in app.chunk_tools.http.methods:
+            if (idy := buff.find(i)) != -1:
+                method = i
+                break
+
+        return (method, idy)
+
+    async def sniff_prot(app, r, resp):
+        buff, method = bytearray(), None
+        while (chunk := await r):
+            buff.extend(chunk)
+            if (idx := buff.find(app.chunk_tools.http.header_sep)) != -1:
+                initial = buff[:idx]
+                method, idy = app.get_method(initial)
+
+                if method:
+                    buff = initial[idy:] + buff[idx:]
+                    if method in app.chunk_tools.http.non_bodied_methods:
+                        async with resp.protocol: return await resp.writer(bytes(buff))
+                break
+
+            elif len(buff) >= app.chunk_tools.max_buff_size: break
+
+        await resp.writer(bytes(buff))
+        return r
+
     async def tls_puller(app, r, resp):
         try:
-            while (chunk := await r): await resp.writer(chunk)
+            if app.keepalive:
+                if await app.sniff_prot(r, resp) != r: return
+
+            while (chunk := await r):
+                await resp.writer(chunk)
         except:
             return
 
@@ -144,11 +179,12 @@ class Transporters:
             async with resp.protocol:
                 task = io.create_task(app.tls_puller(r, resp))
                 async for chunk in resp.__pull__():
-                    if resp.eof_received: task.cancel()
                     if chunk: await r.writer(chunk)
 
         if task:
             if not task.done(): task.cancel()
+
+        await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive")
@@ -287,8 +323,6 @@ class App(Sslproxy, Transporters):
                     break
                 
                 if not app.keepalive: break
-
-                r.utils.clear_protocol(r)
 
 class WebhookClient:
     __slots__ = ("conf", "availablity")
