@@ -225,7 +225,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 normalized_headers["Content-length"] = str(len(content))
 
         if proxy: await app.proxy_config(stdheaders, proxy)
-        ssl = ssl_context if app.port == 443 else kwargs.pop("ssl", None)
+        
+        if app.port == 443:
+            ssl = kwargs.pop("ssl", ssl_context)
+        else:
+            ssl = kwargs.pop("ssl", None)
 
         if app.proxy_port:
             ssl = ssl_context if app.proxy_port == 443 else None
