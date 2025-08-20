@@ -347,7 +347,7 @@ class Stream:
         app.__callback_added__.set()
 
     def gen_sid(app):
-        sid = b"%b%X%b" % (b"<"*1024, app.sids, b">"*1024)
+        sid = b"<<%X>>" % app.sids
         app.sids += 1
         return sid
 
