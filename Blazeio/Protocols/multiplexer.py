@@ -69,7 +69,7 @@ class BlazeioMultiplexer:
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
         app.__io_create_lock__ = io.ioCondition(evloop = app.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
-        # app.disable_nagle()
+        app.disable_nagle()
         app.update_protocol_write_buffer_limits()
         app.check_buff()
         app.init_analytics()
@@ -122,9 +122,9 @@ class BlazeioMultiplexer:
         app.calc_analytics()
         return Utils.gen_state(app)
     
-    def __prepend__(app, data):
+    def __prepend__(app, data, wakeup = False):
         app.__prepends__.appendleft(data)
-        app.protocol.__evt__.set()
+        if wakeup: app.protocol.__evt__.set()
 
     def _parse_bounds(app, __buff: (bytes, bytearray, None) = None):
         if __buff is None:
@@ -246,7 +246,7 @@ class BlazeioMultiplexer:
                     remainder = _
                 app.__current_stream.expected_size += app.__expected_size
 
-            return app.__prepend__(remainder)
+            return app.__prepend__(remainder, wakeup = True)
 
         app.__received_size += len(chunk)
 
