@@ -246,9 +246,10 @@ class BlazeioMultiplexer:
             if app.__current_stream:
                 if (_ := app.perform_checks(remainder)) is not None:
                     remainder = _
-                app.__current_stream.expected_size += app.__expected_size
                 else:
                     app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+
+                app.__current_stream.expected_size += app.__expected_size
 
             return app.__prepend__(remainder, wakeup = True)
 
