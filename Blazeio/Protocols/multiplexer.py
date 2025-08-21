@@ -418,9 +418,10 @@ class Stream:
         app.check_busy_stream()
         while True:
             await app.ensure_reading()
-            async with app.__busy_stream__:
+            if 1:
                 while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
-                    yield chunk
+                    async with app.__busy_stream__:
+                        yield chunk
                 else:
                     if app.eof_received and not app.choose_stream(): return
 
