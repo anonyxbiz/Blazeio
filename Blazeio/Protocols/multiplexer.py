@@ -102,7 +102,7 @@ class BlazeioMultiplexer:
         app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
 
     def choose_stream(app):
-        return app.protocol.__stream__ or app.__prepends__
+        return app.__prepends__ or app.protocol.__stream__
 
     def cancel(app):
         for stream in list(app.__streams__):
@@ -260,32 +260,29 @@ class BlazeioMultiplexer:
             if app.__received_size > app.__expected_size:
                 chunk_size = (len(chunk) - (app.__received_size - app.__expected_size))
                 remainder, chunk = bytes(memoryview(chunk)[chunk_size:]), bytes(memoryview(chunk[:chunk_size]))
-                app.__prepend__(remainder)
+
+                app.__prepend__(remainder, wakeup = True)
 
             if app.__current_stream and not app.__current_stream.__stream_closed__:
                 app.__stream_update.set()
 
             if app.__current_stream:
-                if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.update_stream(app.__current_stream, chunk)
 
             app.clear_state()
         else:
             if app.__current_stream:
-                if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.update_stream(app.__current_stream, chunk)
 
     async def __pull__(app):
         while True:
-            await app.protocol.ensure_reading()
+            if not app.__prepends__:
+                await app.protocol.ensure_reading()
+
             while (stream := app.choose_stream()):
                 chunk = stream.popleft()
-                if not chunk: continue
                 if app.__prepends__:
-                    buff = bytearray()
-                    while app.__prepends__:
-                        buff.extend(app.__prepends__.popleft())
-                    chunk = bytes(buff) + chunk
+                    chunk = app.__prepends__.popleft() + chunk
 
                 yield chunk
             else:
@@ -325,7 +322,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        app.__busy_stream__.lock()
+        # app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
@@ -379,10 +376,9 @@ class Stream:
     def stream_closed(app):
         app.__stream_closed__ = True
         for event in (app.__wait_closed__, app.__callback_added__, app.__stream_ack__,): event.set()
-    
+
     def check_busy_stream(app):
-        if app.__busy_stream__.locked() and app.__busy_stream__.initial:
-            app.__busy_stream__.initial = False
+        if app.__busy_stream__.locked():
             app.__busy_stream__.release()
 
     async def wfc(app):
@@ -420,17 +416,19 @@ class Stream:
 
     async def __pull__(app):
         app.check_busy_stream()
-        while True:
-            await app.ensure_reading()
-            async with app.__busy_stream__:
+        try:
+            while True:
+                await app.ensure_reading()
                 while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
-                    yield chunk
+                    async with app.__busy_stream__: yield chunk
                 else:
                     if app.eof_received and not app.choose_stream():
                         return
                     if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
-                    return
+                        return
+        finally:
+            ...
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
@@ -440,13 +438,11 @@ class Stream:
         yield data
 
     async def wfa(app, sid: bytes):
-        # if io.debug_mode: await io.plog.yellow(app.id_str, sid, "waiting for sid...")
         while not sid in app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
         if sid in app.__stream_acks__:
             app.__stream_acks__.pop(sid)
-            # if io.debug_mode: await io.plog.green(app.id_str, sid, "gotten sid...")
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
 
