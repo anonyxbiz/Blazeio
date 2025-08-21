@@ -461,10 +461,7 @@ class Stream:
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait)
 
             if wait:
-                try:
-                    await io.wait_for(app.wfa(sid), timeout = 3)
-                except io.TimeoutError:
-                    ...
+                await app.wfa(sid)
 
         if add:
             app.sent_size += len(data)
