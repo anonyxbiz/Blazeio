@@ -53,7 +53,7 @@ class BlazeioMultiplexer:
 
     _min_buff_size_ = 1024*100
 
-    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (0, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
+    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (1048576, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
         app.loop = evloop or io.loop
@@ -454,7 +454,7 @@ class Stream:
 
         async for chunk in app.__to_chunks__(memoryview(data)):
             async with app.protocol.__busy_write__:
-                await app.protocol.protocol.buffer_overflow_manager()
+                if wait: await app.protocol.protocol.buffer_overflow_manager()
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait)
 
             if wait:
