@@ -224,8 +224,6 @@ class BlazeioMultiplexer:
                 return app.__prepend__(chunk)
 
             app.__current_sid, app.__buff = bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), app.__buff[bounds[1] + 1:]
-            
-            app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
             if not (bounds := app._parse_bounds()):
                 return app.__prepend__(chunk)
@@ -249,6 +247,8 @@ class BlazeioMultiplexer:
                 if (_ := app.perform_checks(remainder)) is not None:
                     remainder = _
                 app.__current_stream.expected_size += app.__expected_size
+            
+            app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
             return app.__prepend__(remainder, wakeup = True)
 
