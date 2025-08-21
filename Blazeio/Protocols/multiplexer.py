@@ -418,12 +418,6 @@ class Stream:
         app.check_busy_stream()
         try:
             while True:
-                if len(app.__stream__) >= 10:
-                    await app.__busy_stream__.acquire()
-                else:
-                    if app.__busy_stream__.locked():
-                        app.__busy_stream__.release()
-                
                 await app.ensure_reading()
 
                 while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
