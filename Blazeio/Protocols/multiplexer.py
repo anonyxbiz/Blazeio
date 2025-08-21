@@ -228,8 +228,11 @@ class BlazeioMultiplexer:
 
             if not (bounds := app._parse_bounds()):
                 return app.__prepend__(chunk, clear = False)
+            
+            if not (size := bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]])):
+                return app.clear()
 
-            app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), 16), app.__buff[bounds[1] + 1:]
+            app.__expected_size, app.__buff = int(size, 16), app.__buff[bounds[1] + 1:]
 
             remainder, _ = bytes(memoryview(app.__buff)[:]), app.__buff.clear()
 
