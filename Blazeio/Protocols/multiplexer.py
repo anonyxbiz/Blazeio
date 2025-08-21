@@ -230,7 +230,7 @@ class BlazeioMultiplexer:
                 return app.__prepend__(chunk, clear = False)
             
             if not (size := bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]])):
-                return app.clear()
+                return app.clear_state()
 
             app.__expected_size, app.__buff = int(size, 16), app.__buff[bounds[1] + 1:]
 
