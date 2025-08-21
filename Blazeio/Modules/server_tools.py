@@ -54,11 +54,12 @@ class Simpleserve:
             app.content_disposition = 'attachment; filename="%s"' % app.filename
 
         for i in app.headers_demux:
-            if i not in app.exclude_headers and i in app.__slots__:
+            if app.headers_demux[i] not in app.exclude_headers and i in app.__slots__:
                 app.headers[app.headers_demux[i]] = getattr(app, i)
 
         if app.cache_control:
-            app.headers["Cache-control"] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
+            if not (i := "Cache-control") in app.exclude_headers:
+                app.headers[i] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
 
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
             app.range_ = range_
