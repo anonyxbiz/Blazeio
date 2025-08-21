@@ -250,7 +250,7 @@ class BlazeioMultiplexer:
                 else:
                     ...
 
-                # app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
@@ -439,13 +439,11 @@ class Stream:
         yield data
 
     async def wfa(app, sid: bytes):
-        if io.debug_mode: await io.plog.yellow(sid, "waiting for sid...")
         while not sid in app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
         if sid in app.__stream_acks__:
             app.__stream_acks__.pop(sid)
-            if io.debug_mode: await io.plog.green(sid, "gotten sid...")
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
 
