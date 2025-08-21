@@ -241,15 +241,14 @@ class BlazeioMultiplexer:
             else:
                 app.__current_stream = __current_stream
 
-            if app.__current_sid:
-                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
-
             if app.__stream_opts and app.__stream_opts not in app._data_bounds_:
                 app.__current_stream.__stream_opts__.append(app.__stream_opts)
 
             if app.__current_stream:
                 if (_ := app.perform_checks(remainder)) is not None:
                     remainder = _
+                else:
+                    app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
@@ -264,6 +263,7 @@ class BlazeioMultiplexer:
                 app.__prepend__(remainder)
 
             if app.__current_stream and not app.__current_stream.__stream_closed__:
+                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.__stream_update.set()
 
             if app.__current_stream:
