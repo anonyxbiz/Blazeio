@@ -182,14 +182,19 @@ class BlazeioMultiplexer:
         if not instance:
             instance = Stream
 
-        if not _id:
-            async with app.__io_create_lock__:
+        async with app.__io_create_lock__:
+            create = _id
+            if not _id:
                 while (_id := b"io_%d" % app.__stream_id_count__) in app.__streams__:
                     app.__stream_id_count__ += 1
                 else:
                     app.__stream_id_count__ += 1
 
-        app.__streams__[_id] = (stream := instance(_id, app))
+            app.__streams__[_id] = (stream := instance(_id, app))
+
+            if create:
+                ...
+                await stream.writer(app._data_bounds_[6], wait = False)
 
         if app.perf_analytics:
             app.analytics.enter_stream.total_enter_stream_durations += (io.perf_counter() - start_time)
@@ -201,6 +206,9 @@ class BlazeioMultiplexer:
         return b"%b%b%b%b%b%b%b%b%b%b%X%b" % (app._data_bounds_[0], _id, app._data_bounds_[1], app._data_bounds_[0], __stream_opts or b"", app._data_bounds_[1], app._data_bounds_[0], sid or b"", app._data_bounds_[1], app._data_bounds_[0], _len, app._data_bounds_[1])
 
     def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
+        if app._has_handshake() and chunk == app._data_bounds_[6]:
+            return
+
         __current_stream.received_size += len(chunk)
         if app.encrypt_streams:
             chunk = Ciphen(__current_stream.id).decrypt(chunk)
