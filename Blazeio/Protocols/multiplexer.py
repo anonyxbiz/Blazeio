@@ -424,14 +424,12 @@ class Stream:
                     async with app.__busy_stream__: yield chunk
                 else:
                     if app.eof_received and not app.choose_stream():
-                        if not app.__busy_stream__.locked(): app.__busy_stream__.lock()
                         return
                     if app.__stream_closed__ and not app.choose_stream():
-                        if not app.__busy_stream__.locked(): app.__busy_stream__.lock()
                         await app.__close__()
                         return
         finally:
-            if not app.__busy_stream__.locked(): app.__busy_stream__.lock()
+            ...
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
