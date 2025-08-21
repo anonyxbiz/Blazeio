@@ -2,7 +2,7 @@ import Blazeio as io
 from socket import IPPROTO_TCP, TCP_NODELAY
 
 class BlazeioMultiplexerConf:
-    conf = io.ddict(protocol = io.ddict(_write_buffer_limits = (1048576, 0), encrypt_streams = False))
+    conf = io.ddict(protocol = io.ddict(_write_buffer_limits = (1024**10, 0), encrypt_streams = False))
 
 class BlazeioServerProtocol_Config:
     __slots__ = ("srv", "__default_main_handler__",)
