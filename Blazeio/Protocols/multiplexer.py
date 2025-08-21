@@ -430,7 +430,8 @@ class Stream:
                         await app.__close__()
                         return
         finally:
-            app.__busy_stream__.lock()
+            ...
+            # app.__busy_stream__.lock()
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
