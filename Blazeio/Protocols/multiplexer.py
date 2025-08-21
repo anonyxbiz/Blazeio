@@ -40,7 +40,7 @@ class Utils:
         return view
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "perf_analytics", "analytics", "__current_sid")
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "perf_analytics", "analytics", "__current_sid", "__current_sid_got_checks")
     _data_bounds_ = (
         b"\x00", # sof
         b"\x01", # eof
@@ -87,7 +87,6 @@ class BlazeioMultiplexer:
         return sid
 
     def check_buff(app):
-        # return
         if len(app.protocol.__buff__) < app._min_buff_size_:
             app.protocol.__buff__ = bytearray(app._min_buff_size_)
             app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
@@ -111,7 +110,7 @@ class BlazeioMultiplexer:
         for task in app.__tasks__: task.cancel()
 
     def clear_state(app):
-        app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream, app.__stream_opts, app.__current_sid = 0, NotImplemented, NotImplemented, NotImplemented, NotImplemented, NotImplemented
+        app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream, app.__stream_opts, app.__current_sid, app.__current_sid_got_checks = 0, NotImplemented, NotImplemented, NotImplemented, NotImplemented, NotImplemented, False
 
     def calc_analytics(app):
         if not app.perf_analytics: return
@@ -245,9 +244,11 @@ class BlazeioMultiplexer:
 
             if app.__current_stream:
                 if (_ := app.perform_checks(remainder)) is not None:
+                    app.__current_sid_got_checks = True
                     remainder = _
                 else:
-                    app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                    app.__current_sid_got_checks = True
+                    # app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
@@ -262,7 +263,9 @@ class BlazeioMultiplexer:
                 app.__prepend__(remainder)
 
             if app.__current_stream and not app.__current_stream.__stream_closed__:
-                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                if not app.__current_sid_got_checks:
+                    app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+
                 app.__stream_update.set()
 
             if app.__current_stream:
