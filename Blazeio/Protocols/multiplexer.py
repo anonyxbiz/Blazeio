@@ -247,8 +247,6 @@ class BlazeioMultiplexer:
             if app.__current_stream:
                 if (_ := app.perform_checks(remainder)) is not None:
                     remainder = _
-                else:
-                    app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
@@ -263,7 +261,8 @@ class BlazeioMultiplexer:
 
                 app.__prepend__(remainder, wakeup = True)
 
-            if app.__current_stream and not app.__current_stream.__stream_closed__:
+            if app.__current_stream and not app.__current_stream.__stream_closed__ and app.__current_sid:
+                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.__stream_update.set()
 
             if app.__current_stream:
@@ -416,19 +415,17 @@ class Stream:
 
     async def __pull__(app):
         app.check_busy_stream()
-        try:
-            while True:
-                await app.ensure_reading()
+        while True:
+            await app.ensure_reading()
+            async with app.__busy_stream__:
                 while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
-                    async with app.__busy_stream__: yield chunk
+                    yield chunk
                 else:
                     if app.eof_received and not app.choose_stream():
                         return
                     if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
                         return
-        finally:
-            ...
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
