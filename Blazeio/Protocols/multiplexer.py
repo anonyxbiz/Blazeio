@@ -2,7 +2,7 @@ import Blazeio as io
 from socket import IPPROTO_TCP, TCP_NODELAY
 
 class BlazeioMultiplexerConf:
-    conf = io.ddict(protocol = io.ddict(_write_buffer_limits = (1024**10, 0), encrypt_streams = False))
+    conf = io.ddict(protocol = io.ddict(_write_buffer_limits = ((1024**2)*10, 0), encrypt_streams = False))
 
 class BlazeioServerProtocol_Config:
     __slots__ = ("srv", "__default_main_handler__",)
@@ -52,7 +52,7 @@ class BlazeioMultiplexer:
     )
 
     _min_buff_size_ = 1024*512 # For 500 streams
-    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (1024**10, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
+    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = ((1024**2)*10, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
         app.loop = evloop or io.loop
