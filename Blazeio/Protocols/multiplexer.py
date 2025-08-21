@@ -122,8 +122,10 @@ class BlazeioMultiplexer:
         app.calc_analytics()
         return Utils.gen_state(app)
     
-    def __prepend__(app, data, wakeup = False):
-        app.__buff.clear()
+    def __prepend__(app, data, wakeup = False, clear = False):
+        if clear:
+            app.__buff.clear()
+
         app.__prepends__.appendleft(data)
         if wakeup: app.protocol.__evt__.set()
 
@@ -220,7 +222,7 @@ class BlazeioMultiplexer:
         if app.__current_stream is NotImplemented:
             app.__buff.extend(chunk)
             if not app._set_stream() or not (bounds := app._parse_bounds()):
-                return app.__prepend__(chunk)
+                return app.__prepend__(chunk, clear = False)
 
             app.__current_sid, app.__buff = bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), app.__buff[bounds[1] + 1:]
 
@@ -239,18 +241,19 @@ class BlazeioMultiplexer:
             else:
                 app.__current_stream = __current_stream
 
+            if app.__current_sid:
+                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+
             if app.__stream_opts and app.__stream_opts not in app._data_bounds_:
                 app.__current_stream.__stream_opts__.append(app.__stream_opts)
 
             if app.__current_stream:
                 if (_ := app.perform_checks(remainder)) is not None:
                     remainder = _
-                else:
-                    app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
-            return app.__prepend__(remainder, wakeup = True)
+            return app.__prepend__(remainder, wakeup = True, clear = True)
 
         app.__received_size += len(chunk)
 
