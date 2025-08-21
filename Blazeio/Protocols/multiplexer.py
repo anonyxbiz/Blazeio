@@ -312,7 +312,7 @@ class Stream:
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
-        app.inflight_window = 20
+        app.inflight_window = 3
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()
