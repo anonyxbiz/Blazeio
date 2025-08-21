@@ -122,7 +122,7 @@ class BlazeioMultiplexer:
         app.calc_analytics()
         return Utils.gen_state(app)
     
-    def __prepend__(app, data, wakeup = False, clear = False):
+    def __prepend__(app, data, wakeup = False, clear = True):
         if clear:
             app.__buff.clear()
 
@@ -227,7 +227,7 @@ class BlazeioMultiplexer:
             app.__current_sid, app.__buff = bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), app.__buff[bounds[1] + 1:]
 
             if not (bounds := app._parse_bounds()):
-                return app.__prepend__(chunk)
+                return app.__prepend__(chunk, clear = False)
 
             app.__expected_size, app.__buff = int(bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]]), 16), app.__buff[bounds[1] + 1:]
 
@@ -252,7 +252,7 @@ class BlazeioMultiplexer:
 
                 app.__current_stream.expected_size += app.__expected_size
 
-            return app.__prepend__(remainder, wakeup = True, clear = True)
+            return app.__prepend__(remainder, wakeup = True)
 
         app.__received_size += len(chunk)
 
