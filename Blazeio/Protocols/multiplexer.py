@@ -232,7 +232,12 @@ class BlazeioMultiplexer:
             if not (size := bytes(memoryview(app.__buff)[bounds[0] + 1:bounds[1]])):
                 return app.clear_state()
 
-            app.__expected_size, app.__buff = int(size, 16), app.__buff[bounds[1] + 1:]
+            try:
+                size = int(size, 16)
+            except ValueError:
+                return app.clear_state()
+
+            app.__expected_size, app.__buff = size, app.__buff[bounds[1] + 1:]
 
             remainder, _ = bytes(memoryview(app.__buff)[:]), app.__buff.clear()
 
@@ -252,8 +257,9 @@ class BlazeioMultiplexer:
                     remainder = _
 
                 app.__current_stream.expected_size += app.__expected_size
-
-            return app.__prepend__(remainder, wakeup = True)
+            
+            chunk = remainder
+            # return app.__prepend__(remainder, wakeup = True)
 
         app.__received_size += len(chunk)
 
