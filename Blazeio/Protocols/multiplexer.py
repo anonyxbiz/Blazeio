@@ -266,13 +266,13 @@ class BlazeioMultiplexer:
                 app.__stream_update.set()
 
             if app.__current_stream:
-                # if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.update_stream(app.__current_stream, chunk)
 
             app.clear_state()
         else:
             if app.__current_stream:
-                # if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.update_stream(app.__current_stream, chunk)
 
     async def __pull__(app):
@@ -321,7 +321,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        # app.__busy_stream__.lock()
+        app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
@@ -416,22 +416,17 @@ class Stream:
 
     async def __pull__(app):
         app.check_busy_stream()
-        try:
-            while True:
-                await app.ensure_reading()
-
+        while True:
+            await app.ensure_reading()
+            async with app.__busy_stream__:
                 while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
-                    # async with app.__busy_stream__:
                     yield chunk
                 else:
                     if app.eof_received and not app.choose_stream():
                         return
                     if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
-                        return
-        finally:
-            ...
-            # app.__busy_stream__.lock()
+                    return
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
