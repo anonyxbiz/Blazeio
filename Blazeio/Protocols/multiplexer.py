@@ -266,7 +266,7 @@ class BlazeioMultiplexer:
                 app.__stream_update.set()
 
             if app.__current_stream:
-                if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                # if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.update_stream(app.__current_stream, chunk)
 
             app.clear_state()
