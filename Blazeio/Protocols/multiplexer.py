@@ -467,7 +467,7 @@ class Stream:
 
             if wait:
                 waits.append(app.wfa(sid))
-                if len(waits) >= app.inflight_window: await app.wfa_all(waits)
+                if (len(waits) >= app.inflight_window) or app.__initial_handshake: await app.wfa_all(waits)
 
         if waits: await app.wfa_all(waits)
 
