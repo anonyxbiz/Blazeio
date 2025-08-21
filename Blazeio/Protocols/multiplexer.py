@@ -321,7 +321,7 @@ class Stream:
         app.__wait_closed__ = io.SharpEvent(False, evloop = io.loop)
         app.__stream_ack__ = io.SharpEvent(False, evloop = io.loop)
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
-        # app.__busy_stream__.lock()
+        app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
@@ -377,7 +377,8 @@ class Stream:
         for event in (app.__wait_closed__, app.__callback_added__, app.__stream_ack__,): event.set()
 
     def check_busy_stream(app):
-        if app.__busy_stream__.locked():
+        if app.__busy_stream__.locked() and app.__busy_stream__.initial:
+            app.__busy_stream__.initial = False
             app.__busy_stream__.release()
 
     async def wfc(app):
