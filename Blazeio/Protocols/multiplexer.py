@@ -53,7 +53,7 @@ class BlazeioMultiplexer:
 
     _min_buff_size_ = 1024*100
 
-    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (0, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
+    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (1048576, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
         app.loop = evloop or io.loop
@@ -248,9 +248,7 @@ class BlazeioMultiplexer:
                 if (_ := app.perform_checks(remainder)) is not None:
                     remainder = _
                 else:
-                    ...
-
-                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                    app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
@@ -274,6 +272,7 @@ class BlazeioMultiplexer:
             app.clear_state()
         else:
             if app.__current_stream:
+                # if app.__current_sid: app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.update_stream(app.__current_stream, chunk)
 
     async def __pull__(app):
@@ -355,7 +354,7 @@ class Stream:
         app.__callback_added__.set()
 
     def gen_sid(app):
-        sid = b"%X" % app.sids
+        sid = b"%d" % app.sids
         app.sids += 1
         return sid
 
@@ -429,7 +428,7 @@ class Stream:
                         await app.__close__()
                         return
         finally:
-            ...
+            app.__busy_stream__.lock()
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
@@ -439,11 +438,13 @@ class Stream:
         yield data
 
     async def wfa(app, sid: bytes):
+        # if io.debug_mode: await io.plog.yellow(app.id_str, sid, "waiting for sid...")
         while not sid in app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
         if sid in app.__stream_acks__:
             app.__stream_acks__.pop(sid)
+            # if io.debug_mode: await io.plog.green(app.id_str, sid, "gotten sid...")
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
 
