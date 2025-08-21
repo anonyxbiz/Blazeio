@@ -280,8 +280,12 @@ class BlazeioMultiplexer:
             await app.protocol.ensure_reading()
             while (stream := app.choose_stream()):
                 chunk = stream.popleft()
+                if not chunk: continue
                 if app.__prepends__:
-                    chunk = app.__prepends__.popleft() + chunk
+                    buff = bytearray()
+                    while app.__prepends__:
+                        buff.extend(app.__prepends__.popleft())
+                    chunk = bytes(buff) + chunk
 
                 yield chunk
             else:
