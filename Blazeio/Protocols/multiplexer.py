@@ -52,12 +52,12 @@ class BlazeioMultiplexer:
     )
 
     _min_buff_size_ = 1024*512 # For 500 streams
-    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: (None, tuple) = None, encrypt_streams: bool = False, perf_analytics: bool = True):
+    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (1024**10, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
         app.loop = evloop or io.loop
         app.perf_analytics = perf_analytics
-        app._write_buffer_limits = (app._min_buff_size_, 0)
+        app._write_buffer_limits = _write_buffer_limits
         app.__streams__ = {}
         app.__tasks__ = []
         app.__stream_id_count__ = 0
