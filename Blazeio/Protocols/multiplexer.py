@@ -51,14 +51,13 @@ class BlazeioMultiplexer:
         b"\x06", # io_create
     )
 
-    _min_buff_size_ = 1024*100
-
-    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = (1048576, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
+    _min_buff_size_ = 1024*512 # For 500 streams
+    def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: (None, tuple) = None, encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
         app.loop = evloop or io.loop
         app.perf_analytics = perf_analytics
-        app._write_buffer_limits = _write_buffer_limits
+        app._write_buffer_limits = (app._min_buff_size_, 0)
         app.__streams__ = {}
         app.__tasks__ = []
         app.__stream_id_count__ = 0
@@ -116,13 +115,14 @@ class BlazeioMultiplexer:
         if not app.perf_analytics: return
         app.analytics.transfer_rate.mb_per_sec = ((app.analytics.transfer_rate.bytes_transferred/1024**2)/(io.perf_counter() - app.analytics.start_time))
         app.analytics.streams_per_second = (app.analytics.enter_stream.streams/(app.analytics.enter_stream.total_enter_stream_durations/app.analytics.enter_stream.streams))
-        app.analytics = app.analytics
+        app.analytics.protocol = io.ddict(buff_size_in_mb = float(len(app.protocol.__buff__)/1024**2))
 
     def state(app):
         app.calc_analytics()
         return Utils.gen_state(app)
     
     def __prepend__(app, data, wakeup = False, clear = True):
+        if not data: return
         if clear:
             app.__buff.clear()
 
@@ -290,10 +290,11 @@ class BlazeioMultiplexer:
                     break
 
     async def mux(app):
-        app.clear_state()
-        async for chunk in app.__pull__():
-            if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
-            await app._chunk_received(chunk)
+        async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
+            app.clear_state()
+            async for chunk in app.__pull__():
+                if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
+                await app._chunk_received(chunk)
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids")
@@ -506,6 +507,7 @@ def BlazeioMuxProtocol(base_class=object):
     class _BlazeioMuxProtocol(base_class):
         __slots__ = ()
         def __initialize__(app):
+            app.multiplexer = None
             app.connection_made_evt = io.SharpEvent(evloop = app.__evt__.loop)
 
         def connection_made(app, transport):
@@ -533,7 +535,7 @@ def BlazeioMuxProtocol(base_class=object):
     return _BlazeioMuxProtocol
 
 class BlazeioClientProtocol(BlazeioMuxProtocol(io.BlazeioClientProtocol)):
-    __slots__ = ("multiplexer", "connection_made_evt")
+    __slots__ = ("multiplexer", "connection_made_evt",)
     __stream_closed_exception__ = io.ServerDisconnected
 
     def __getattr__(app, name):
@@ -557,7 +559,7 @@ class BlazeioClientProtocol(BlazeioMuxProtocol(io.BlazeioClientProtocol)):
         app.transport.close()
 
 class BlazeioServerProtocol(BlazeioMuxProtocol(io.BlazeioServerProtocol)):
-    __slots__ = ("multiplexer", "connection_made_evt")
+    __slots__ = ("multiplexer", "connection_made_evt",)
     __stream_closed_exception__ = io.ClientDisconnected
 
     async def create_stream(app, _id):

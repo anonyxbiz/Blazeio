@@ -41,7 +41,6 @@ class __Rvtools__:
 
         return item
 
-
 Rvtools = __Rvtools__()
 
 class Decoders:
@@ -419,10 +418,22 @@ class Extrautils:
     def __init__(app):
         ...
 
-    def __getattr__(app, key, *args):
+    def __getattr__(app, key, *_args):
         for util in app.utils:
-            if (val := getattr(util, key, *args)):
+            if (val := getattr(util, key, None)):
                 return val
+
+        def method(*args, **kwargs):
+            func = getattr(Request, key, None)
+            if not func: raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+
+            if func.__name__.startswith("url_"):
+                if "Session" in args[0].__class__.__name__ or ClientContext.is_prot(args[0]):
+                    args = args[1:]
+
+            return func(*args, **kwargs)
+
+        return method
 
 class StaticStuff:
     __slots__ = ()

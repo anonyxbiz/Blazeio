@@ -12,8 +12,9 @@ class Rutils(ContentDecoders):
 
     def __getattr__(app, *_args):
         def method(*args, **kwargs):
-            func = getattr(Request, *_args)
-            
+            func = getattr(Request, _args[0], None)
+            if not func: raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, _args[0]))
+
             if not "url_" in func.__name__:
                 if args:
                     if not Context.is_prot(args[0]):

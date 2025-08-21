@@ -31,6 +31,10 @@ class ClientContext:
     def r(app):
         return current_task().__BlazeioClientProtocol__
 
+    @classmethod
+    def is_prot(app, r):
+        return "Blazeio" in r.__class__.__name__
+
 class Prepare:
     def __init__(app): ...
 
