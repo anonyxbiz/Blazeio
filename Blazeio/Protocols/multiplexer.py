@@ -424,12 +424,14 @@ class Stream:
                     async with app.__busy_stream__: yield chunk
                 else:
                     if app.eof_received and not app.choose_stream():
+                        if not app.__busy_stream__.locked(): app.__busy_stream__.lock()
                         return
                     if app.__stream_closed__ and not app.choose_stream():
+                        if not app.__busy_stream__.locked(): app.__busy_stream__.lock()
                         await app.__close__()
                         return
         finally:
-            app.__busy_stream__.lock()
+            if not app.__busy_stream__.locked(): app.__busy_stream__.lock()
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
@@ -459,7 +461,10 @@ class Stream:
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait)
 
             if wait:
-                await app.wfa(sid)
+                try:
+                    await io.wait_for(app.wfa(sid), timeout = 3)
+                except io.TimeoutError:
+                    ...
 
         if add:
             app.sent_size += len(data)
