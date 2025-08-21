@@ -250,7 +250,7 @@ class BlazeioMultiplexer:
                 else:
                     ...
 
-                app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
+                # app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
 
                 app.__current_stream.expected_size += app.__expected_size
 
@@ -412,22 +412,24 @@ class Stream:
         app.check_busy_stream()
         yield from app.ensure_reading().__await__()
         __stream__ = app.choose_stream()
+
         return __stream__.popleft() if __stream__ else None
 
     async def __pull__(app):
         app.check_busy_stream()
-        while True:
-            await app.ensure_reading()
-            if 1:
+        try:
+            while True:
+                await app.ensure_reading()
                 while (__stream__ := app.choose_stream()) and (chunk := __stream__.popleft()):
-                    async with app.__busy_stream__:
-                        yield chunk
+                    async with app.__busy_stream__: yield chunk
                 else:
-                    if app.eof_received and not app.choose_stream(): return
-
+                    if app.eof_received and not app.choose_stream():
+                        return
                     if app.__stream_closed__ and not app.choose_stream():
                         await app.__close__()
                         return
+        finally:
+            app.__busy_stream__.lock()
 
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
