@@ -297,7 +297,7 @@ class BlazeioMultiplexer:
                 await app._chunk_received(chunk)
 
 class Stream:
-    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids")
+    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_window")
 
     _chunk_size_base_ = 4096
     def __init__(app, _id: (bytes, bytearray), protocol):
@@ -308,6 +308,7 @@ class Stream:
         app.__stream_closed__ = False
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
+        app.inflight_window = 3
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()
@@ -444,12 +445,20 @@ class Stream:
             app.__stream_acks__.pop(sid)
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
+    
+    async def wfa_all(app, waits: list):
+        if not waits: return
+        for wait in waits:
+            await wait
+            waits.remove(wait)
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
         if not data: return
         if not app.can_write(): raise app.protocol.protocol.__stream_closed_exception__()
 
         if not app._used: app._used = True
+        
+        waits = []
 
         async for chunk in app.__to_chunks__(memoryview(data)):
             async with app.protocol.__busy_write__:
@@ -457,7 +466,10 @@ class Stream:
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait)
 
             if wait:
-                await app.wfa(sid)
+                waits.append(app.wfa(sid))
+                if len(waits) >= app.inflight_window: await app.wfa_all(waits)
+
+        if waits: await app.wfa_all(waits)
 
         if add:
             app.sent_size += len(data)
