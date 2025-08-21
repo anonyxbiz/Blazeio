@@ -173,16 +173,6 @@ class BlazeioMultiplexer:
             app.__current_stream.__stream_ack__.set()
             return bytes(remainder)
         return None
-    
-    async def ensure_buff_enough(app):
-        stream_count = len(app.__streams__)
-        buff_size = (4096*stream_count)
-        if len(app.protocol.__buff__) < buff_size:
-            diff = buff_size - len(app.protocol.__buff__)
-            app.protocol.__buff__ = bytearray(app.protocol.__buff__ + bytearray(diff))
-            app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
-
-        await io.sleep(0)
 
     async def enter_stream(app, _id: (None, bytes) = None, instance = None):
         if app.perf_analytics:
@@ -196,8 +186,6 @@ class BlazeioMultiplexer:
                     app.__stream_id_count__ += 1
                 else:
                     app.__stream_id_count__ += 1
-
-                # await app.ensure_buff_enough()
 
         app.__streams__[_id] = (stream := instance(_id, app))
 
