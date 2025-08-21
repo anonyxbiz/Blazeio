@@ -197,7 +197,7 @@ class BlazeioMultiplexer:
                 else:
                     app.__stream_id_count__ += 1
 
-                await app.ensure_buff_enough()
+                # await app.ensure_buff_enough()
 
         app.__streams__[_id] = (stream := instance(_id, app))
 
