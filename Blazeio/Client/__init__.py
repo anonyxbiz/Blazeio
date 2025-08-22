@@ -581,4 +581,27 @@ class get_Session:
 getSession = get_Session()
 KeepaliveSession = getSession
 
+class SessionManager:
+    __slots__ = ("args", "client_protocol", "kwargs", "transport", "protocol")
+    def __init__(app, *args, client_protocol = None, **kwargs):
+        app.args, app.client_protocol, app.kwargs = args, client_protocol, kwargs
+        app.protocol = None
+
+    def __getattr__(app, key):
+        return getattr(app.protocol, key)
+    
+    def __await__(app): return app.protocol.__await__()
+
+    async def __aenter__(app):
+        await app.create_connection()
+        return app
+
+    async def __aexit__(app, *args):
+        if app.protocol: app.protocol.cancel()
+        if args[1]: raise args[1]
+
+    async def create_connection(app):
+        if not app.client_protocol: app.client_protocol = BlazeioClientProtocol
+        app.transport, app.protocol = await get_event_loop().create_connection(lambda: app.client_protocol(), *app.args, **app.kwargs)
+
 if __name__ == "__main__": ...

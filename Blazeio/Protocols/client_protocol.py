@@ -62,5 +62,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         else:
             raise ServerDisconnected()
 
+    def writer(app, data): return app.push(data)
+
 if __name__ == "__main__":
     pass

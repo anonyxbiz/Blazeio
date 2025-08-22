@@ -63,7 +63,7 @@ class Rutils(ContentDecoders):
             if point >= size: break
 
         return data if not decode else data.decode()
-    
+
     @classmethod
     async def text(cls, app = None):
         if not app: app = Context._r()
