@@ -478,6 +478,7 @@ class Stream:
         async for chunk in app.__to_chunks__(memoryview(data)):
             async with app.protocol.__busy_write__:
                 if wait: await app.protocol.protocol.buffer_overflow_manager()
+
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait)
 
             if wait:
