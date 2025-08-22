@@ -147,7 +147,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*args, **kwargs)
 
     def form_urlencode(app, form: dict):
-        return "&".join(["%s=%s" % (key, form[key]) for key in form]).encode()
+        return "&".join(["%s=%s" % (key, app.url_encode_sync(str(form[key]))) for key in form]).encode()
 
     async def create_connection(app, url: (str, None) = None, method: (str, None) = None, headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, encoder: any = None, default_writer: any = None, eof_sent: bool = False, has_sent_headers: bool = False, decompressor: any = None, compressor: any = None, send_headers: bool = True, prepare_http: bool = True, **kwargs):
         __locals__ = locals()
@@ -265,8 +265,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             )
 
             return app
-
-        payload = ioConf.gen_payload(method if not proxy else "CONNECT", stdheaders, app.path, str(app.port))
+        
+        if not proxy:
+            payload = ioConf.gen_payload(method, stdheaders, app.path, str(app.port))
+        else:
+            payload = ioConf.gen_payload("CONNECT", stdheaders, app.path, app.host, int(str(app.port)+"0"))
 
         if body: payload += body
 
@@ -277,7 +280,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         if proxy:
             await app.prepare_connect(method, stdheaders)
-        
+
         if app.encode_writes and (encoding := normalized_headers.get("Content-encoding", None)) and (encoder := getattr(app, "%s_encoder" % encoding, NotImplemented)) is not NotImplemented:
             app.encoder = encoder
 
@@ -319,7 +322,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             app.proxy_host, app.proxy_port = proxy_host, proxy_port
 
             if (username := proxy.get("username")) and (password := proxy.get("password")):
-                pass
+                ...
 
         elif isinstance(proxy, tuple):
             if (proxy_len := len(proxy)) not in (2,4):

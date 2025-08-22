@@ -245,7 +245,7 @@ class BlazeioMultiplexer:
                 if app._has_handshake():
                     app.__current_stream = await app.protocol.create_stream(app.__current_stream_id)
                 else:
-                    app.__current_stream = None
+                    return app.clear_state()
             else:
                 app.__current_stream = __current_stream
 
@@ -257,9 +257,8 @@ class BlazeioMultiplexer:
                     remainder = _
 
                 app.__current_stream.expected_size += app.__expected_size
-            
+
             chunk = remainder
-            # return app.__prepend__(remainder, wakeup = True)
 
         app.__received_size += len(chunk)
 

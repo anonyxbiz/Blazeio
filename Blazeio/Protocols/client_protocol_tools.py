@@ -1,7 +1,7 @@
 from ..Dependencies import *
 from ..Modules.request import *
 from ..Modules.streaming import ClientContext
-from ..Dependencies.alts import DictView, plog, memarray
+from ..Dependencies.alts import DictView, plog, memarray, traceback_logger
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
@@ -557,6 +557,20 @@ class Parsers:
 
         return True
 
+    def raw_cookies(app):
+        cookies = ""
+        if (Cookies := app.response_headers.get("set-cookie")):
+            splitter = "="
+            for cookie in Cookies:
+                key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
+                
+                if cookies:
+                    cookies += "; "
+
+                cookies += "%s=%s" % (key, val)
+
+        return cookies
+
     def join_to_current_params(app, *args, **kwargs):
         args = (*args, *app.args[len(args):]) if len(app.args) > len(args) else args
         kwargs = dict(**{i:app.kwargs[i] for i in app.kwargs if i not in kwargs}, **kwargs)
@@ -585,15 +599,14 @@ class Parsers:
             max_retry_count = 2
 
             while retry_count < max_retry_count:
-                try: tls_transport = await app.loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname=app.host)
+                try: app.protocol.transport = await app.loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname = app.host)
+                except ConnectionResetError: break
                 except Exception as e:
+                    await traceback_logger(e)
+
                     retry_count += 1
                     if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))
-                    await sleep(0)
                     continue
-                
-                if tls_transport:
-                    app.protocol.transport = tls_transport
 
                 break
 
