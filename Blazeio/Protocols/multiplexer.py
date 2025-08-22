@@ -248,7 +248,12 @@ class BlazeioMultiplexer:
                 if app._has_handshake():
                     app.__current_stream = await app.protocol.create_stream(app.__current_stream_id)
                 else:
-                    return app.clear_state()
+                    app.__current_stream = NotImplemented
+
+                    if not app.__current_stream_id:
+                        return
+                    else:
+                        app.__current_stream = await app.protocol.create_stream(app.__current_stream_id)
             else:
                 app.__current_stream = __current_stream
 
