@@ -72,7 +72,10 @@ class BlazeioMultiplexer:
         app.update_protocol_write_buffer_limits()
         app.check_buff()
         app.init_analytics()
-        app.create_task(app.mux())
+        app.create_task(app.mux()).add_done_callback(app.close)
+    
+    def close(app, *args):
+        app.protocol.transport.close()
 
     def init_analytics(app):
         if not app.perf_analytics: return
@@ -298,7 +301,7 @@ class BlazeioMultiplexer:
                     break
 
     async def mux(app):
-        async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
+        async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError) as e:
             app.clear_state()
             async for chunk in app.__pull__():
                 if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
