@@ -647,7 +647,7 @@ class Ehandler:
 
         if exc_v is not None:
             if app.exit_on_err: return False
-            if app.should_raise(exc_v): raise exc_v
+            if app.should_raise(exc_v): return False
             return True
 
 def to_repr(__class__, _type = str):
