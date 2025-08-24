@@ -49,9 +49,17 @@ class BlazeioProtocol:
 
             await app.__evt__.wait_clear()
 
+    def __initialize__(app):
+        ...
+
     def __await__(app):
         yield from app.ensure_reading().__await__()
         return app.__stream__.popleft() if app.__stream__ else None
 
-    def __initialize__(app):
-        ...
+    async def __aiter__(app):
+        while True:
+            await app.ensure_reading()
+            while app.__stream__:
+                yield app.__stream__.popleft()
+            else:
+                if app.transport.is_closing() or app.__is_at_eof__: break

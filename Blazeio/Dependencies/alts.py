@@ -686,6 +686,9 @@ class perf_timing:
 
     def __dict__(app):
         return {"elapsed": float(app), "rps": app.rps}
+    
+    def get(app):
+        return {"elapsed": float(app), "rps": app.rps}
 
     def __int__(app):
         return int(app.elapsed)
@@ -696,6 +699,7 @@ class perf_timing:
 
     def __exit__(app, exc_t, exc_v, tb):
         app.__call__()
+        return False
 
     async def __aenter__(app):
         app.elapsed = perf_counter()
@@ -703,5 +707,6 @@ class perf_timing:
 
     async def __aexit__(app, exc_t, exc_v, tb):
         app.__call__()
+        return False
 
 if __name__ == "__main__": ...
