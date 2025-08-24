@@ -315,7 +315,7 @@ class BlazeioMultiplexer:
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window")
 
-    _chunk_size_base_ = 4096
+    _chunk_size_base_ = 4096*10
     def __init__(app, _id: (bytes, bytearray), protocol):
         app.clear_state()
         app.protocol = protocol

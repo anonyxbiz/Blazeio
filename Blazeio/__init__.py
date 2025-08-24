@@ -490,10 +490,10 @@ class Server:
             app.route_validator()
             if host: app.ServerConfig.host = host
             if port: app.ServerConfig.port = port
-    
+
             if not kwargs.get("backlog"):
                 kwargs["backlog"] = 5000
-    
+
             if app.ServerConfig.sock:
                 app.ServerConfig.sock.bind((app.ServerConfig.host, app.ServerConfig.port))
                 kwargs["sock"] = app.ServerConfig.sock
@@ -504,12 +504,12 @@ class Server:
             await app.configure_server_handler()
 
             protocol = app.ServerConfig.server_protocol
-    
+
             if not "sock" in kwargs:
                 args = (app.ServerConfig.host, app.ServerConfig.port)
             else:
                 args = ()
-    
+
             await app.ServerConfig.resolve_coros()
             await app.on_start_callbacks_runner()
 
@@ -529,7 +529,7 @@ class Server:
         async with app.server:
             await app.server.start_serving()
             app.is_server_running.set()
-            
+
             await plog.magenta("Blazeio [PID: %s]" % pid, " Server running on %s, Request Logging is %s.\n" % (app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
             await app._server_closing.wait()
@@ -665,5 +665,4 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks,
             if isinstance(route := app.declared_routes[route_name], Multirouter):
                 app.declared_routes[route_name] = route.get_router()
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...
