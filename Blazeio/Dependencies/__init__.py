@@ -49,63 +49,6 @@ debug_mode = environ.get("BlazeioDev", None)
 
 main_process = psutilProcess(pid := getpid())
 
-class __Scope__:
-    __slots__ = ()
-    def __init__(app):
-        ...
-
-    # Make keys unique to avoid overriding main_thread scope
-    def mux(app, key):
-        return "\x00%s\x00" % key
-
-    def __setattr__(app, key, value):
-        return setattr(main_thread(), app.mux(key), value)
-
-    def __setitem__(app, *args):
-        return app.__setattr__(*args)
-
-    def __getattr__(app, key, *args):
-        return getattr(main_thread(), app.mux(key), *args)
-
-    def __getitem__(app, *args):
-        return app.__getattr__(*args)
-
-    def __contains__(app, key):
-        return hasattr(main_thread(), app.mux(key))
-
-    def get(app, key, default = None):
-        return app.__getattr__(key, default)
-
-Scope = __Scope__()
-
-class __Taskscope__:
-    __slots__ = ()
-    def __init__(app):
-        ...
-
-    def mux(app, key):
-        return "\x00%s\x00" % key
-
-    def __setattr__(app, key, value):
-        return setattr(current_task(), app.mux(key), value)
-
-    def __setitem__(app, *args):
-        return app.__setattr__(*args)
-
-    def __getattr__(app, key, *args):
-        return getattr(current_task(), app.mux(key), *args)
-
-    def __getitem__(app, *args):
-        return app.__getattr__(*args)
-
-    def __contains__(app, key):
-        return hasattr(current_task(), app.mux(key))
-
-    def get(app, key, default = None):
-        return app.__getattr__(key, default)
-
-Taskscope = __Taskscope__()
-
 class __ioConf__:
     def __init__(app, **kwargs):
         app.add(shutdown_callbacks = [])
@@ -233,6 +176,69 @@ class SharpEvent:
                 if not fut.done(): fut.set_result(item)
 
         app._waiters.clear()
+
+class __Scope__:
+    __slots__ = ("set_event",)
+    def __init__(app):
+        app.set_event = SharpEvent()
+    
+    async def wait_for_key(app, key):
+        while not (value := app.get(key)):
+            await app.set_event.wait_clear()
+        return value
+
+    # Make keys unique to avoid overriding main_thread scope
+    def mux(app, key):
+        return "\x00%s\x00" % key
+
+    def __setattr__(app, key, value):
+        _ = setattr(main_thread(), app.mux(key), value)
+        app.set_event.set()
+        return _
+
+    def __setitem__(app, *args):
+        return app.__setattr__(*args)
+
+    def __getattr__(app, key, *args):
+        return getattr(main_thread(), app.mux(key), *args)
+
+    def __getitem__(app, *args):
+        return app.__getattr__(*args)
+
+    def __contains__(app, key):
+        return hasattr(main_thread(), app.mux(key))
+
+    def __str__(app):
+        return str(main_thread())
+
+    def get(app, key, default = None):
+        return app.__getattr__(key, default)
+
+class __Taskscope__:
+    __slots__ = ()
+    def __init__(app):
+        ...
+
+    def mux(app, key):
+        return "\x00%s\x00" % key
+
+    def __setattr__(app, key, value):
+        return setattr(current_task(), app.mux(key), value)
+
+    def __setitem__(app, *args):
+        return app.__setattr__(*args)
+
+    def __getattr__(app, key, *args):
+        return getattr(current_task(), app.mux(key), *args)
+
+    def __getitem__(app, *args):
+        return app.__getattr__(*args)
+
+    def __contains__(app, key):
+        return hasattr(current_task(), app.mux(key))
+
+    def get(app, key, default = None):
+        return app.__getattr__(key, default)
 
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "loop")
@@ -432,6 +438,9 @@ optional_module_importer({
 
 ioConf.get_event_loop()
 
+Scope = __Scope__()
+Taskscope = __Taskscope__()
+
 class __log__:
     known_exceptions = ()
 
@@ -604,3 +613,21 @@ class __ReMonitor__:
             except Exception as e: await Log.b_red("Blazeio.cb_scheduler", str(e))
 
 ReMonitor = __ReMonitor__()
+
+def create_ssl_context():
+    context = create_default_context()
+    context.check_hostname = False
+    context.verify_mode = CERT_NONE
+    context.post_handshake_auth = False
+    context.options |= OP_NO_COMPRESSION
+    context.set_ecdh_curve("prime256v1")
+    context.minimum_version = TLSVersion.TLSv1_3
+    context.session_tickets = True
+    return context
+
+def get_ssl_context():
+    if not "get_ssl_context" in Scope:
+        Scope.get_ssl_context = create_ssl_context()
+
+    return Scope.get_ssl_context
+    

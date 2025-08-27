@@ -292,6 +292,9 @@ class Rproxy:
 class Serverctx:
     def __init__(app):
         app.in_ctx = False
+    
+    def server_context_close(app):
+        ioConf.run_callbacks()
 
     def __enter__(app):
         app.in_ctx = True
@@ -299,7 +302,17 @@ class Serverctx:
 
     def __exit__(app, exc_t, exc_v, tb):
         app.in_ctx = False
-        ioConf.run_callbacks()
+        app.server_context_close()
+        return False
+
+    async def __aenter__(app):
+        app.in_ctx = True
+        return app
+
+    async def __aexit__(app, exc_t, exc_v, tb):
+        app.in_ctx = False
+        app.server_context_close()
+        return False
 
 class Httpkeepalive:
     def __init__(app, web, after_middleware = None, timeout: int = 60*60*5, _max: int = 1000**2):
@@ -394,9 +407,17 @@ class Server:
 
     def runner(app, *args, **kwargs):
         try:
-            app.event_loop.run_until_complete(app.run(*args, **kwargs))
+            app.event_loop.run_until_complete(app.server_run(*args, **kwargs))
         except (KeyboardInterrupt, Exception) as e:
             app.event_loop.run_until_complete(app.exit(e))
+        finally:
+            return app
+
+    async def run(app, *args, **kwargs):
+        try:
+            await app.server_run(*args, **kwargs)
+        except (KeyboardInterrupt, Exception) as e:
+            await app.exit(e)
         finally:
             return app
 
@@ -485,7 +506,7 @@ class Server:
         finally:
             app.exit_event.set()
 
-    async def run(app, host: (None, str) = None, port: (None, int) = None, serve_forever = True, **kwargs):
+    async def server_run(app, host: (None, str) = None, port: (None, int) = None, serve_forever = True, **kwargs):
         async with Ehandler() as e:
             app.route_validator()
             if host: app.ServerConfig.host = host

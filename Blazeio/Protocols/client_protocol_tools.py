@@ -571,6 +571,16 @@ class Parsers:
 
         return cookies
 
+    def dict_cookies(app):
+        cookies = ddict()
+        if (Cookies := app.response_headers.get("set-cookie")):
+            splitter = "="
+            for cookie in Cookies:
+                key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
+                cookies[key] = val
+
+        return cookies
+
     def join_to_current_params(app, *args, **kwargs):
         args = (*args, *app.args[len(args):]) if len(app.args) > len(args) else args
         kwargs = dict(**{i:app.kwargs[i] for i in app.kwargs if i not in kwargs}, **kwargs)

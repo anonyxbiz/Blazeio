@@ -3,7 +3,7 @@ from ..Dependencies import *
 from ..Dependencies.alts import *
 from ..Modules.request import *
 from ..Protocols.client_protocol import *
-from socket import SOL_SOCKET, SO_KEEPALIVE, IPPROTO_TCP, TCP_KEEPIDLE, TCP_KEEPINTVL
+from socket import SOL_SOCKET, SO_KEEPALIVE, IPPROTO_TCP, TCP_KEEPIDLE, TCP_KEEPINTVL, inet_ntoa, inet_aton, inet_ntop, AF_INET6
 
 __memory__ = {}
 
@@ -21,6 +21,88 @@ class Gen:
 
     @classmethod
     async def echo(app, x): yield x
+
+class Proxyconnector:
+    __slots__ = ("protocol", "proxy_type", "proxy", "connected", "tls_started")
+    def __init__(app, protocol: any, proxy_type: str, proxy: dict):
+        app.protocol, app.proxy_type, app.proxy, app.connected, app.tls_started = protocol, proxy_type, proxy, False, False
+
+    def __await__(app):
+        _ = yield from app.connect().__await__()
+        return _
+
+    async def connect(app):
+        if app.proxy_type == "socks5":
+            method = app.socks5_connect
+        elif app.proxy_type == "http":
+            raise ValueError("connector doesn't support %s proxy_type." % app.proxy_type)
+
+        _ = await method()
+        app.connected = True
+        return _
+
+    def atyp1(app):
+        return (b'\x05\x01\x02', b'\x05\x01\x00\x01%b%b' % (inet_aton(app.proxy.get("host")),  int(app.proxy.get("port")).to_bytes(2, 'big')))
+
+    def atyp3(app):
+        return (b'\x05\x01\x02', b'\x05\x01\x00\x03%b%b%b' % (int(len(app.proxy.get("host"))).to_bytes(1, "big"), app.proxy.get("host").encode(), int(app.proxy.get("port")).to_bytes(2, 'big')))
+
+    async def socks5_connect(app):
+        atyp = str(app.proxy.get("atyp", "atyp3"))
+        if not (method := getattr(app, atyp, None)): raise ValueError("connector doesn't support %s atyp." % atyp)
+        auth, connect = method()
+        await app.protocol.writer(auth)
+        await app.protocol
+        await app.protocol.writer(connect)
+        await app.protocol
+        app.protocol.__stream__.clear()
+
+    async def start_tls(app, context: any = None):
+        try:
+            transport = await app.protocol.loop.start_tls(app.protocol.transport, app.protocol, context or get_ssl_context())
+        except:
+            raise
+
+        if transport:
+            app.protocol.transport = transport
+
+        app.tls_started = True
+
+class BlazeioClient(BlazeioClientProtocol):
+    __slots__ = ("host", "port", "args", "kwargs", "socks5proxy", "loop", "httpproxy", "proxy",)
+    def __init__(app, host: str, port: int, *args, socks5proxy: (dict, None) = None, httpproxy: (dict, None) = None, loop: any = None, proxy: (Proxyconnector, None) = None, **kwargs):
+        super().__init__()
+        app.host, app.port, app.args, app.kwargs, app.socks5proxy, app.httpproxy, app.loop, app.proxy = host, port, args, kwargs, socks5proxy, httpproxy, loop, proxy
+
+    async def __aenter__(app):
+        await app.create_connection()
+        return app
+
+    async def __aexit__(app, *args):
+        app.cancel()
+        return False
+
+    async def create_connection(app):
+        if not app.loop: app.loop = get_event_loop()
+        if app.socks5proxy:
+            if "ssl" in app.kwargs: app.kwargs.pop("ssl")
+            host, port = app.socks5proxy.get("host"), int(app.socks5proxy.get("port"))
+            app.socks5proxy["host"], app.socks5proxy["port"] = app.host, app.port
+            app.proxy = Proxyconnector(app, "socks5", app.socks5proxy)
+        elif app.httpproxy:
+            if "ssl" in app.kwargs: app.kwargs.pop("ssl")
+            host, port = app.httpproxy.get("host"), int(app.httpproxy.get("port"))
+            app.httpproxy["host"], app.httpproxy["port"] = app.host, app.port
+            app.proxy = Proxyconnector(app, "http", app.httpproxy)
+        else:
+            host, port = app.host, app.port
+
+        _ = await app.loop.create_connection(lambda: app, host, port, *app.args, **app.kwargs)
+
+        if app.proxy and not app.proxy.connected:
+            await app.proxy
+
+        return _
 
 class SessionMethodSetter(type):
     HTTP_METHODS = {
@@ -186,7 +268,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if "client_protocol" in kwargs:
             client_protocol = kwargs.pop("client_protocol")
         else:
-            client_protocol = BlazeioClientProtocol
+            client_protocol = BlazeioClient
 
         if stream_file:
             normalized_headers["Content-length"] = str(os_path.getsize(stream_file[0]))
@@ -226,15 +308,10 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             else:
                 normalized_headers["Content-length"] = str(len(content))
 
-        if proxy: await app.proxy_config(stdheaders, proxy)
-        
         if app.port == 443:
-            ssl = kwargs.pop("ssl", ssl_context)
+            ssl = kwargs.pop("ssl", get_ssl_context())
         else:
             ssl = kwargs.pop("ssl", None)
-
-        if app.proxy_port:
-            ssl = ssl_context if app.proxy_port == 443 else None
 
         if "Content-length" in normalized_headers and normalized_headers.get(i := "Transfer-encoding"):
             normalized_headers.pop(i)
@@ -242,34 +319,24 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
 
         if not app.protocol and not connect_only:
-            transport, app.protocol = await app.loop.create_connection(
-                lambda: client_protocol(evloop=app.loop, **kwargs),
-                host = remote_host,
-                port = remote_port,
-                ssl = ssl,
-                **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__}
-            )
-
-            sock = app.protocol.transport.get_extra_info("socket")
-            sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
-            sock.setsockopt(IPPROTO_TCP,TCP_KEEPIDLE, 5)
-            sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 5)
+            if client_protocol != BlazeioClient:
+                transport, app.protocol = await app.loop.create_connection(lambda: client_protocol(evloop=app.loop, **kwargs), host = remote_host, port = remote_port, ssl = ssl, **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__})
+            else:
+                app.protocol = client_protocol(remote_host, remote_port, ssl = ssl, **kwargs)
+                await app.protocol.create_connection()
+                if app.protocol.proxy and not app.protocol.proxy.tls_started:
+                    await app.protocol.proxy.start_tls()
 
         elif not app.protocol and connect_only:
-            transport, app.protocol = await app.loop.create_connection(
-                lambda: client_protocol(evloop=app.loop, **{a:b for a,b in kwargs.items() if a in client_protocol.__slots__}),
-                host = remote_host,
-                port = remote_port,
-                ssl = ssl,
-                **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__}
-            )
-
-            return app
+            if client_protocol != BlazeioClient:
+                transport, app.protocol = await app.loop.create_connection(lambda: client_protocol(evloop=app.loop, **kwargs), host = remote_host, port = remote_port, ssl = ssl, **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__})
+            else:
+                app.protocol = client_protocol(remote_host, remote_port, ssl = ssl, **kwargs)
+                await app.protocol.create_connection()
+                if app.protocol.proxy and not app.protocol.proxy.tls_started:
+                    await app.protocol.proxy.start_tls()
         
-        if not proxy:
-            payload = ioConf.gen_payload(method, stdheaders, app.path, str(app.port))
-        else:
-            payload = ioConf.gen_payload("CONNECT", stdheaders, app.path, app.host, int(str(app.port)+"0"))
+        payload = ioConf.gen_payload(method, stdheaders, app.path, str(app.port))
 
         if body: payload += body
 
@@ -277,9 +344,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             await app.protocol.push(payload)
         
         app.configure_writer(normalized_headers)
-
-        if proxy:
-            await app.prepare_connect(method, stdheaders)
 
         if app.encode_writes and (encoding := normalized_headers.get("Content-encoding", None)) and (encoder := getattr(app, "%s_encoder" % encoding, NotImplemented)) is not NotImplemented:
             app.encoder = encoder
@@ -580,22 +644,5 @@ class get_Session:
 
 getSession = get_Session()
 KeepaliveSession = getSession
-
-class BlazeioClient(BlazeioClientProtocol):
-    __slots__ = ("args", "kwargs",)
-    def __init__(app, *args, **kwargs):
-        super().__init__()
-        app.args, app.kwargs = args, kwargs
-
-    async def __aenter__(app):
-        await app.create_connection()
-        return app
-
-    async def __aexit__(app, *args):
-        app.cancel()
-        return False
-
-    async def create_connection(app):
-        await get_event_loop().create_connection(lambda: app, *app.args, **app.kwargs)
 
 if __name__ == "__main__": ...

@@ -671,12 +671,17 @@ def perf_timer(start = None):
     return lambda start = start: perf_counter() - start
 
 class perf_timing:
-    __slots__ = ("elapsed", "rps")
+    __slots__ = ("elapsed", "rps", "_done")
     def __init__(app):
+        app.initialize()
+
+    def initialize(app):
         app.elapsed = perf_counter()
         app.rps = 0
+        app._done = 0
 
     def __call__(app):
+        app._done = 1
         app.elapsed = float(perf_counter() - app.elapsed)
         app.rps = float(1.0/float(app))
         return app
@@ -685,16 +690,18 @@ class perf_timing:
         return float(app.elapsed)
 
     def __dict__(app):
+        if not app._done: app.__call__()
         return {"elapsed": float(app), "rps": app.rps}
-    
+
     def get(app):
+        if not app._done: app.__call__()
         return {"elapsed": float(app), "rps": app.rps}
 
     def __int__(app):
         return int(app.elapsed)
 
     def __enter__(app):
-        app.elapsed = perf_counter()
+        if app._done: app.initialize()
         return app
 
     def __exit__(app, exc_t, exc_v, tb):
@@ -702,7 +709,7 @@ class perf_timing:
         return False
 
     async def __aenter__(app):
-        app.elapsed = perf_counter()
+        if app._done: app.initialize()
         return app
 
     async def __aexit__(app, exc_t, exc_v, tb):
