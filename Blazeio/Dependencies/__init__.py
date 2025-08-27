@@ -618,11 +618,6 @@ def create_ssl_context():
     context = create_default_context()
     context.check_hostname = False
     context.verify_mode = CERT_NONE
-    context.post_handshake_auth = False
-    context.options |= OP_NO_COMPRESSION
-    context.set_ecdh_curve("prime256v1")
-    context.minimum_version = TLSVersion.TLSv1_3
-    context.session_tickets = True
     return context
 
 def get_ssl_context():

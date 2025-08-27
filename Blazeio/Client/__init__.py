@@ -39,6 +39,9 @@ class Proxyconnector:
 
         _ = await method()
         app.connected = True
+        
+        if app.proxy.get("start_tls"): await app.start_tls()
+
         return _
 
     def atyp1(app):
@@ -58,14 +61,7 @@ class Proxyconnector:
         app.protocol.__stream__.clear()
 
     async def start_tls(app, context: any = None):
-        try:
-            transport = await app.protocol.loop.start_tls(app.protocol.transport, app.protocol, context or get_ssl_context())
-        except:
-            raise
-
-        if transport:
-            app.protocol.transport = transport
-
+        app.protocol.transport = await app.protocol.loop.start_tls(app.protocol.transport, app.protocol, context or get_ssl_context(), server_hostname = app.protocol.host)
         app.tls_started = True
 
 class BlazeioClient(BlazeioClientProtocol):
@@ -323,19 +319,14 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 transport, app.protocol = await app.loop.create_connection(lambda: client_protocol(evloop=app.loop, **kwargs), host = remote_host, port = remote_port, ssl = ssl, **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__})
             else:
                 app.protocol = client_protocol(remote_host, remote_port, ssl = ssl, **kwargs)
+
                 await app.protocol.create_connection()
-                if app.protocol.proxy and not app.protocol.proxy.tls_started:
+
+                if app.protocol.proxy and ssl and not app.protocol.proxy.tls_started:
                     await app.protocol.proxy.start_tls()
 
-        elif not app.protocol and connect_only:
-            if client_protocol != BlazeioClient:
-                transport, app.protocol = await app.loop.create_connection(lambda: client_protocol(evloop=app.loop, **kwargs), host = remote_host, port = remote_port, ssl = ssl, **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__})
-            else:
-                app.protocol = client_protocol(remote_host, remote_port, ssl = ssl, **kwargs)
-                await app.protocol.create_connection()
-                if app.protocol.proxy and not app.protocol.proxy.tls_started:
-                    await app.protocol.proxy.start_tls()
-        
+            if connect_only: return app
+
         payload = ioConf.gen_payload(method, stdheaders, app.path, str(app.port))
 
         if body: payload += body
