@@ -314,7 +314,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
         remote_host, remote_port = app.proxy_host or app.host, app.proxy_port or app.port
 
-        if not app.protocol and not connect_only:
+        if not app.protocol:
             if client_protocol != BlazeioClient:
                 transport, app.protocol = await app.loop.create_connection(lambda: client_protocol(evloop=app.loop, **kwargs), host = remote_host, port = remote_port, ssl = ssl, **{i: kwargs[i] for i in kwargs if i not in client_protocol.__slots__ and i not in app.__slots__})
             else:
