@@ -181,7 +181,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else app
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
-        known = isinstance(exc_value, app.known_ext_types)
+        known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err,))
 
         if app.on_exit_callback:
             func = app.on_exit_callback[0]
@@ -198,7 +198,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if exc_value and isinstance(exc_value, BlazeioException): return False
 
         if not isinstance(exc_value, CancelledError):
-            if app.close_on_exit == False: return True
+            if app.close_on_exit == False: return False
 
         if (protocol := getattr(app, "protocol", None)):
             if isinstance(protocol, BlazeioClientProtocol):

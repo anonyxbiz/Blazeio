@@ -6,6 +6,7 @@ from Blazeio.Protocols.multiplexer import Protocols
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import PIPE, run as subprocess_run
 from shutil import rmtree
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEPORT, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_REUSEADDR, SO_KEEPALIVE, TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT
 
 scope = io.ddict(server_name = "blazeio.other.multiplexed_proxy.localhost", parent_dir = "Blazeio_Other_Multiplexed_proxy", server_set = io.SharpEvent(False, io.loop))
 
@@ -463,7 +464,7 @@ def runner(**kwargs):
 
     scope.whclient.save_state(state)
 
-    scope.web.sock().setsockopt(io.SOL_SOCKET, io.SO_REUSEPORT, 1)
+    scope.web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
     scope.server_set.set()
 
     if not args.ssl:
