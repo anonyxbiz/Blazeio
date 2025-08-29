@@ -716,4 +716,15 @@ class perf_timing:
         app.__call__()
         return False
 
+async def json_save(filepath: str, json: (bytes, dict, list), mode: str = "wb", *args, **kwargs):
+    async with async_open(filepath, mode, *args) as f:
+        if isinstance(json, (list, dict)):
+            json = dumps(json, **kwargs).encode()
+
+        await f.write(json)
+
+async def json_loads(filepath: str, mode: str = "rb", *args, **kwargs):
+    async with async_open(filepath, mode, *args, **kwargs) as f:
+        return ddict(loads(await f.read()))
+
 if __name__ == "__main__": ...
