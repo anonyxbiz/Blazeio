@@ -548,11 +548,12 @@ class Parsers:
 
                     app.kwargs["cookies"][key] = val
 
-        if app.follow_redirects and app.status_code in app.http_redirect_status_range and (location := app.response_headers.get("location", None)):
+        if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.response_headers.get("location", None)):
             if location.startswith("/"):
                 location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
-            
+
             args, kwargs = app.join_to_current_params(location)
+
             return await app.prepare(*args, **kwargs)
 
         return True
@@ -784,21 +785,20 @@ class Pulltools(Parsers, Decoders):
 
                 if app.received_len < app.content_length:
                     Range = "bytes=%s-%s" % (str(app.received_len), str(app.content_length))
-    
-                    if (_args_len := len(app.args)) >= 3:
-                        headers = dict(app.args[2])
-                        headers["Range"] = Range
 
+                    if (_args_len := len(app.args)) >= 3:
+                        headers = ddict(app.args[2])
+                        headers["Range"] = Range
                         if _args_len > 3:
                             app.args = (*app.args[:2], headers, *app.args[3:])
                         else:
                             app.args = (*app.args[:2], headers)
 
-                    elif (headers := dict(app.kwargs.get("headers"))):
+                    elif (headers := app.kwargs.get("headers")):
                         headers["Range"] = Range
                         app.kwargs["headers"] = headers
-    
-                    await app.prepare()
+
+                    await app.prepare(*app.args, **app.kwargs)
 
     async def adl(app):
         if not app.is_prepared(): await app.prepare_http()

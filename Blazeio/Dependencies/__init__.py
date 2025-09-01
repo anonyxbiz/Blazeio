@@ -240,6 +240,16 @@ class __Taskscope__:
     def get(app, key, default = None):
         return app.__getattr__(key, default)
 
+    def __id__(app):
+        try:
+            tsk = current_task()
+        except RuntimeError:
+            return None
+
+        name = tsk.get_name()
+        _id = int(name[(idx := name.find(key := "Task-")) + len(key):])
+        return _id
+
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "loop")
     def __init__(app, maxsize: int = 100, evloop = None, cond = None):

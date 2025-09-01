@@ -545,8 +545,31 @@ class __plog__:
         await app.clear(a, b)
         await app.mvto(a)
         await logger.flush()
+    
+    async def clear_and_log(app, _id, *args, **kwargs):
+        await app.clear_mv(_id, _id+5)
+        return await app.__log__(*args, **kwargs)
 
 plog = __plog__()
+
+class __llog__(__plog__):
+    def __getattr__(app, name):
+        if name in logger.colors._dict:
+            def dynamic_method(*args, **kwargs):
+                if not args[0].startswith("<line_"):
+                    if (_id := Taskscope.__id__()) is not None and _id < 30:
+                        if _id >= 5: _id -= 3
+
+                        return app.clear_and_log(_id, "<line_%d>" % _id, *args, logger_ = logger.__getattr__(name), **kwargs)
+
+                return app.__log__(*args, logger_ = logger.__getattr__(name), **kwargs)
+
+            setattr(app, name, dynamic_method)
+            return dynamic_method
+
+        return getattr(logger, name)
+
+llog = __llog__()
 
 class timef:
     @classmethod
