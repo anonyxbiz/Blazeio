@@ -341,6 +341,7 @@ class Default_logger:
     def __init__(app, name: str = "", maxsize: int = 1000):
         ioConf.add_shutdown_callback(app.stop)
         app.name = name
+        app.enabled = True
         app.maxsize = maxsize
         app.should_stop = False
         app.stopped_event = Tevent()
@@ -381,6 +382,8 @@ class Default_logger:
         return app.should_stop
 
     async def __log__(app, *args, **kwargs):
+        if not app.enabled:
+            return
         event = SharpEvent()
         await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event)), app.loop))
         await event.wait()
