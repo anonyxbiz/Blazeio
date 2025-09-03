@@ -313,7 +313,7 @@ class Enqueue:
         return len(app.queue) <= 0
 
 class Default_logger:
-    colors: DotDict = DotDict({
+    colors = ddict({
         'info': '\033[32m',
         'error': '\033[31m',
         'warning': '\033[33m',
@@ -337,6 +337,8 @@ class Default_logger:
         'b_cyan': '\033[96m',
         'b_white': '\033[97m'
     })
+    colors_reversed = ddict({value: key for key, value in colors.items()})
+
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
     def __init__(app, name: str = "", maxsize: int = 1000):
         ioConf.add_shutdown_callback(app.stop)
