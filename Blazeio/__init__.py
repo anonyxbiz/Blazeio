@@ -596,10 +596,10 @@ class Protocol_methods(Serverctx):
         return app
 
 class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_methods):
-    def __init__(app, *args, name: str = "Blazeio_App", **kwargs):
+    def __init__(app, *args, name: str = "Blazeio_App", evloop = None, **kwargs):
         app.register_to_scope(name, app)
         app.__server_config__ = kwargs.get("__server_config__") or dict(ioConf.default_http_server_config)
-        app.loop = kwargs.get("evloop") or kwargs.get("loop") or ioConf.loop
+        app.loop = evloop or kwargs.get("loop") or get_event_loop()
         app.REQUEST_COUNT = 0
         app.INBOUND_CHUNK_SIZE = kwargs.get("INBOUND_CHUNK_SIZE") or ioConf.INBOUND_CHUNK_SIZE
         app.declared_routes = kwargs.get("declared_routes") or OrderedDict()
