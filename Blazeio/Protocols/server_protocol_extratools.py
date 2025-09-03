@@ -108,6 +108,9 @@ class ExtraToolset:
         except: ...
 
     def __getattr__(app, *_args):
+        if isinstance(app.store, dict) and (value := app.store.get(_args[0], None)):
+            return value
+
         def method(*args, **kwargs):
             func = getattr(app.utils, *_args)
 

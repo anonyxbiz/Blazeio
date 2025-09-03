@@ -171,7 +171,7 @@ class ioCondition:
         app.acquire_waiter_count += 1
         app._acquire_event.set()
         while app.locked():
-            await app._lock_event.wait()
+            await app._lock_event.wait_clear()
         app.lock()
         app.acquire_waiter_count -= 1
         app._acquire_event.set()
