@@ -22,7 +22,7 @@ class Pathops:
 
     def __call__(app):
         app.dirs = []
-        app.parent = app.add_dir(io.path.abspath(io.path.join(io.environ.get('HOME'), scope.parent_dir)))
+        app.parent = app.add_dir(io.path.abspath(io.path.join(io.environ.get('HOME', io.environ.get("USERPROFILE")), scope.parent_dir)))
         app.cert_dir = app.add_dir(io.path.join(app.parent, "cert_dir"))
         scope.HOME = app.parent
         app.ensure_dirs()
