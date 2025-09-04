@@ -750,4 +750,10 @@ async def json_loads(filepath: str, mode: str = "rb", *args, **kwargs):
     async with async_open(filepath, mode, *args, **kwargs) as f:
         return ddict(loads(await f.read()))
 
+class URL:
+    __slots__ = ("host", "port", "path")
+    params = {}
+    def __init__(app, url: str, params: (None, dict) = None):
+        app.host, app.port, app.path = ioConf.url_to_host(url, params or app.params)
+
 if __name__ == "__main__": ...
