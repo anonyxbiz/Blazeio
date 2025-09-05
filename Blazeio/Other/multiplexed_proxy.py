@@ -329,24 +329,14 @@ class App(Sslproxy, Transporters):
         if not (srv := app.hosts.get(server_hostname)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
-        while True:
-            exc = None
-            try:
-                r.pull = r.request
-                app.protocols[r.identifier] = r
-                if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
-                await transporter(r, srv)
-            except Exception as e:
-                exc = e
-            finally:
-                app.protocols.pop(r.identifier, None)
-                if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
-
-                if (exc or r.transport.is_closing()):
-                    if exc: raise exc
-                    break
-                
-                if not app.keepalive: break
+        try:
+            if not r.pull: r.pull = r.request
+            app.protocols[r.identifier] = r
+            if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+            await transporter(r, srv)
+        finally:
+            app.protocols.pop(r.identifier, None)
+            if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
 class WebhookClient:
     __slots__ = ("conf", "availablity")
@@ -490,7 +480,7 @@ def runner(**kwargs):
     if SO_REUSEPORT: scope.web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
     scope.server_set.set()
 
-    if not args.ssl:
+    if args.keepalive:
         scope.web.with_keepalive()
 
     if args.web_runner:
