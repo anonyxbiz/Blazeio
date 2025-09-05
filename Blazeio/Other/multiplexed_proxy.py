@@ -136,7 +136,7 @@ class Transporters:
     async def tls_puller(app, r, resp):
         try:
             if app.keepalive:
-                await scope.web.__default_parser__(r, scope.web)
+                await scope.web.parse_default(r)
                 
                 payload = io.ioConf.gen_payload(r.method, r.headers, r.tail, "")
 
