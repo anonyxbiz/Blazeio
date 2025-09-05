@@ -137,7 +137,6 @@ class Transporters:
         try:
             if app.keepalive:
                 if await app.sniff_prot(r, resp) != r: return
-
             while (chunk := await r):
                 await resp.writer(chunk)
         except:
