@@ -191,6 +191,23 @@ class Transporters:
 
             await task
 
+    async def tls_transporter_keepalive(app, r, srv: dict):
+        task = None
+        async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
+            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
+
+            if r.method not in r.non_bodied_methods:
+                task = io.create_task(app.puller(r, resp))
+            else:
+                async with resp.protocol: ...
+
+            async for chunk in resp.__pull__():
+                if resp.eof_received and task: task.cancel()
+                if chunk: await r.writer(chunk)
+
+        if task:
+            if not task.done(): task.cancel()
+
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive")
     def __init__(app, blazeio_proxy_hosts = "blazeio_proxy_hosts.txt", timeout = float(60*10), log = False, track_metrics = True, proxy_port = None, protocols = {}, protocol_count = 0, tasks = [], protocol_update_event = io.SharpEvent(True, io.ioConf.loop), host_update_cond = io.ioCondition(evloop = io.ioConf.loop), hosts = io.Dotify({scope.server_name: {}}), ssl: bool = False, keepalive: bool = True):
@@ -294,7 +311,9 @@ class App(Sslproxy, Transporters):
         
         if sock:
             server_hostname = sock.context.server_hostname
-            transporter = app.tls_transporter
+            transporter = app.tls_transporter if not app.keepalive else app.tls_transporter_keepalive
+            if app.keepalive:
+                await scope.web.parse_default(r)
         else:
             await scope.web.parse_default(r)
             if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
