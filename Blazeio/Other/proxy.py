@@ -174,10 +174,7 @@ class Transporters:
             if not task.done(): task.cancel()
 
     async def tls_transporter(app, r, srv: dict):
-        task = None
         async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
-
             task = io.create_task(app.tls_puller(r, resp))
             async for chunk in resp.pull():
                 if chunk: await r.writer(chunk)
