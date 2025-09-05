@@ -105,38 +105,8 @@ class Transporters:
         except:
             return
 
-    def get_method(app, buff):
-        idy, method = 0, 0
-        for i in app.chunk_tools.http.methods:
-            if (idy := buff.find(i)) != -1:
-                method = i
-                break
-
-        return (method, idy)
-
-    async def sniff_prot(app, r, resp):
-        buff, method = bytearray(), None
-        while (chunk := await r):
-            buff.extend(chunk)
-            if (idx := buff.find(app.chunk_tools.http.header_sep)) != -1:
-                initial = buff[:idx]
-                method, idy = app.get_method(initial)
-
-                if method:
-                    buff = initial[idy:] + buff[idx:]
-                    if method in app.chunk_tools.http.non_bodied_methods:
-                        async with resp.protocol: return await resp.writer(bytes(buff))
-                break
-
-            elif len(buff) >= app.chunk_tools.max_buff_size: break
-
-        await resp.writer(bytes(buff))
-        return r
-
     async def tls_puller(app, r, resp):
         try:
-            if app.keepalive:
-                if await app.sniff_prot(r, resp) != r: return
             while (chunk := await r):
                 await resp.writer(chunk)
         except:
