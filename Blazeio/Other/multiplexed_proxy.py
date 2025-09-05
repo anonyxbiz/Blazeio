@@ -144,12 +144,13 @@ class Transporters:
 
                 await resp.write(payload)
 
-                if r.method in r.non_bodied_methods: return
+                if r.method in r.non_bodied_methods:
+                    async with resp.protocol: return
 
                 async for chunk in r.pull():
                     await resp.write(chunk)
 
-                return
+                async with resp.protocol: return
 
             while (chunk := await r): await resp.writer(chunk)
         except:
@@ -194,10 +195,9 @@ class Transporters:
     async def tls_transporter(app, r, srv: dict):
         task = None
         async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            async with resp.protocol:
-                task = io.create_task(app.tls_puller(r, resp))
-                async for chunk in resp.__pull__():
-                    if chunk: await r.writer(chunk)
+            task = io.create_task(app.tls_puller(r, resp))
+            async for chunk in resp.__pull__():
+                if chunk: await r.writer(chunk)
 
             if task:
                 if not task.done(): task.cancel()
