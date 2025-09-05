@@ -136,23 +136,9 @@ class Transporters:
     async def tls_puller(app, r, resp):
         try:
             if app.keepalive:
-                await scope.web.parse_default(r)
-                
-                payload = io.ioConf.gen_payload(r.method, r.headers, r.tail, "")
-
-                await io.plog.yellow(payload)
-
-                await resp.write(payload)
-
-                if r.method in r.non_bodied_methods:
-                    async with resp.protocol: return
-
-                async for chunk in r.pull():
-                    await resp.write(chunk)
-
-                async with resp.protocol: return
-
-            while (chunk := await r): await resp.writer(chunk)
+                if await app.sniff_prot(r, resp) != r: return
+            while (chunk := await r):
+                await resp.writer(chunk)
         except:
             return
 
@@ -195,9 +181,10 @@ class Transporters:
     async def tls_transporter(app, r, srv: dict):
         task = None
         async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
-            task = io.create_task(app.tls_puller(r, resp))
-            async for chunk in resp.__pull__():
-                if chunk: await r.writer(chunk)
+            async with resp.protocol:
+                task = io.create_task(app.tls_puller(r, resp))
+                async for chunk in resp.__pull__():
+                    if chunk: await r.writer(chunk)
 
             if task:
                 if not task.done(): task.cancel()
