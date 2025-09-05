@@ -139,10 +139,12 @@ class Transporters:
                 await scope.web.__default_parser__(r, scope.web)
                 
                 payload = io.ioConf.gen_payload(r.method, r.headers, r.tail, "")
-                
+
                 await io.plog.yellow(payload)
 
                 await resp.write(payload)
+
+                if r.method in r.non_bodied_methods: return
 
                 async for chunk in r.pull():
                     await resp.write(chunk)

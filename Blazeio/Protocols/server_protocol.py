@@ -3,7 +3,7 @@ from .server_protocol_extratools import *
 
 class BlazeioPayloadUtils:
     __slots__ = ()
-    non_bodied_methods = {"GET", "HEAD", "OPTIONS"}
+    non_bodied_methods = {"GET", "HEAD", "OPTIONS", "DELETE"}
     async def transporter(app):
         await app.on_client_connected(app)
         app.close()
