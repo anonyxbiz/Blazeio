@@ -1,7 +1,7 @@
 from ..Dependencies import *
 from ..Modules.request import *
 from ..Modules.streaming import ClientContext
-from ..Dependencies.alts import DictView, plog, memarray, traceback_logger
+from ..Dependencies.alts import DictView, plog, memarray, traceback_logger, URL
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
@@ -549,8 +549,12 @@ class Parsers:
                     app.kwargs["cookies"][key] = val
 
         if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.response_headers.get("location", None)):
+            await app.drain_pipe()
             if location.startswith("/"):
                 location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
+
+            
+            if URL(location).host != app.host: app.protocol = None
 
             args, kwargs = app.join_to_current_params(location)
 
@@ -867,6 +871,7 @@ class Pulltools(Parsers, Decoders):
                 yield ((uploaded / size) * 100)
 
     async def drain_pipe(app):
+        if app.pull == app.protocol.pull: return
         async for chunk in app.pull(): ...
 
 if __name__ == "__main__":
