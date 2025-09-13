@@ -341,9 +341,9 @@ class Httpkeepalive:
         r += app.keepalive_headers
 
     async def __main_handler__(app, r):
-        while True:
+        while not r.transport.is_closing():
             try:
-                exc = None
+                exc, timer = None, perf_counter()
                 await app.get_handler()(r)
                 if r.headers: await r.eof()
             except (Abort, Eof, Err, ServerGotInTrouble) as e:
@@ -354,11 +354,11 @@ class Httpkeepalive:
             except Exception as e:
                 exc = e
             finally:
+                elapsed = (perf_counter() - timer)
+                if elapsed < 0.3: r.close()
+
                 if app.after_middleware: await app.after_middleware(r)
-
                 if exc: raise exc
-
-                if r.transport.is_closing(): break
 
                 r.utils.clear_protocol(r)
 
