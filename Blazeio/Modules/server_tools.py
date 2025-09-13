@@ -65,10 +65,10 @@ class Simpleserve:
             app.range_ = range_
             br = range_[idx + 1:]
             app.start = int(br[:br.rfind("-")])
-            app.end = int(app.file_size-1)
+            app.end = app.file_size - 1
+
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
             app.status = 206
-            app.headers.pop(app.headers_demux.content_length, None)
         else:
             app.start, app.end, app.range_ = 0, app.file_size, range_
 
@@ -98,16 +98,10 @@ class Simpleserve:
             if app.start: f.seek(app.start)
 
             while (chunk := await f.read(app.CHUNK_SIZE)):
-                app.start += len(chunk)
-                if app.start > app.end:
-                    rem = int(app.end - int(start := app.start-len(chunk)))
-                    app.start = start + rem
-                    chunk = chunk[:rem]
-
                 yield chunk
 
                 if app.start >= app.end: break
-
+                app.start += len(chunk)
                 f.seek(app.start)
     
     async def __aenter__(app):
@@ -120,5 +114,4 @@ class Simpleserve:
     async def __aiter__(app):
         async for chunk in app.pull(): yield chunk
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...
