@@ -750,10 +750,56 @@ async def json_loads(filepath: str, mode: str = "rb", *args, **kwargs):
     async with async_open(filepath, mode, *args, **kwargs) as f:
         return ddict(loads(await f.read()))
 
+async def aread(filepath: str, *args, **kwargs):
+    async with async_open(filepath, "rb", *args, **kwargs) as f:
+        return await f.read()
+
+async def asave(filepath: str, data: (bytes, bytearray), *args, **kwargs):
+    async with async_open(filepath, "wb", *args, **kwargs) as f:
+        if not isinstance(data, (bytes, bytearray)):
+            data = data.encode()
+
+        await f.write(data)
+
 class URL:
-    __slots__ = ("host", "port", "path")
-    params = {}
+    __slots__ = ("host", "port", "path", "params", "pathname")
+    params_sepr = ("?", "&", "=")
     def __init__(app, url: str, params: (None, dict) = None):
+        app.params = {}
         app.host, app.port, app.path = ioConf.url_to_host(url, params or app.params)
+        if (idx := app.path.find(app.params_sepr[0])) != -1:
+            app.pathname = app.path[:idx]
+        else:
+            app.pathname = app.path
+        app.params = app.get_params(url)
+
+    def get_params(app, url: str):
+        prms = ddict()
+        if (idx0 := url.find(app.params_sepr[0])) == -1: return prms
+        params, idx, idx_end = url[idx0 + 1:], 0, 0
+
+        while idx != -1:
+            if (idx := params.find(app.params_sepr[1])) != -1:
+                param, params = params[:idx], params[idx+1:]
+            else:
+                param, params = params, ""
+
+            if (idx := params.find(app.params_sepr[2])) != -1:
+                key, value = params[:idx], params[idx + 1:]
+
+                if (idx := value.find(app.params_sepr[1])) != -1:
+                    value = value[:idx]
+                
+                value = ioConf.url_decode_sync(value)
+
+                prms[ioConf.url_decode_sync(key)] = value
+
+        return prms
+
+    def get(app, key = None):
+        if not key:
+            return {key: getattr(app, key) for key in app.__slots__}
+        else:
+            return getattr(app, key)
 
 if __name__ == "__main__": ...
