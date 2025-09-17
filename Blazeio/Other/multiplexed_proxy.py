@@ -132,10 +132,15 @@ class Transporters:
                 async with resp.protocol: ...
 
             async for chunk in resp.__pull__():
-                if chunk: await r.writer(chunk)
+                if chunk:
+                    r.lazy_writer.chunk_pool.append(chunk)
+                    if len(r.lazy_writer.chunk_pool) >= r.lazy_writer.min_chunks:
+                        while len(r.lazy_writer.chunk_pool) > r.lazy_writer.lazy_chunks: await r.writer(r.lazy_writer.chunk_pool.popleft())
 
         if task:
             if not task.done(): task.cancel()
+            async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
+                await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https")
@@ -236,6 +241,8 @@ class App(Sslproxy, Transporters):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
+        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque(), min_chunks = 3, lazy_chunks = 2))
+
         sock = r.transport.get_extra_info("ssl_object")
 
         await scope.web.parse_default(r)
@@ -261,7 +268,18 @@ class App(Sslproxy, Transporters):
             if not r.pull: r.pull = r.request
             app.protocols[r.identifier] = r
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+
             await app.transporter(r, srv)
+
+            await r.writer(r.lazy_writer.chunk_pool.popleft())
+
+            if r.transport.is_closing():
+                r.close()
+                raise io.ClientDisconnected()
+
+            chunk = b"".join([i for i in r.lazy_writer.chunk_pool])
+            r.lazy_writer.chunk_pool.clear()
+            if chunk: await r.writer(chunk)
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
