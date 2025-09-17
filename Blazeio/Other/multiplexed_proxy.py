@@ -138,7 +138,7 @@ class Transporters:
                         while len(r.lazy_writer.chunk_pool) > r.lazy_writer.lazy_chunks: await r.writer(r.lazy_writer.chunk_pool.popleft())
 
         if task:
-            if not task.done(): task.cancel()
+            # if not task.done(): task.cancel()
             async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
                 await task
 
@@ -277,9 +277,10 @@ class App(Sslproxy, Transporters):
                 r.close()
                 raise io.ClientDisconnected()
 
-            chunk = b"".join([i for i in r.lazy_writer.chunk_pool])
-            r.lazy_writer.chunk_pool.clear()
-            if chunk: await r.writer(chunk)
+            if r.lazy_writer.chunk_pool:
+                chunk = b"".join([i for i in r.lazy_writer.chunk_pool])
+                r.lazy_writer.chunk_pool.clear()
+                if chunk: await r.writer(chunk)
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
