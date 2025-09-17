@@ -104,6 +104,7 @@ class BlazeioMultiplexer:
         app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
 
     def choose_stream(app):
+        return app.protocol.__stream__
         return app.__prepends__ or app.protocol.__stream__
 
     def cancel(app):
@@ -297,10 +298,17 @@ class BlazeioMultiplexer:
             while (stream := app.choose_stream()):
                 chunk = stream.popleft()
                 if app.__prepends__:
-                    chunk = app.__prepends__.popleft() + chunk
+                    chunk = b"".join([i for i in app.__prepends__]) + chunk
+                    app.__prepends__.clear()
 
                 yield chunk
             else:
+                app.protocol.transport.resume_reading()
+                if app.__prepends__:
+                    chunk = b"".join([i for i in app.__prepends__])
+                    app.__prepends__.clear()
+                    yield chunk
+
                 if app.protocol.transport.is_closing():
                     app.cancel()
                     break
