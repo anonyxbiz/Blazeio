@@ -1,3 +1,4 @@
+# Blazeio.Protocols.multiplexer.py
 import Blazeio as io
 from socket import IPPROTO_TCP, TCP_NODELAY
 
@@ -51,7 +52,7 @@ class BlazeioMultiplexer:
         b"\x06", # io_create
     )
 
-    _min_buff_size_ = 1024*512 # For 500 streams
+    _min_buff_size_ = 1024*512
     def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = ((1024**2)*10, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
@@ -103,10 +104,6 @@ class BlazeioMultiplexer:
     def update_protocol_write_buffer_limits(app):
         app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
 
-    def choose_stream(app):
-        return app.protocol.__stream__
-        return app.__prepends__ or app.protocol.__stream__
-
     def cancel(app):
         for stream in list(app.__streams__):
             app.protocol.stream_closed(app.__streams__[stream])
@@ -124,7 +121,7 @@ class BlazeioMultiplexer:
     def state(app):
         app.calc_analytics()
         return Utils.gen_state(app)
-    
+
     def __prepend__(app, data, wakeup = False, clear = True):
         if not data: return
         if clear:
@@ -239,6 +236,7 @@ class BlazeioMultiplexer:
             try:
                 size = int(size, 16)
             except ValueError:
+                raise
                 return app.clear_state()
 
             app.__expected_size, app.__buff = size, app.__buff[bounds[1] + 1:]
@@ -275,8 +273,7 @@ class BlazeioMultiplexer:
             if app.__received_size > app.__expected_size:
                 chunk_size = (len(chunk) - (app.__received_size - app.__expected_size))
                 remainder, chunk = bytes(memoryview(chunk)[chunk_size:]), bytes(memoryview(chunk[:chunk_size]))
-
-                app.__prepend__(remainder, wakeup = True)
+                app.__prepend__(remainder, True)
 
             if app.__current_stream and not app.__current_stream.__stream_closed__ and app.__current_sid:
                 app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
@@ -295,19 +292,24 @@ class BlazeioMultiplexer:
             if not app.__prepends__:
                 await app.protocol.ensure_reading()
 
-            while (stream := app.choose_stream()):
-                chunk = stream.popleft()
+            while app.protocol.__stream__:
+                chunk = app.protocol.__stream__.popleft()
                 if app.__prepends__:
                     chunk = b"".join([i for i in app.__prepends__]) + chunk
                     app.__prepends__.clear()
-
                 yield chunk
+
             else:
-                app.protocol.transport.resume_reading()
                 if app.__prepends__:
                     chunk = b"".join([i for i in app.__prepends__])
                     app.__prepends__.clear()
+                    
+                    if len(chunk) <= 100:
+                        app.protocol.transport.resume_reading()
+
                     yield chunk
+                else:
+                    app.protocol.transport.resume_reading()
 
                 if app.protocol.transport.is_closing():
                     app.cancel()
@@ -323,7 +325,7 @@ class BlazeioMultiplexer:
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window")
 
-    _chunk_size_base_ = 4096*10
+    _chunk_size_base_ = 1024*10
     def __init__(app, _id: (bytes, bytearray), protocol):
         app.clear_state()
         app.protocol = protocol
@@ -333,7 +335,7 @@ class Stream:
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
-        app.inflight_window = 3
+        app.inflight_window = 1
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()
@@ -352,10 +354,7 @@ class Stream:
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
 
     def calculate_chunk_size(app):
-        if ((chunk_size := int(len(app.protocol.protocol.__buff__)/5)) < app._chunk_size_base_*4) or (chunk_size > app._chunk_size_base_*7):
-            chunk_size = app._chunk_size_base_
-
-        return chunk_size
+        return app._chunk_size_base_
 
     def id_f(app):
         if not hasattr(app, "__idf__"):
