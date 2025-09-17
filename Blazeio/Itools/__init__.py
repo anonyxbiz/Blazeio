@@ -113,9 +113,9 @@ class Unone:
     def item(app):
         return app._item
 
-def load_from_locals(app, fn, __locals__):
+def load_from_locals(app, fn, __locals__, _type = Utype):
     for key in __locals__:
-        if fn.__annotations__.get(key) == Utype:
+        if fn.__annotations__.get(key) == _type:
             setattr(app, key, __locals__[key])
 
 class Super:
