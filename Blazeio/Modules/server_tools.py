@@ -109,7 +109,7 @@ class Simpleserve:
         return app
 
     async def __aexit__(app, ext_t, ext_v, tb):
-        if ext_v: raise ext_v
+        return False
 
     async def __aiter__(app):
         async for chunk in app.pull(): yield chunk
