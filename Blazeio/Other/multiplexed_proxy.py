@@ -431,7 +431,7 @@ class Runner:
 
         if SO_REUSEPORT: web.sock().setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
 
-        Sslproxy.tune_socket(web.sock())
+        # Sslproxy.tune_socket(web.sock())
 
         scope.server_set.set()
 
