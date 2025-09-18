@@ -131,9 +131,9 @@ class Transporters:
             else:
                 async with resp.protocol: ...
 
-            await resp.prepare_http()
-            
-            await r.prepare(resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False, encode_event_stream = False)
+            # await resp.prepare_http()
+
+            # await r.prepare(resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False, encode_event_stream = False)
 
             async for chunk in resp.__pull__():
                 if chunk:
