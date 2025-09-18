@@ -6,7 +6,8 @@ from Blazeio.Protocols.multiplexer import Protocols
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import PIPE, run as subprocess_run
 from shutil import rmtree
-from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_KEEPALIVE, TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_KEEPALIVE, TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT, SO_LINGER, TCP_QUICKACK
+from struct import pack as struct_pack
 
 try:
     from socket import SO_REUSEPORT
@@ -88,6 +89,17 @@ class Sslproxy:
         context = app.context()
         context.sni_callback = app.sni_callback
         return context
+    
+    @classmethod
+    def tune_socket(app, sock):
+        sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        sock.setsockopt(SOL_SOCKET, SO_LINGER, struct_pack('ii', 1, 0))
+        sock.setsockopt(IPPROTO_TCP, TCP_QUICKACK, 1)
+        sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 5)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 1)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 3)
+        return sock
 
 class Transporters:
     __slots__ = ()
@@ -131,11 +143,14 @@ class Transporters:
             else:
                 async with resp.protocol: ...
 
+            prev_chunk = None
             async for chunk in resp.__pull__():
                 if chunk:
-                    r.lazy_writer.chunk_pool.append(chunk)
-                    if len(r.lazy_writer.chunk_pool) >= r.lazy_writer.min_chunks:
-                        while len(r.lazy_writer.chunk_pool) > r.lazy_writer.lazy_chunks: await r.writer(r.lazy_writer.chunk_pool.popleft())
+                    if prev_chunk: await r.writer(prev_chunk)
+                    prev_chunk = chunk
+
+            if prev_chunk: r.lazy_writer.chunk_pool.append(prev_chunk)
+
         if task:
             if not task.done(): task.cancel()
 
@@ -234,18 +249,19 @@ class App(Sslproxy, Transporters):
 
         return True
 
-    async def __default_handler__(app, r):
+    async def __main_handler__(app, r):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
-        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque(), min_chunks = 1, lazy_chunks = 1))
+        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque()))
 
         sock = r.transport.get_extra_info("ssl_object")
 
         await scope.web.parse_default(r)
-        
+
         if sock:
             server_hostname = sock.context.server_hostname
+            r.transport.set_write_buffer_limits(1, 0)
         else:
             if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
                 server_hostname = server_hostname[:idx]
@@ -272,21 +288,6 @@ class App(Sslproxy, Transporters):
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
-
-    async def __main_handler__(app, r):
-        if not app.keepalive: return await app.__default_handler__(r)
-
-        while not r.transport.is_closing():
-            try:
-                exc = None
-                await app.__default_handler__(r)
-            except (io.Abort, io.Eof, io.Err, io.ServerGotInTrouble) as e:
-                if isinstance(e, io.Abort): await e.text(r)
-            except Exception as e:
-                exc = e
-            finally:
-                if exc: raise exc
-                r.utils.clear_protocol(r)
 
 class WebhookClient:
     __slots__ = ("conf", "availablity")
@@ -429,7 +430,9 @@ class Runner:
 
         scope.whclient.save_state(state)
 
-        if SO_REUSEPORT: web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
+        if SO_REUSEPORT: web.sock().setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+
+        Sslproxy.tune_socket(web.sock())
 
         scope.server_set.set()
 
@@ -443,7 +446,7 @@ class Runner:
             Path_manager()
         
         srvs = []
-        
+    
         srvs.append(io.ddict(server = io.App(app.args.host, (port := int(app.args.port)), __timeout__ = float((60**2) * 24), name = "Blazeio_Other_Multiplexed_proxy"), conf = io.ddict(), ssl = app.args.ssl, port = port, task = None))
 
         if app.args.ssl:

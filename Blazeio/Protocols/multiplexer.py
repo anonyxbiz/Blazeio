@@ -1,5 +1,6 @@
 # Blazeio.Protocols.multiplexer.py
 import Blazeio as io
+from Blazeio.Other.crypto import Ciphen
 from socket import IPPROTO_TCP, TCP_NODELAY
 
 class BlazeioMultiplexerConf:
@@ -13,19 +14,6 @@ class BlazeioServerProtocol_Config:
 
     def configure(app):
         app.__default_main_handler__ = app.srv.__main_handler__
-
-class Ciphen:
-    __slots__ = ("key",)
-    def __init__(app, key: bytes):
-        app.key = key
-        if not isinstance(app.key, bytes):
-            app.key = app.key.encode()
-
-    def encrypt(app, data: bytes):
-        return bytes([byte ^ app.key[i % len(app.key)] for i, byte in enumerate(data)])
-
-    def decrypt(app, data: bytes):
-        return app.encrypt(data)
 
 class Utils:
     @classmethod

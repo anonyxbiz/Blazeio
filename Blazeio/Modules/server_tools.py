@@ -24,6 +24,11 @@ class Simpleserve:
         elif (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
             raise Abort("", 304, app.headers)
     
+    def validate_method(app):
+        if app.r.method == "GET": ...
+        elif app.r.method == "HEAD": raise Abort("", app.status, app.headers)
+        else: raise Abort("Method %s is not allowed for this resource" % app.r.method, 405, ddict(Allow = "GET, HEAD"))
+
     def __await__(app):
         yield from app.prepare_metadata().__await__()
         return app
@@ -76,6 +81,8 @@ class Simpleserve:
             app.status = 200
 
         if app.validate_cache(): return True
+        
+        app.validate_method()
 
     @classmethod
     async def push(cls, *args, **kwargs):

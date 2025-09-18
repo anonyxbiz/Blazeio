@@ -13,4 +13,6 @@ class Ciphen:
     def decrypt(app, data: bytes):
         return app.encrypt(data)
 
+io.Scope.Ciphen = Ciphen
+
 if __name__ == "__main__": ...

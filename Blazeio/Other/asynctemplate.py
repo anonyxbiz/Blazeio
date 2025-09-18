@@ -80,4 +80,6 @@ class Asynctemplate:
 
         if chunk: yield chunk
 
+io.Scope.Asynctemplate = Asynctemplate
+
 if __name__ == "__main__": ...
