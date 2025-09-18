@@ -238,7 +238,7 @@ class App(Sslproxy, Transporters):
 
         return True
 
-    async def __main_handler__(app, r):
+    async def __default_handler__(app, r):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
@@ -276,6 +276,21 @@ class App(Sslproxy, Transporters):
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+
+    async def __main_handler__(app, r):
+        if not app.keepalive: return await app.__default_handler__(r)
+
+        while not r.transport.is_closing():
+            try:
+                exc = None
+                await app.__default_handler__(r)
+            except (Abort, Eof, Err, ServerGotInTrouble) as e:
+                if isinstance(e, Abort): await e.text(r)
+            except Exception as e:
+                exc = e
+            finally:
+                if exc: raise exc
+                r.utils.clear_protocol(r)
 
 class WebhookClient:
     __slots__ = ("conf", "availablity")
