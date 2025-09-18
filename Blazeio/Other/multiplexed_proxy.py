@@ -6,8 +6,7 @@ from Blazeio.Protocols.multiplexer import Protocols
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import PIPE, run as subprocess_run
 from shutil import rmtree
-from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_KEEPALIVE, TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT, SO_LINGER, TCP_QUICKACK
-from struct import pack as struct_pack
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SO_KEEPALIVE, TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT
 
 try:
     from socket import SO_REUSEPORT
@@ -89,17 +88,6 @@ class Sslproxy:
         context = app.context()
         context.sni_callback = app.sni_callback
         return context
-    
-    @classmethod
-    def tune_socket(app, sock):
-        sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
-        sock.setsockopt(SOL_SOCKET, SO_LINGER, struct_pack('ii', 1, 0))
-        sock.setsockopt(IPPROTO_TCP, TCP_QUICKACK, 1)
-        sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
-        sock.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 5)
-        sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 1)
-        sock.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 3)
-        return sock
 
 class Transporters:
     __slots__ = ()
@@ -430,8 +418,6 @@ class Runner:
         scope.whclient.save_state(state)
 
         if SO_REUSEPORT: web.sock().setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
-
-        # Sslproxy.tune_socket(web.sock())
 
         scope.server_set.set()
 
