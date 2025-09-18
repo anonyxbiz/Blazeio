@@ -651,6 +651,9 @@ class Ehandler:
 
     def on_exit(app, func, *args, **kwargs):
         app.on_exit_cbs.append((func, args, kwargs))
+    
+    def add_onerr(app, onerr):
+        app.onerr = onerr
 
     async def __aenter__(app):
         if app.entered: app(app.kwargs)

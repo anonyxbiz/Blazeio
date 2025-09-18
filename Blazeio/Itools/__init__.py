@@ -155,6 +155,14 @@ def Dotify(_dict_=None, **kwargs):
     else:
         return _dict_
 
+ddict = Dot_Dict
+
+def add_defaults_to_parser(obj, parser, for_type):
+    for arg_count, arg in enumerate(obj.__init__.__annotations__.keys()):
+        arg_type = obj.__init__.__annotations__.get(arg)
+        if not isinstance(arg_type, tuple) or not for_type in arg_type: continue
+        parser.add_argument("-%s" % arg, "--%s" % arg, type = arg_type[0], default = obj.__init__.__defaults__[arg_count])
+
 def load_from_type_in_locals(app, fn, __locals__, _type):
     for key in __locals__:
         if (annotation := fn.__annotations__.get(key, NotImplemented)) is not NotImplemented:
@@ -166,7 +174,18 @@ def load_from_type_in_locals(app, fn, __locals__, _type):
 
             setattr(app, key, __locals__[key])
 
-ddict = Dot_Dict
+def set_from_args(app, __locals__, _type):
+    if not isinstance(_type, (tuple, list)):
+        _type = (_type,)
 
-if __name__ == "__main__":
-    pass
+    for key in __locals__:
+        if (annotation := app.__init__.__annotations__.get(key, NotImplemented)) is not NotImplemented:
+            if isinstance(annotation, tuple):
+                if not any([True for ann in annotation if ann in _type]):
+                    continue
+            elif annotation not in _type:
+                continue
+
+            setattr(app, key, __locals__[key])
+
+if __name__ == "__main__": ...
