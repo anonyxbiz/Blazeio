@@ -261,7 +261,6 @@ class App(Sslproxy, Transporters):
 
         if sock:
             server_hostname = sock.context.server_hostname
-            r.transport.set_write_buffer_limits(1, 0)
         else:
             if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
                 server_hostname = server_hostname[:idx]
