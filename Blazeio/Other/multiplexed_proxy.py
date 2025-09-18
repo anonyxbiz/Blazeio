@@ -284,8 +284,8 @@ class App(Sslproxy, Transporters):
             try:
                 exc = None
                 await app.__default_handler__(r)
-            except (Abort, Eof, Err, ServerGotInTrouble) as e:
-                if isinstance(e, Abort): await e.text(r)
+            except (io.Abort, io.Eof, io.Err, io.ServerGotInTrouble) as e:
+                if isinstance(e, io.Abort): await e.text(r)
             except Exception as e:
                 exc = e
             finally:
