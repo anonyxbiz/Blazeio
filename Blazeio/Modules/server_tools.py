@@ -19,10 +19,10 @@ class Simpleserve:
 
     def validate_cache(app):
         if app.r.headers.get("If-none-match") == app.etag:
-            raise Abort("Not Modified", 304)
+            raise Abort("Not Modified"*85, 304)
 
         elif (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort("Not Modified", 304)
+            raise Abort("Not Modified"*85, 304)
     
     def __await__(app):
         yield from app.prepare_metadata().__await__()
