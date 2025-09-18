@@ -269,7 +269,7 @@ class App(Sslproxy, Transporters):
 
             await app.transporter(r, srv)
 
-            await r.writer(r.lazy_writer.chunk_pool.popleft())
+            # await r.writer(r.lazy_writer.chunk_pool.popleft())
 
             if r.transport.is_closing():
                 r.close()
