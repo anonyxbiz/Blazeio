@@ -123,13 +123,17 @@ class Transporters:
 
     async def transporter(app, r, srv: io.ddict):
         task = None
-        async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True) as resp:
+        async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True, decode_resp = False) as resp:
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
 
             if r.method not in r.non_bodied_methods:
                 task = io.create_task(app.puller(r, resp))
             else:
                 async with resp.protocol: ...
+
+            await resp.prepare_http()
+            
+            await r.prepare(resp.headers, resp.status_code, resp.reason_phrase, encode_resp = False, encode_event_stream = False)
 
             async for chunk in resp.__pull__():
                 if chunk:
