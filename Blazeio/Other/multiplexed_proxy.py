@@ -141,8 +141,7 @@ class Transporters:
                     if len(r.lazy_writer.chunk_pool) >= r.lazy_writer.min_chunks:
                         while len(r.lazy_writer.chunk_pool) > r.lazy_writer.lazy_chunks: await r.writer(r.lazy_writer.chunk_pool.popleft())
         if task:
-            async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
-                await task
+            if not task.done(): task.cancel()
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https")
