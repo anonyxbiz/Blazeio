@@ -243,7 +243,7 @@ class App(Sslproxy, Transporters):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
-        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque(), min_chunks = 1, lazy_chunks = 1))
+        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque(), min_chunks = 3, lazy_chunks = 2))
 
         sock = r.transport.get_extra_info("ssl_object")
 
