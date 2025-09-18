@@ -19,10 +19,10 @@ class Simpleserve:
 
     def validate_cache(app):
         if app.r.headers.get("If-none-match") == app.etag:
-            raise Abort("Not Modified", 304)
+            raise Abort("", 304, app.headers)
 
         elif (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort("Not Modified", 304)
+            raise Abort("", 304, app.headers)
     
     def __await__(app):
         yield from app.prepare_metadata().__await__()
@@ -42,8 +42,6 @@ class Simpleserve:
             app.etag = "BlazeIO--%s--%s" % (app.filename, app.file_size)
 
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
-
-        if app.validate_cache(): return True
 
         app.content_type = guess_type(app.file)[0]
 
@@ -76,6 +74,8 @@ class Simpleserve:
                 app.headers[app.headers_demux.content_length] = str(app.file_size)
 
             app.status = 200
+
+        if app.validate_cache(): return True
 
     @classmethod
     async def push(cls, *args, **kwargs):
