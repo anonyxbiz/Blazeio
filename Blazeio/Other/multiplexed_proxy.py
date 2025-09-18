@@ -137,8 +137,9 @@ class Transporters:
 
             async for chunk in resp.__pull__():
                 if chunk:
-                    await r.writer(chunk)
-
+                    r.lazy_writer.chunk_pool.append(chunk)
+                    if len(r.lazy_writer.chunk_pool) >= r.lazy_writer.min_chunks:
+                        while len(r.lazy_writer.chunk_pool) > r.lazy_writer.lazy_chunks: await r.write(r.lazy_writer.chunk_pool.popleft())
         if task:
             async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
                 await task
@@ -242,7 +243,7 @@ class App(Sslproxy, Transporters):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
-        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque(), min_chunks = 3, lazy_chunks = 2))
+        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque(), min_chunks = 1, lazy_chunks = 0))
 
         sock = r.transport.get_extra_info("ssl_object")
 
@@ -271,6 +272,8 @@ class App(Sslproxy, Transporters):
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
             await app.transporter(r, srv)
+            while r.lazy_writer.chunk_pool:
+                await r.write(r.lazy_writer.chunk_pool.popleft())
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
