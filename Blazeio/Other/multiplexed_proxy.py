@@ -138,7 +138,8 @@ class Transporters:
                         while len(r.lazy_writer.chunk_pool) > r.lazy_writer.lazy_chunks: await r.writer(r.lazy_writer.chunk_pool.popleft())
 
         if task:
-            if not task.done(): task.cancel()
+            async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError):
+                await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https")
@@ -268,17 +269,8 @@ class App(Sslproxy, Transporters):
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
             await app.transporter(r, srv)
-
-            # await r.writer(r.lazy_writer.chunk_pool.popleft())
-
-            if r.transport.is_closing():
-                r.close()
-                raise io.ClientDisconnected()
-
-            if r.lazy_writer.chunk_pool:
-                chunk = b"".join([i for i in r.lazy_writer.chunk_pool])
-                r.lazy_writer.chunk_pool.clear()
-                if chunk: await r.writer(chunk)
+            while r.lazy_writer.chunk_pool:
+                await r.writer(r.lazy_writer.chunk_pool.popleft())
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()

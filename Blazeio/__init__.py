@@ -341,8 +341,7 @@ class Httpkeepalive:
         r += app.keepalive_headers
 
     async def __main_handler__(app, r):
-        count = 0
-        while count < 5 and not r.transport.is_closing():
+        while not r.transport.is_closing():
             try:
                 exc = None
                 await app.get_handler()(r)
@@ -359,7 +358,6 @@ class Httpkeepalive:
                 if exc: raise exc
 
                 r.utils.clear_protocol(r)
-                count += 1
 
 class Server:
     def __init__(app):
