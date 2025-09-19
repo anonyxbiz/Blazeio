@@ -31,7 +31,7 @@ class App:
 
             if io.os_name == "posix":
                 for i in ("pip3 install --break-system-packages git+https://github.com/anonyxbiz/Blazeio.git", "pip3 install git+https://github.com/anonyxbiz/Blazeio.git", "pip install git+https://github.com/anonyxbiz/Blazeio.git"):
-                    if "installed" in await app.exec_cmd(i): break
+                    if "Successfully installed Blazeio" in await app.exec_cmd(i): break
             else:
                 await app.exec_cmd("pip install git+https://github.com/anonyxbiz/Blazeio.git")
 
