@@ -73,7 +73,7 @@ class BlazeioMultiplexer:
     def transport_writer(app, _id: bytes, sid: (bytes, None), __stream_opts: bytes, data: bytes):
         if app.encrypt_streams:
             data = Ciphen(_id).encrypt(data)
-
+        
         app.protocol.transport.write(app.metadata(_id, sid, len(data), __stream_opts) + data)
         return sid
 
@@ -373,17 +373,22 @@ class Stream:
         return sid
 
     def write_mux(app, data, __stream_opts, gen_sid):
-        if app.can_write():
-            if app.__initial_handshake:
-                __stream_opts = __stream_opts or app.__initial_handshake
-                app.__initial_handshake = None
+        if app.__initial_handshake:
+            __stream_opts = __stream_opts or app.__initial_handshake
+            app.__initial_handshake = None
 
+        if app.can_write():
             return app.protocol.transport_writer(app.id, app.gen_sid() if gen_sid else None, __stream_opts, data)
         else:
             raise app.protocol.protocol.__stream_closed_exception__()
 
     def can_write(app):
-        if app.transport.is_closing() or app.__stream_closed__: return False
+        if app.transport.is_closing():
+            app.protocol.cancel()
+            raise app.protocol.protocol.__stream_closed_exception__()
+
+        if app.__stream_closed__: return False
+
         return True
 
     def stream_closed(app):

@@ -549,7 +549,7 @@ class Server:
             await app.server.start_serving()
             app.is_server_running.set()
 
-            await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, " Server [%s] running on %s, Request Logging is %s.\n" % (app.server_name, app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
+            await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, "Server [%s] running on %s" % (app.server_name, app.ServerConfig.server_address), "Request Logging is %s.\n" % ("enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
             await app._server_closing.wait()
             app.wait_closed.set()
