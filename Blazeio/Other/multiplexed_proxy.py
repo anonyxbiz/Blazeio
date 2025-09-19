@@ -131,13 +131,9 @@ class Transporters:
             else:
                 async with resp.protocol: ...
 
-            prev_chunk = None
             async for chunk in resp.__pull__():
                 if chunk:
-                    if prev_chunk: await r.writer(prev_chunk)
-                    prev_chunk = chunk
-
-            if prev_chunk: r.lazy_writer.chunk_pool.append(prev_chunk)
+                    await r.writer(chunk)
 
         if task:
             if not task.done(): task.cancel()
@@ -241,7 +237,6 @@ class App(Sslproxy, Transporters):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
-        r.store = io.ddict(lazy_writer = io.ddict(chunk_pool = io.deque()))
 
         sock = r.transport.get_extra_info("ssl_object")
 
@@ -265,13 +260,10 @@ class App(Sslproxy, Transporters):
             raise io.Abort("https upgrade", 302, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.port, r.tail)))
 
         try:
-            if not r.pull: r.pull = r.request
             app.protocols[r.identifier] = r
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
             await app.transporter(r, srv)
-            while r.lazy_writer.chunk_pool:
-                await r.writer(r.lazy_writer.chunk_pool.popleft())
         finally:
             app.protocols.pop(r.identifier, None)
             if not app.protocol_update_event.is_set(): app.protocol_update_event.set()

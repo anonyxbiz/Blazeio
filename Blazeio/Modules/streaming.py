@@ -39,18 +39,24 @@ class Prepare:
     def __init__(app): ...
 
     @classmethod
-    async def text(app, headers: dict={}, status:int = 206, content_type: str = "text/plain; charset=utf-8"):
+    async def text(app, headers: dict={}, status:int = 206, content_type: str = "text/plain; charset=utf-8", chunked: bool = False):
         r = Context.r_sync()
         headers = dict(headers)
-        headers["Content-Type"] = content_type
+        headers["Content-type"] = content_type
+        if chunked:
+            headers["Transfer-encoding"] = "chunked"
+            status = 200 if status == 206 else status
 
         await r.prepare(headers, status)
 
     @classmethod
-    async def json(app, headers: dict={}, status:int = 206, content_type: str = "application/json; charset=utf-8"):
+    async def json(app, headers: dict={}, status:int = 206, content_type: str = "application/json; charset=utf-8", chunked: bool = False):
         r = Context.r_sync()
         headers = dict(headers)
-        headers["Content-Type"] = content_type
+        headers["Content-type"] = content_type
+        if chunked:
+            headers["Transfer-encoding"] = "chunked"
+            status = 200 if status == 206 else status
 
         await r.prepare(headers, status)
 
