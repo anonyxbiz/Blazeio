@@ -696,5 +696,4 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks,
             if isinstance(route := app.declared_routes[route_name], Multirouter):
                 app.declared_routes[route_name] = route.get_router()
 
-
 if __name__ == "__main__": ...
