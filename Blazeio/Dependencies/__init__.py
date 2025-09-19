@@ -1,4 +1,5 @@
 # Dependencies.__init___.py
+from ..__version__ import __version__
 from ..Itools import *
 from ..Exceptions import *
 from ..Protocols import *
