@@ -1,5 +1,5 @@
 from ..Dependencies import *
-from ..Dependencies.alts import DictView, plog, memarray
+from ..Dependencies.alts import DictView, plog, memarray, __version__
 from ..Modules.request import *
 from ..Modules.streaming import *
 from ..Modules.server_tools import *
@@ -227,7 +227,7 @@ class ExtraToolset:
 
             if app.current_length >= app.content_length: break
 
-    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True, encode_event_stream: bool = True):
+    async def prepare(app, headers: dict = {}, status: int = 200, reason: str = "", encode_resp: bool = True, encode_event_stream: bool = True, server_phrase: str = "Blazeio/%s (%s)" % (__version__, os_name)):
         payload = ('HTTP/1.1 %d %s\r\n' % (status, StatusReason.reasons.get(status, "Unknown"))).encode()
 
         if app.__prepared_headers__:
@@ -242,9 +242,9 @@ class ExtraToolset:
         app.__status__ = status
 
         if (val := headers_view.get(key := "Server")):
-            headers[str(headers_view._capitalized.get(key))] = ["Blazeio", val]
+            headers[str(headers_view._capitalized.get(key))] = [server_phrase, val]
         else:
-            headers[key] = "Blazeio"
+            headers[key] = server_phrase
 
         if (val := headers_view.get("Content-encoding")) and encode_resp:
             app.encoder = getattr(app, val, None)
@@ -274,5 +274,4 @@ class ExtraToolset:
     async def reprepare(app):
         await Request.prepare_http_request(app)
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...
