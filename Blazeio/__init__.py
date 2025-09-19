@@ -629,7 +629,9 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks,
             server_id = int(name[name.rfind(id_split) + len(id_split):])
         except ValueError:
             server_id = 1
-        name = name[:name.rfind(id_split)]
+
+        if (idx := name.rfind(id_split)) != -1: name = name[:idx]
+
         while Scope.get(server_name := "%s%s%s" % (name, id_split, server_id)): server_id += 1
         return server_name
 
