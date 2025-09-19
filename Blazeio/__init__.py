@@ -548,7 +548,7 @@ class Server:
             await app.server.start_serving()
             app.is_server_running.set()
 
-            await plog.magenta("Blazeio [PID: %s]" % pid, " Server running on %s, Request Logging is %s.\n" % (app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
+            await plog.magenta("Blazeio [PID: %s]" % pid, " Server [%s] running on %s, Request Logging is %s.\n" % (app.server_name, app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
             await app._server_closing.wait()
             app.wait_closed.set()
@@ -594,7 +594,8 @@ class Protocol_methods(Serverctx):
 
 class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_methods):
     def __init__(app, *args, name: str = "Blazeio_App", evloop = None, **kwargs):
-        app.register_to_scope(name, app)
+        app.server_name = app.gen_server_name(name)
+        app.register_to_scope(app.server_name, app)
         app.__server_config__ = kwargs.get("__server_config__") or dict(ioConf.default_http_server_config)
         app.loop = evloop or kwargs.get("loop") or get_event_loop()
         app.REQUEST_COUNT = 0
@@ -621,6 +622,19 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks,
 
         ReMonitor.add_server(app)
         Super(app).__init__()
+    
+    def gen_server_name(app, name: str, id_split: str = "_$_"):
+        try:
+            server_id = int(name[name.rfind(id_split) + len(id_split):])
+        except Exception as e:
+            print(e)
+            server_id = 1
+
+        name = name[:name.rfind(id_split)]
+
+        while Scope.get(server_name := "%s%s%s" % (name, id_split, server_id)): server_id += 1
+
+        return server_name
 
     def register_to_scope(app, key: str, instance: any):
         if Scope.get(key):
