@@ -137,6 +137,7 @@ class Transporters:
 
         if task:
             if not task.done(): task.cancel()
+            async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web")
