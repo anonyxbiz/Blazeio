@@ -37,8 +37,10 @@ class App:
 
     async def check_for_update(app):
         await io.plog.green("Checking for update...")
-        async with io.getSession.get("https://raw.githubusercontent.com/anonyxbiz/Blazeio/refs/heads/master/Blazeio/Versioning/__init__.py", io.Rvtools.headers) as resp:
-            data = await resp.text()
+        async with io.getSession.get("https://api.github.com/repos/anonyxbiz/Blazeio/contents/Blazeio/Versioning/__init__.py", io.Rvtools.headers) as resp:
+            json = await resp.json()
+            data = io.b64decode(json.get("content").encode()).decode()
+
             version = int("".join(data[data.find(app.version_line) + len(app.version_line):][1:-1].split(".")))
             local_version = int("".join(io.__version__.split(".")))
             cond = local_version < version
