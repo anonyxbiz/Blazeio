@@ -1,5 +1,6 @@
 # Blazeio/__init__.py
 from .Dependencies.alts import *
+from .Dependencies.alts import __version__
 from .Protocols.server_protocol import *
 from .Protocols.client_protocol import *
 from .Modules.streaming import *
@@ -548,7 +549,7 @@ class Server:
             await app.server.start_serving()
             app.is_server_running.set()
 
-            await plog.magenta("Blazeio [PID: %s]" % pid, " Server [%s] running on %s, Request Logging is %s.\n" % (app.server_name, app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
+            await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, " Server [%s] running on %s, Request Logging is %s.\n" % (app.server_name, app.ServerConfig.server_address, "enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
             await app._server_closing.wait()
             app.wait_closed.set()
@@ -623,17 +624,13 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks,
         ReMonitor.add_server(app)
         Super(app).__init__()
     
-    def gen_server_name(app, name: str, id_split: str = "_$_"):
+    def gen_server_name(app, name: str, id_split: str = " - "):
         try:
             server_id = int(name[name.rfind(id_split) + len(id_split):])
-        except Exception as e:
-            print(e)
+        except ValueError:
             server_id = 1
-
         name = name[:name.rfind(id_split)]
-
         while Scope.get(server_name := "%s%s%s" % (name, id_split, server_id)): server_id += 1
-
         return server_name
 
     def register_to_scope(app, key: str, instance: any):
