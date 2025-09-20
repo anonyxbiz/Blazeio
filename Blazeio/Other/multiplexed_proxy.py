@@ -136,7 +136,7 @@ class Transporters:
                     await r.writer(chunk)
 
         if task:
-            if not task.done(): task.cancel()
+            # if not task.done(): task.cancel()
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
 class App(Sslproxy, Transporters):

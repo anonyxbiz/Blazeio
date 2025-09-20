@@ -29,7 +29,7 @@ class Utils:
         return view
 
 class BlazeioMultiplexer:
-    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "perf_analytics", "analytics", "__current_sid",)
+    __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "perf_analytics", "analytics", "__current_sid", "__sync__", "__on_closed")
     _data_bounds_ = (
         b"\x00", # sof
         b"\x01", # eof
@@ -51,18 +51,21 @@ class BlazeioMultiplexer:
         app.__tasks__ = []
         app.__stream_id_count__ = 0
         app.__current_stream = None
+        app.__on_closed = False
         app.__buff = bytearray()
         app.__prepends__ = io.deque()
         app.__stream_update = io.SharpEvent(evloop = app.loop)
         app.__busy_write__ = io.ioCondition(evloop = app.loop)
+        app.__sync__ = io.ioCondition(evloop = app.loop)
         app.__io_create_lock__ = io.ioCondition(evloop = app.loop)
         app.socket = app.protocol.transport.get_extra_info('socket')
         app.disable_nagle()
         app.update_protocol_write_buffer_limits()
         app.check_buff()
         app.init_analytics()
-        app.create_task(app.mux()).add_done_callback(app.close)
-    
+
+        app.create_task(app.mux())
+
     def close(app, *args):
         app.protocol.transport.close()
 
@@ -93,9 +96,7 @@ class BlazeioMultiplexer:
         app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
 
     def cancel(app):
-        for stream in list(app.__streams__):
-            app.protocol.stream_closed(app.__streams__[stream])
-        for task in app.__tasks__: task.cancel()
+        app.create_task(app.on_conn_lost())
 
     def clear_state(app):
         app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream, app.__stream_opts, app.__current_sid = 0, NotImplemented, NotImplemented, NotImplemented, NotImplemented, NotImplemented
@@ -164,6 +165,23 @@ class BlazeioMultiplexer:
             app.__current_stream.__stream_ack__.set()
             return bytes(remainder)
         return None
+    
+    async def on_conn_lost(app):
+        async with app.__sync__:
+            if app.__on_closed: return
+            app.__on_closed = True
+
+            current_task = io.current_task()
+
+            for task in app.__tasks__:
+                if task != current_task: task.cancel()
+
+            for stream in list(app.__streams__):
+                app.__streams__[stream].parent_task.cancel()
+                app.protocol.stream_closed(app.__streams__[stream])
+
+            app.protocol.__evt__.set()
+            app.protocol.__overflow_evt__.set()
 
     async def enter_stream(app, _id: (None, bytes) = None, instance = None):
         if app.perf_analytics:
@@ -299,19 +317,17 @@ class BlazeioMultiplexer:
                 else:
                     app.protocol.transport.resume_reading()
 
-                if app.protocol.transport.is_closing():
-                    app.cancel()
-                    break
+                if app.protocol.transport.is_closing(): raise app.protocol.__stream_closed_exception__()
 
     async def mux(app):
-        async with io.Ehandler(exit_on_err = True, ignore = io.CancelledError) as e:
+        async with io.Ehandler(exit_on_err = True, ignore = (io.CancelledError, app.protocol.__stream_closed_exception__)):
             app.clear_state()
             async for chunk in app.__pull__():
                 if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
                 await app._chunk_received(chunk)
 
 class Stream:
-    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window")
+    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task")
 
     _chunk_size_base_ = 1024*10
     def __init__(app, _id: (bytes, bytearray), protocol):
@@ -319,11 +335,12 @@ class Stream:
         app.protocol = protocol
         app.transport = app.protocol.protocol.transport
         app.id = _id
+        app.parent_task = io.current_task()
         app.__stream_closed__ = False
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
-        app.inflight_window = 3
+        app.inflight_window = 2
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()
@@ -383,9 +400,7 @@ class Stream:
             raise app.protocol.protocol.__stream_closed_exception__()
 
     def can_write(app):
-        if app.transport.is_closing():
-            app.protocol.cancel()
-            raise app.protocol.protocol.__stream_closed_exception__()
+        if app.transport.is_closing(): return False
 
         if app.__stream_closed__: return False
 
@@ -554,11 +569,8 @@ def BlazeioMuxProtocol(base_class=object):
 
         def cancel(app):
             app.multiplexer.cancel()
-            app.close()
 
         def connection_lost(app, exc):
-            app.__evt__.set()
-            app.__overflow_evt__.set()
             app.cancel()
 
     return _BlazeioMuxProtocol
