@@ -870,5 +870,7 @@ class Pulltools(Parsers, Decoders):
         if app.pull == app.protocol.pull: return
         async for chunk in app.pull(): ...
 
+    def __aiter__(app): return app.pull()
+
 if __name__ == "__main__":
     ...
