@@ -215,6 +215,18 @@ class __Scope__:
     def get(app, key, default = None):
         return app.__getattr__(key, default)
 
+    def add_imports(app, globs, excs: tuple = ()):
+        if not isinstance(excs, tuple):
+            excs = tuple(excs,)
+
+        for key, glob in globs.items():
+            if not key in excs and all([not key.startswith("__") and not key.endswith("__")]) and not "SharpEvent" in dir(glob):
+                app[key] = glob
+
+    def add(app, fn):
+        app[fn.__name__] = fn
+        return fn
+
 class __Taskscope__(__Scope__):
     __slots__ = ()
 
