@@ -91,9 +91,10 @@ class Sslproxy:
 
 class Transporters:
     __slots__ = ()
+    buff_per_stream = 1048
     def __init__(app):
-        app.__conn__ = io.ioCondition(evloop = io.loop)
-        app.__serialize__ = io.ioCondition(evloop = io.loop)
+        app.__conn__ = io.ioCondition()
+        app.__serialize__ = io.ioCondition()
 
     def is_conn(app, srv):
         if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()): return
@@ -113,15 +114,21 @@ class Transporters:
             srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
 
-    async def conn(app, srv):
+    async def conn(app, srv, ):
         if not (conn := app.is_conn(srv)):
             async with app.__conn__:
                 if not (conn := app.is_conn(srv)):
-                    srv.conn = await app.create_conn(srv)
+                    srv.conn = (conn := await app.create_conn(srv))
+
+        while not int(int(len(conn.__buff__)/app.buff_per_stream)-len(conn.multiplexer.__streams__)):
+            await srv.__conn_sync__.on_acquire_change()
 
         return await srv.conn.create_stream()
 
     async def transporter(app, r, srv: io.ddict):
+        if not srv.get("__conn_sync__"):
+            srv.__conn_sync__ = io.ioCondition()
+
         task = None
         async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True, decode_resp = False) as resp:
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
@@ -134,6 +141,9 @@ class Transporters:
             async for chunk in resp.__pull__():
                 if chunk:
                     await r.writer(chunk)
+
+        async with srv.__conn_sync__:
+            ...
 
         if task:
             # if not task.done(): task.cancel()
