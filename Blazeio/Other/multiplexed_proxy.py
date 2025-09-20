@@ -218,7 +218,7 @@ class App(Sslproxy, Transporters):
                 await app.protocol_manager(True)
             return
 
-        for i in app.protocols:
+        for i in list(app.protocols):
             if not (r := app.protocols.get(i)): continue
 
             if app.log: await app.logger(r, i)
