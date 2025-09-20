@@ -78,15 +78,19 @@ class __Deliver__:
             data = bytes(data)
         elif isinstance(data, (dict, list)):
             data = dumps(data, indent=indent).encode()
-
-        headers["Content-type"] = content_type
         
+        if not "Content-type" in headers and not "Content-Type" in headers and not "content-type" in headers:
+            headers["Content-type"] = content_type
+
         if data:
-            headers["Content-length"] = str(len(data))
+            if not "Content-length" in headers and not "Content-Length" in headers and not "content-length" in headers:
+                headers["Content-length"] = str(len(data))
 
         if path:
-            status = 302 if status == 200 else status
-            headers["Location"] = path
+            status = 302 if (status < 300 and status > 310)  else status
+            
+            if not "Location" in headers and not "location" in headers:
+                headers["Location"] = path
 
         await r.prepare(headers, status)
         await r.write(data)

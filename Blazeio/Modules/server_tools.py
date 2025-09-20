@@ -3,13 +3,13 @@ from .request import *
 from .streaming import *
 
 class Simpleserve:
-    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers')
+    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers', 'inline', 'attachment')
     compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
 
     headers_demux = ddict(content_type = "Content-Type", content_length = "Content-Length", content_disposition = "Content-Disposition", last_modified_str = "Last-Modified", etag = "Etag")
-    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), **kwargs):
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, **kwargs):
         if r and file:
-            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers
+            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers, app.inline, app.attachment = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers, inline, attachment
             if not path.exists(app.file): raise NotFoundErr("Not Found", 404)
 
     def initialize(app, *args, **kwargs):
@@ -49,12 +49,15 @@ class Simpleserve:
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
 
         app.content_type = guess_type(app.file)[0]
-
-        if app.content_type:
-            app.content_disposition = 'inline; filename="%s"' % app.filename
-        else:
+        
+        if not app.content_type:
             app.content_type = "application/octet-stream"
+            app.attachment = 1
+
+        if app.attachment:
             app.content_disposition = 'attachment; filename="%s"' % app.filename
+        else:
+            app.content_disposition = 'inline; filename="%s"' % app.filename
 
         for i in app.headers_demux:
             if app.headers_demux[i] not in app.exclude_headers and i in app.__slots__:

@@ -179,18 +179,18 @@ class SharpEvent:
         app._waiters.clear()
 
 class __Scope__:
-    __slots__ = ("set_event",)
-    def __init__(app):
-        app.set_event = SharpEvent()
-    
+    __slots__ = ("set_event", "framer")
+    def __init__(app, framer: str = "\x00"):
+        object.__setattr__(app, "set_event", SharpEvent())
+        object.__setattr__(app, "framer", framer)
+
     async def wait_for_key(app, key):
         while not (value := app.get(key)):
             await app.set_event.wait_clear()
         return value
 
-    # Make keys unique to avoid overriding main_thread scope
     def mux(app, key):
-        return "\x00%s\x00" % key
+        return (object.__getattribute__(app, "framer") + key + object.__getattribute__(app, "framer"))
 
     def __setattr__(app, key, value):
         _ = setattr(main_thread(), app.mux(key), value)
@@ -215,16 +215,12 @@ class __Scope__:
     def get(app, key, default = None):
         return app.__getattr__(key, default)
 
-class __Taskscope__:
+class __Taskscope__(__Scope__):
     __slots__ = ()
-    def __init__(app):
-        ...
-
-    def mux(app, key):
-        return "\x00%s\x00" % key
 
     def __setattr__(app, key, value):
-        return setattr(current_task(), app.mux(key), value)
+        setattr(current_task(), app.mux(key), value)
+        app.set_event.set()
 
     def __setitem__(app, *args):
         return app.__setattr__(*args)
@@ -456,6 +452,7 @@ optional_module_importer({
 ioConf.get_event_loop()
 
 Scope = __Scope__()
+InternalScope = __Scope__("\x01")
 Taskscope = __Taskscope__()
 
 class __log__:

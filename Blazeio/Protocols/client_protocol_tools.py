@@ -549,16 +549,12 @@ class Parsers:
                     app.kwargs["cookies"][key] = val
 
         if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.response_headers.get("location", None)):
-            await app.drain_pipe()
             if location.startswith("/"):
                 location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
-
-            
             if URL(location).host != app.host: app.protocol = None
-
             args, kwargs = app.join_to_current_params(location)
-
-            return await app.prepare(*args, **kwargs)
+            kwargs["follow_redirects"] = True
+            return await app.create_connection(*args, **kwargs)
 
         return True
 

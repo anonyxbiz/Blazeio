@@ -46,35 +46,6 @@ class __Coro__:
 
 Coro = __Coro__()
 
-class DictView:
-    __slots__ = ("_dict", "_capitalized",)
-
-    def __init__(app, _dict: dict):
-        app._dict = _dict
-        app._capitalized = {i.capitalize(): i for i in app._dict}
-
-    def __contains__(app, key):
-        if key in app._capitalized:
-            return True
-        return False
-
-    def __setitem__(app, key, value):
-        if key in app._capitalized:
-            app.pop(key)
-        else:
-            app._capitalized[key.capitalize()] = key
-
-        app._dict[key] = value
-
-    def __getitem__(app, key):
-        return app._dict[key]
-
-    def get(app, key, default=None):
-        return app._dict.get(app._capitalized.get(key), default)
-
-    def pop(app, key, default=None):
-        return app._dict.pop(app._capitalized.get(key), default)
-
 class SharpEventLab:
     __slots__ = ("_set", "_waiters", "loop", "auto_clear")
     def __init__(app, auto_clear: bool = True, evloop = None):
