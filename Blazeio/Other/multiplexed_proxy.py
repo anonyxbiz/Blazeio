@@ -114,7 +114,7 @@ class Transporters:
             srv.pop("conn", False)
             raise io.Abort("Service Unavailable", 500)
 
-    async def conn(app, srv, ):
+    async def conn(app, srv):
         if not (conn := app.is_conn(srv)):
             async with app.__conn__:
                 if not (conn := app.is_conn(srv)):
