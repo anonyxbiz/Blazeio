@@ -10,5 +10,4 @@ class ProcessPoolDaemonizer(ProcessPoolExecutor):
             (proc := Process(target=app._queue_management_worker, daemon=True)).start()
             app._processes[proc.pid] = proc
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...

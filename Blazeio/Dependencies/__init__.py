@@ -466,6 +466,8 @@ ioConf.get_event_loop()
 Scope = __Scope__()
 InternalScope = __Scope__("\x01")
 Taskscope = __Taskscope__()
+createScope = __Scope__
+createTaskscope = __Taskscope__
 
 class __log__:
     known_exceptions = ()
@@ -652,3 +654,10 @@ def get_ssl_context():
 
     return Scope.get_ssl_context
     
+class __Loop__:
+    def __init__(app): ...
+
+    def __getattr__(app, *args):
+        return getattr(get_event_loop(), *args)
+
+getLoop = __Loop__()

@@ -411,6 +411,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             exception = (type(e).__name__, e, e.__traceback__)
         finally:
             await app.__aexit__(*exception)
+            if exception[1]: raise exception[1]
 
     @classmethod
     async def fetch(app,*args, **kwargs):
@@ -595,6 +596,7 @@ class PooledSession:
             exception = (type(e).__name__, e, e.__traceback__)
         finally:
             await instance.__aexit__(*exception)
+            if exception[1]: raise exception[1]
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool", "kwargs",)
