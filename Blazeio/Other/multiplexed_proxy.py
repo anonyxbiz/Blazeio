@@ -142,6 +142,8 @@ class Transporters:
                 if chunk:
                     await r.writer(chunk)
 
+            await resp.__close__()
+
         async with srv.__conn_sync__:
             ...
 
