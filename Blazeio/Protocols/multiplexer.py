@@ -304,6 +304,7 @@ class BlazeioMultiplexer:
                     chunk = b"".join([i for i in app.__prepends__]) + chunk
                     app.__prepends__.clear()
                 yield chunk
+                app.protocol.transport.resume_reading()
 
             else:
                 if app.__prepends__:
