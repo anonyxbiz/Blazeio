@@ -107,6 +107,12 @@ class Transporters:
         except:
             return
 
+    async def non_mux_puller(app, r, resp):
+        try:
+            async for chunk in (r.pull or r.request)(): await resp.write(chunk)
+        except:
+            return
+
     async def create_conn(app, srv):
         try:
             return await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1)
@@ -119,13 +125,25 @@ class Transporters:
             async with app.__conn__:
                 if not (conn := app.is_conn(srv)):
                     srv.conn = (conn := await app.create_conn(srv))
-
+    
         while not int(int(len(conn.__buff__)/app.buff_per_stream)-len(conn.multiplexer.__streams__)):
             await srv.__conn_sync__.on_acquire_change()
-
+    
         return await srv.conn.create_stream()
 
+    async def non_mux_transporter(app, r, srv: io.ddict):
+        async with io.Session(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
+            task = io.create_task(app.non_mux_puller(r, resp))
+
+            async for chunk in resp.protocol:
+                if chunk:
+                    await r.writer(chunk)
+
+            if not task.done(): task.cancel()
+
     async def transporter(app, r, srv: io.ddict):
+        if not srv.multiplexed: return await app.non_mux_transporter(r, srv)
+
         if not srv.get("__conn_sync__"):
             srv.__conn_sync__ = io.ioCondition()
 
@@ -142,13 +160,9 @@ class Transporters:
                 if chunk:
                     await r.writer(chunk)
 
-            await resp.__close__()
-
-        async with srv.__conn_sync__:
-            ...
+        async with srv.__conn_sync__: ...
 
         if task:
-            # if not task.done(): task.cancel()
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
 class App(Sslproxy, Transporters):
@@ -331,9 +345,9 @@ class WebhookClient:
 
         return (certfile_cp, keyfile_cp)
 
-    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, in_try: (int, bool) = False, **kw):
+    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, multiplexed: bool = True, in_try: (int, bool) = False, **kw):
         if not in_try:
-            try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, from_certbot, in_try = True, **kw)
+            try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, from_certbot, multiplexed, in_try = True, **kw)
             except RuntimeError: return
             except io.ServerDisconnected: return
             except Exception as e: return await io.traceback_logger(e)
@@ -351,6 +365,7 @@ class WebhookClient:
             "hostname": hostname,
             "port": port,
             "remote": "http://%s:%d" % (hostname, port),
+            "multiplexed": multiplexed,
             "certfile": certfile,
             "keyfile": keyfile,
             "server_address": "%s://%s:%d" % ("https" if ssl else "http", host,  int(state.get("Blazeio.Other.multiplexed_proxy.port")))
@@ -370,7 +385,7 @@ class WebhookClient:
 
         try:
             state = app.get_state()
-            
+
             ssl = io.ssl_context if state.get("Blazeio.Other.multiplexed_proxy.ssl") else None
             async with io.Session("%s://127.0.0.1:%d/discover" % ("https" if ssl else "http", int(state.get("Blazeio.Other.multiplexed_proxy.port"))), "get", headers = {"host": state.get("server_name"), "route": "/discover"}, ssl = ssl, add_host = False) as session:
                 app.availablity = await session.data()
