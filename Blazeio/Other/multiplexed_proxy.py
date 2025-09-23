@@ -291,6 +291,8 @@ class App(Sslproxy, Transporters):
             app.protocols[r.identifier] = r
             app.update_protocol_event()
             await app.transporter(r, srv)
+        except OSError:
+            raise io.Abort("Service Unavailable", 500)
         finally:
             app.protocols.pop(r.identifier, None)
             app.update_protocol_event()
