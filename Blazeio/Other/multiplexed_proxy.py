@@ -132,7 +132,7 @@ class Transporters:
         return await srv.conn.create_stream()
 
     async def non_mux_transporter(app, r, srv: io.ddict):
-        async with io.Session(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
+        async with io.getSession(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
             task = io.create_task(app.non_mux_puller(r, resp))
 
             async for chunk in resp.protocol:
