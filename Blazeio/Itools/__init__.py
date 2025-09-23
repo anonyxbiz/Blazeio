@@ -188,6 +188,24 @@ def set_from_args(app, __locals__, _type):
 
             setattr(app, key, __locals__[key])
 
+def get_from_args(app, __locals__, _type):
+    if not isinstance(_type, (tuple, list)):
+        _type = (_type,)
+    
+    args = ddict()
+
+    for key in __locals__:
+        if (annotation := app.__init__.__annotations__.get(key, NotImplemented)) is not NotImplemented:
+            if isinstance(annotation, tuple):
+                if not any([True for ann in annotation if ann in _type]):
+                    continue
+            elif annotation not in _type:
+                continue
+
+            args[key] = __locals__[key]
+
+    return args
+
 class DictView:
     __slots__ = ("_dict", "_capitalized",)
 
