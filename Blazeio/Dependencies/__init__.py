@@ -179,8 +179,9 @@ class SharpEvent:
         app._waiters.clear()
 
 class __Scope__:
-    __slots__ = ("set_event", "framer")
-    def __init__(app, framer: str = "\x00"):
+    __slots__ = ("set_event", "framer", "obj")
+    def __init__(app, framer: str = "\x00", obj: any = main_thread):
+        object.__setattr__(app, "obj", obj)
         object.__setattr__(app, "set_event", SharpEvent())
         object.__setattr__(app, "framer", framer)
 
@@ -193,7 +194,7 @@ class __Scope__:
         return (object.__getattribute__(app, "framer") + key + object.__getattribute__(app, "framer"))
 
     def __setattr__(app, key, value):
-        _ = setattr(main_thread(), app.mux(key), value)
+        _ = setattr(app.obj(), app.mux(key), value)
         app.set_event.set()
         return _
 
@@ -201,16 +202,16 @@ class __Scope__:
         return app.__setattr__(*args)
 
     def __getattr__(app, key, *args):
-        return getattr(main_thread(), app.mux(key), *args)
+        return getattr(app.obj(), app.mux(key), *args)
 
     def __getitem__(app, *args):
         return app.__getattr__(*args)
 
     def __contains__(app, key):
-        return hasattr(main_thread(), app.mux(key))
+        return hasattr(app.obj(), app.mux(key))
 
     def __str__(app):
-        return str(main_thread())
+        return str(app.obj())
 
     def get(app, key, default = None):
         return app.__getattr__(key, default)
@@ -227,35 +228,13 @@ class __Scope__:
         app[fn.__name__] = fn
         return fn
 
-class __Taskscope__(__Scope__):
-    __slots__ = ()
-
-    def __setattr__(app, key, value):
-        setattr(current_task(), app.mux(key), value)
-        app.set_event.set()
-
-    def __setitem__(app, *args):
-        return app.__setattr__(*args)
-
-    def __getattr__(app, key, *args):
-        return getattr(current_task(), app.mux(key), *args)
-
-    def __getitem__(app, *args):
-        return app.__getattr__(*args)
-
-    def __contains__(app, key):
-        return hasattr(current_task(), app.mux(key))
-
-    def get(app, key, default = None):
-        return app.__getattr__(key, default)
-
     def __id__(app):
         try:
-            tsk = current_task()
+            obj = app.obj()
         except RuntimeError:
             return None
 
-        name = tsk.get_name()
+        name = obj.get_name()
         _id = int(name[(idx := name.find(key := "Task-")) + len(key):])
         return _id
 
@@ -465,9 +444,9 @@ ioConf.get_event_loop()
 
 Scope = __Scope__()
 InternalScope = __Scope__("\x01")
-Taskscope = __Taskscope__()
+Taskscope = __Scope__(obj = current_task)
 createScope = __Scope__
-createTaskscope = __Taskscope__
+createTaskscope = lambda: __Scope__(obj = current_task)
 
 class __log__:
     known_exceptions = ()
