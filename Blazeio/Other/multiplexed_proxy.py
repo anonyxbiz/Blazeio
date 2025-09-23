@@ -346,7 +346,7 @@ class WebhookClient:
 
         return (certfile_cp, keyfile_cp)
 
-    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, multiplexed: bool = False, in_try: (int, bool) = False, **kw):
+    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, multiplexed: bool = True, in_try: (int, bool) = False, **kw):
         if not in_try:
             try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, from_certbot, multiplexed, in_try = True, **kw)
             except RuntimeError: return
