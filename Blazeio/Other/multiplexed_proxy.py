@@ -142,8 +142,6 @@ class Transporters:
             if not task.done(): task.cancel()
 
     async def transporter(app, r, srv: io.ddict):
-        if not srv.multiplexed: return await app.non_mux_transporter(r, srv)
-
         if not srv.get("__conn_sync__"):
             srv.__conn_sync__ = io.ioCondition()
 
@@ -290,7 +288,8 @@ class App(Sslproxy, Transporters):
         try:
             app.protocols[r.identifier] = r
             app.update_protocol_event()
-            await app.transporter(r, srv)
+            if srv.multiplexed: await app.transporter(r, srv)
+            else: await app.non_mux_transporter(r, srv)
         except OSError:
             raise io.Abort("Service Unavailable", 500)
         finally:
