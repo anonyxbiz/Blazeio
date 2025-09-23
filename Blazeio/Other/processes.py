@@ -8,7 +8,7 @@ class ProcessPoolDaemonizer(ProcessPoolExecutor):
 
     def _adjust_process_count(app):
         for _ in range(len(app._processes), app._max_workers):
-            (proc := Process(target=app._queue_management_worker, daemon=True)).start()
+            (proc := Process(target=app._queue_management_worker, daemon=False)).start()
             app._processes[proc.pid] = proc
 
 PoolScope = io.createScope("\x02")
