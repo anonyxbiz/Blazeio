@@ -131,16 +131,6 @@ class Transporters:
     
         return await srv.conn.create_stream()
 
-    async def non_mux_transporter(app, r, srv: io.ddict):
-        async with io.getSession(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
-            task = io.create_task(app.non_mux_puller(r, resp))
-
-            async for chunk in resp.protocol:
-                if chunk:
-                    await r.writer(chunk)
-
-            if not task.done(): task.cancel()
-
     async def transporter(app, r, srv: io.ddict):
         if not srv.get("__conn_sync__"):
             srv.__conn_sync__ = io.ioCondition()
@@ -162,6 +152,16 @@ class Transporters:
 
         if task:
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
+
+    async def non_mux_transporter(app, r, srv: io.ddict):
+        async with io.getSession(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
+            task = io.create_task(app.non_mux_puller(r, resp))
+
+            async for chunk in resp.protocol:
+                if chunk:
+                    await r.writer(chunk)
+
+            if not task.done(): task.cancel()
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web")
@@ -282,14 +282,16 @@ class App(Sslproxy, Transporters):
         if not (srv := app.hosts.get(server_hostname)) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
-        if not sock and app.enforce_https:
+        if not sock and srv.get("enforce_https"):
             raise io.Abort("", 302, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.port, r.tail)))
 
         try:
             app.protocols[r.identifier] = r
             app.update_protocol_event()
-            if srv.multiplexed: await app.transporter(r, srv)
-            else: await app.non_mux_transporter(r, srv)
+            if srv.get("multiplexed"):
+                await app.transporter(r, srv)
+            else:
+                await app.non_mux_transporter(r, srv)
         except OSError:
             raise io.Abort("Service Unavailable", 500)
         finally:
@@ -346,9 +348,9 @@ class WebhookClient:
 
         return (certfile_cp, keyfile_cp)
 
-    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, multiplexed: bool = True, in_try: (int, bool) = False, **kw):
+    async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, multiplexed: bool = True, enforce_https: bool = True, in_try: (int, bool) = False, **kw):
         if not in_try:
-            try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, from_certbot, multiplexed, in_try = True, **kw)
+            try: return await app.add_to_proxy(host, port, certfile, keyfile, hostname, ow, from_certbot, multiplexed, enforce_https, in_try = True, **kw)
             except RuntimeError: return
             except io.ServerDisconnected: return
             except Exception as e: return await io.traceback_logger(e)
@@ -375,7 +377,7 @@ class WebhookClient:
         if not ow and state.get("hosts"):
             if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return host_data
 
-        async with io.Session.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.multiplexed_proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
+        async with io.getSession.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.multiplexed_proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
             if not ow: await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
         return host_data
