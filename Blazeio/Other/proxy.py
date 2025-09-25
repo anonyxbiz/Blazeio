@@ -252,8 +252,8 @@ class App(Sslproxy, Transporters):
 
         await scope.web.parse_default(r)
         
-        r.headers["ip_host"] = r.ip_host
-        r.headers["ip_port"] = r.ip_port
+        r.headers["ip_host"] = str(r.ip_host)
+        r.headers["ip_port"] = str(r.ip_port)
 
         if sock:
             server_hostname = sock.context.server_hostname
