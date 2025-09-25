@@ -467,8 +467,8 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("-port", "--port", type = int, default = 8080)
     parser.add_argument("-http_port", "--http_port", type = int, default = 0)
-    parser.add_argument("-INBOUND_CHUNK_SIZE", "--INBOUND_CHUNK_SIZE", type = int, default = 1024*100)
-    parser.add_argument("-OUTBOUND_CHUNK_SIZE", "--OUTBOUND_CHUNK_SIZE", type = int, default = 1024*100)
+    parser.add_argument("-INBOUND_CHUNK_SIZE", "--INBOUND_CHUNK_SIZE", type = int, default = 1024*4)
+    parser.add_argument("-OUTBOUND_CHUNK_SIZE", "--OUTBOUND_CHUNK_SIZE", type = int, default = 1024*4)
     parser.add_argument("-host", "--host", default = "0.0.0.0")
 
     for i in ("ssl", "fresh", "web_runner", "keepalive", "enforce_https"):
