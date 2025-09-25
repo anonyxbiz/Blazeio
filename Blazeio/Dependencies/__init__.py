@@ -628,11 +628,10 @@ def create_ssl_context():
     return context
 
 def get_ssl_context():
-    if not "get_ssl_context" in Scope:
-        Scope.get_ssl_context = create_ssl_context()
+    if not (context := InternalScope.get("get_ssl_context")):
+        InternalScope.get_ssl_context = (context := create_ssl_context())
+    return context
 
-    return Scope.get_ssl_context
-    
 class __Loop__:
     def __init__(app): ...
 

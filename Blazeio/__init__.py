@@ -115,7 +115,7 @@ class Handler:
             await e.text(r)
 
         except (Err, ServerGotInTrouble) as e:
-            await Log.warning(r, e)
+            await traceback_logger(e, frame = 4)
         except (ClientDisconnected, Eof, ServerDisconnected):
             ...
         except KeyboardInterrupt:
@@ -123,7 +123,7 @@ class Handler:
         except (ConnectionResetError, BrokenPipeError, CancelledError):
             ...
         except Exception as e:
-            await app.handle_exception(r, e, Log.critical if app.ServerConfig.__log_requests__ else log.critical)
+            await traceback_logger(e, frame = 4)
 
         if app.ServerConfig.__log_requests__:
             await Log.debug(r, "Completed with status %s in %s seconds" % (str(r.__status__), round(perf_counter() - r.__perf_counter__, 4)))
@@ -346,17 +346,22 @@ class Httpkeepalive:
             try:
                 exc = None
                 await app.get_handler()(r)
-                if r.headers: await r.eof()
-            except (Abort, Eof, Err, ServerGotInTrouble) as e:
-                if isinstance(e, Abort):
-                    await e.text(r)
-                else:
-                    if r.headers: await r.eof()
+            except Abort as e:
+                await e.text(r)
+            except (Eof, ServerGotInTrouble) as e:
+                ...
             except Exception as e:
                 exc = e
             finally:
                 if app.after_middleware: await app.after_middleware(r)
-                if exc: raise exc
+
+                if r.__is_prepared__:
+                    await r.eof()
+                else:
+                    await Abort("Internal Server Error", 500).text(r)
+
+                if exc:
+                    await traceback_logger(exc, frame = 4)
 
                 r.utils.clear_protocol(r)
 

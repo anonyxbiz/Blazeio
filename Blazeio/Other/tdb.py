@@ -19,20 +19,8 @@ class Tdb:
     async def __aexit__(app, *args):
         return await app.cond.__aexit__(*args)
 
-    def ensure_dumpable(app, json: dict):
-        new = {}
-        for key, val in json.items():
-            if isinstance(val, (str, int, list, tuple, bool, float)):
-                new[key] = val
-            elif isinstance(val, dict):
-                new[key] = app.ensure_dumpable(val)
-            else:
-                new[key] = str(val)
-
-        return new
-
     def get_bytes(app):
-        return io.dumps(app.ensure_dumpable(io.ddict(app.db)), indent=0).encode()
+        return io.dumps(io.ensure_dumpable(io.ddict(app.db)), indent=0).encode()
 
     async def daemon(app):
         async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError):

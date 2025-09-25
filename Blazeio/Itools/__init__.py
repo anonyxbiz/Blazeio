@@ -235,4 +235,16 @@ class DictView:
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
 
+def ensure_dumpable(json: dict):
+    new = {}
+    for key, val in json.items():
+        if isinstance(val, (str, int, list, tuple, bool, float)):
+            new[key] = val
+        elif isinstance(val, dict):
+            new[key] = ensure_dumpable(val)
+        else:
+            new[key] = str(val)
+
+    return new
+
 if __name__ == "__main__": ...

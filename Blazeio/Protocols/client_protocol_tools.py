@@ -666,6 +666,15 @@ class Parsers:
 
             if app.received_len >= app.content_length and not app.protocol.__stream__: break
 
+    def get_filename(app):
+        if (content_disposition := app.headers.get("content-disposition")):
+            return (filename := content_disposition[content_disposition.find(i := 'filename="') + len(i):])[:filename.find('"')]
+
+    def gen_filename(app):
+        if (idx := (ext := app.content_type[app.content_type.find("/")+1:]).find(";")) != -1:
+            ext = ext[:idx]
+        return "%s.%s" % (token_urlsafe(16), ext)
+
 class Pushtools(Encoders):
     __slots__ = ()
     def __init__(app): ...
@@ -696,7 +705,7 @@ class Pushtools(Encoders):
             method = app.write_chunked_eof
         else:
             if args and args[0]:
-                method = app.write_raw
+                method = app.write
             else:
                 method = None
 

@@ -167,7 +167,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     async def __aenter__(app, create_connection = True):
         if (task := current_task()):
-            task.__BlazeioClientProtocol__ = app
+            if not hasattr(app, "__BlazeioClientProtocol__"): task.__BlazeioClientProtocol__ = app
 
         if not app.loop:
             app.loop = get_event_loop()
@@ -418,6 +418,26 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         async with app(*args, **kwargs) as instance:
             return await instance.data()
 
+    @classmethod
+    def const_multipart(app, filename: str, content_type: str, file_key: str = "file", **formdata):
+        multipart = ddict(
+            boundary = "----WebKitFormBoundary%s" % token_urlsafe(16)[:16],
+            formdata = (
+                *(
+                    'Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(val))
+                    for key, val in formdata.items()
+                ),
+                'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type)
+            )
+        )
+        
+
+        multipart.content_type = 'multipart/form-data; boundary=%s' % multipart.boundary
+        multipart.header = ("\r\n".join(("--%s\r\n%s" % (multipart.boundary, i) for i in multipart.formdata))).encode()
+        multipart.eof_boundary = ("\r\n--%s--\r\n" % multipart.boundary).encode()
+        multipart.content_length = len(multipart.header + multipart.eof_boundary)
+        return multipart
+
 class DynamicRequestResponse(type):
     response_types = {"text", "json"}
     def __getattr__(app, name):
@@ -534,6 +554,7 @@ class SessionPool:
         return pool
 
     def __getattr__(app, key):
+        if (val := getattr(Session, key, None)): return val
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
     async def __aenter__(app):
@@ -608,6 +629,7 @@ class createSessionPool:
     def __getattr__(app, key):
         if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
         elif (val := app.kwargs.get(key)): return val
+
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
 class get_Session:
