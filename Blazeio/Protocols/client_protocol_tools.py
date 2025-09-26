@@ -213,7 +213,7 @@ class Formdata:
                 'Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(val))
                 for key, val in formdata.items()
             ),
-            'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type)
+            'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type) if filename else ''
         )
         app.content_type = 'multipart/form-data; boundary=%s' % app.boundary
         app.header = ("\r\n".join(("--%s\r\n%s" % (app.boundary, i) for i in app.formdata))).encode()
