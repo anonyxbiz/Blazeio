@@ -50,3 +50,11 @@ class Protocoltimeout(BlazeioException):
 
     def __str__(app) -> str:
         return app.message
+
+class Missingdependency(BlazeioException):
+    __slots__ = ('message')
+    def __init__(app, message="Module not imported..."):
+        app.message = str(message)
+
+    def __str__(app) -> str:
+        return app.message

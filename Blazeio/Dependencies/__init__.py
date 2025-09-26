@@ -43,8 +43,13 @@ from psutil import Process as psutilProcess
 try:
     from ujson import dumps as ujson_dumps, loads, JSONDecodeError
     dumps = lambda *args, indent = 4, reject_bytes = False, escape_forward_slashes = False, **kwargs: ujson_dumps(*args, indent = indent, reject_bytes = reject_bytes, escape_forward_slashes = escape_forward_slashes, **kwargs)
-except:
+except ImportError:
     from json import dumps, loads, JSONDecodeError
+
+try:
+    from xmltodict import parse as xml_parse
+except ImportError:
+    xml_parse = None
 
 debug_mode = environ.get("BlazeioDev", None)
 

@@ -203,6 +203,23 @@ class Multipart:
 
             yield app.boundary_eof.encode()
 
+class Formdata:
+    __slots__ = ("boundary", "eof_boundary", "formdata", "header", "content_type", "content_length")
+    multipart_line = "----WebKitFormBoundary"
+    def __init__(app, filename: str, content_type: str, file_key: str = "file", **formdata):
+        app.boundary = "%s%s" % (app.multipart_line, token_urlsafe(16)[:16])
+        app.formdata = (
+            *(
+                'Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(val))
+                for key, val in formdata.items()
+            ),
+            'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type)
+        )
+        app.content_type = 'multipart/form-data; boundary=%s' % app.boundary
+        app.header = ("\r\n".join(("--%s\r\n%s" % (app.boundary, i) for i in app.formdata))).encode()
+        app.eof_boundary = ("\r\n--%s--\r\n" % app.boundary).encode()
+        app.content_length = len(app.header + app.eof_boundary)
+
 class AsyncHtml:
     __slots__ = ()
     def __init__(app): ...
@@ -781,6 +798,10 @@ class Pulltools(Parsers, Decoders):
     async def json(app):
         return Dot_Dict(loads(await app.aread(True)))
 
+    async def xml(app):
+        if not xml_parse: raise Missingdependency("xmltodict must be installed to use this.")
+        return Dot_Dict(xml_parse(await app.aread(True)))
+
     async def __save__(app, filepath: str, mode: str = "wb"):
         if not app.is_prepared(): await app.prepare_http()
 
@@ -852,8 +873,10 @@ class Pulltools(Parsers, Decoders):
 
         if app.handler == app.handle_raw and not app.content_length: return
 
-        if (content_type := app.response_headers.get("content-type")).lower() == "application/json":
+        if app.content_type.lower().startswith("application/json"):
             func = app.json
+        elif app.content_type.lower().startswith("application/xml"):
+            func = app.xml
         else:
             func = app.text
 
@@ -880,6 +903,14 @@ class Pulltools(Parsers, Decoders):
         async for chunk in app.pull(): ...
 
     def __aiter__(app): return app.pull()
+
+    async def pipe_to(app, pipe):
+        async for chunk in app:
+            if chunk: await pipe(chunk)
+
+    async def pipe_from(app, pipe):
+        async for chunk in pipe:
+            if chunk: await app.write(chunk)
 
 if __name__ == "__main__":
     ...

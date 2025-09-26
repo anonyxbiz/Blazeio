@@ -2,3 +2,4 @@ ujson
 aiofile
 brotlicffi
 psutil
+xmltodict
