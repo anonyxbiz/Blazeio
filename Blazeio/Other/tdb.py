@@ -5,12 +5,19 @@ from Blazeio.Other.crypto import Ciphen
 class Tdb:
     __slots__ = ("file", "db", "loaded", "cond", "cipher", "tasks")
     def __init__(app, file: str, cipher_key: str, db: dict = {}):
-        app.tasks = []
-        app.file, app.db, app.loaded, app.cond, app.cipher = file, io.Dotify(db), io.SharpEvent(), io.ioCondition(), Ciphen(cipher_key)
+        object.__setattr__(app, "file", file)
+        object.__setattr__(app, "tasks", [])
+        object.__setattr__(app, "db", io.Dotify(db))
+        object.__setattr__(app, "loaded", io.SharpEvent())
+        object.__setattr__(app, "cond", io.ioCondition())
+        object.__setattr__(app, "cipher", Ciphen(cipher_key))
         app.tasks.append(io.getLoop.create_task(app.daemon()))
 
     def __getattr__(app, key):
         return app.db[key]
+
+    def __setattr__(app, key, value):
+        app.db[key] = value
 
     async def __aenter__(app):
         await app.cond.__aenter__()
