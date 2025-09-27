@@ -612,8 +612,21 @@ class createSessionPool:
 
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
+class _FetchAPI:
+    __slots__ = ("session",)
+    def __init__(app, session):
+        app.session = session
+    
+    def __getattr__(app, method: str):
+        async def fetch_api(url, *args, **kwargs):
+            async with app.session(url, method, *args, **kwargs) as instance:
+                return await instance.data()
+
+        return fetch_api
+
 class get_Session:
     __slots__ = ("session_pool",)
+    dynamic_methods = ddict(fetch = _FetchAPI)
     def __init__(app, keepalive = False):
         app.session_pool = createSessionPool(0, 0)
 
@@ -629,6 +642,8 @@ class get_Session:
         return pool
 
     def __getattr__(app, key):
+        if (value := app.dynamic_methods.get(key)): return value(app)
+
         return getattr(app.pool().Session, key)
 
     def __call__(app, *args, **kwargs):
