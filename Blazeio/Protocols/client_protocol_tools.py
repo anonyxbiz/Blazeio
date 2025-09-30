@@ -1,7 +1,7 @@
 from ..Dependencies import *
 from ..Modules.request import *
 from ..Modules.streaming import ClientContext
-from ..Dependencies.alts import DictView, plog, memarray, traceback_logger, URL
+from ..Dependencies.alts import DictView, plog, memarray, traceback_logger, URL, Ehandler
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
@@ -589,9 +589,12 @@ class Parsers:
 
         return cookies
 
-    def dict_cookies(app):
+    def dict_cookies(app, source = None):
+        if not source:
+            source = app.response_headers.get("set-cookie")
+            
         cookies = ddict()
-        if (Cookies := app.response_headers.get("set-cookie")):
+        if (Cookies := source):
             splitter = "="
             for cookie in Cookies:
                 key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])

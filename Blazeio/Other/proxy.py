@@ -49,7 +49,7 @@ class Sslproxy:
         if not server_name:
             server_name = scope.server_name
 
-        if server_name and (server := app.hosts.get(server_name)) is not None:
+        if server_name and (server := app.hosts.get(server_name, app.wildcard_srv(server_name))) is not None:
             if not (ctx := server.get("ssl_context")) or not (ctx := app.ssl_contexts.get(ctx)):
                 if not all([(certfile := server.get("certfile")), (keyfile := server.get("keyfile"))]) or not all([io.path.exists(certfile), io.path.exists(keyfile)]):
                     if certfile and not io.path.exists(certfile):
@@ -242,6 +242,11 @@ class App(Sslproxy, Transporters):
             return False
 
         return True
+    
+    def wildcard_srv(app, server_hostname: str):
+        for srv in app.hosts:
+            if not srv.startswith("*"): continue
+            if server_hostname.endswith(srv[1:]): return app.hosts[srv]
 
     async def __main_handler__(app, r):
         app.protocol_count += 1
@@ -266,7 +271,7 @@ class App(Sslproxy, Transporters):
                 raise io.Abort("Not Found", 404)
             return await route(r)
 
-        if not (srv := app.hosts.get(server_hostname)) or not (remote := srv.get("remote")):
+        if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
         if not sock and srv.server_config.enforce_https:
