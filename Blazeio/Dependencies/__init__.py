@@ -184,9 +184,10 @@ class SharpEvent:
         app._waiters.clear()
 
 class __Scope__:
-    __slots__ = ("set_event", "framer", "obj")
+    __slots__ = ("set_event", "framer", "obj", "added_keys")
     def __init__(app, framer: str = "\x00", obj: any = main_thread):
         object.__setattr__(app, "obj", obj)
+        object.__setattr__(app, "added_keys", [])
         object.__setattr__(app, "set_event", SharpEvent())
         object.__setattr__(app, "framer", framer)
 
@@ -199,6 +200,7 @@ class __Scope__:
         return (object.__getattribute__(app, "framer") + key + object.__getattribute__(app, "framer"))
 
     def __setattr__(app, key, value):
+        app.added_keys.append(key)
         _ = setattr(app.obj(), app.mux(key), value)
         app.set_event.set()
         return _
@@ -242,6 +244,10 @@ class __Scope__:
         name = obj.get_name()
         _id = int(name[(idx := name.find(key := "Task-")) + len(key):])
         return _id
+
+    def items(app):
+        for key in app.added_keys:
+            yield (key, app.get(key))
 
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "loop")

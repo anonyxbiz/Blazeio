@@ -2,6 +2,8 @@ import Blazeio as io
 
 class Asynctemplate:
     def __init__(app):
+        if not hasattr(app, "static_chunk_size"):
+            app.static_chunk_size = io.ioConf.INBOUND_CHUNK_SIZE
         app.templatify_frames = io.ddict(
             start = b"<!--",
             end = b"-->",
@@ -43,15 +45,15 @@ class Asynctemplate:
             return encoding_map
 
     async def stream_file(app, r: io.BlazeioProtocol, metadata: io.ddict, file: str):
-        if not io.path.exists(path := io.path.join(app.static_path, file)): return
+        if not io.path.exists(file): return
 
-        async with io.async_open(path, "rb") as f:
+        async with io.async_open(file, "rb") as f:
             while (chunk := await f.read(app.static_chunk_size)):
                 async for chunk in app.templatify(r, metadata, chunk): yield chunk
 
     async def templatify(app, r: io.BlazeioProtocol, metadata: io.ddict, chunk: bytes):
-        while (ida := chunk.find(app.templatify_frames.start)) != -1 and (idb := chunk.find(app.templatify_frames.end)) != -1:
-            var = chunk[ida + len(app.templatify_frames.start):idb].decode()
+        while (ida := chunk.find(app.templatify_frames.start)) != -1 and (idb := chunk.find(app.templatify_frames.end)) != -1 and not (var := chunk[ida + len(app.templatify_frames.start):idb].decode()).startswith(" "):
+            
             if (chunk_before := chunk[:ida]): yield chunk_before
 
             chunk = chunk[idb + len(app.templatify_frames.end):]
