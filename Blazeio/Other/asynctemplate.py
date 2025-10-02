@@ -52,7 +52,8 @@ class Asynctemplate:
                 async for chunk in app.templatify(r, metadata, chunk): yield chunk
 
     async def templatify(app, r: io.BlazeioProtocol, metadata: io.ddict, chunk: bytes):
-        while (ida := chunk.find(app.templatify_frames.start)) != -1 and (idb := chunk.find(app.templatify_frames.end)) != -1 and not (var := chunk[ida + len(app.templatify_frames.start):idb].decode()).startswith(" "):
+        while (ida := chunk.find(app.templatify_frames.start)) != -1 and (idb := chunk.find(app.templatify_frames.end)) != -1:
+            var = chunk[ida + len(app.templatify_frames.start):idb].decode()
             
             if (chunk_before := chunk[:ida]): yield chunk_before
 
