@@ -43,9 +43,12 @@ class Asynctemplate:
 
         if (encoding_map := app.maps.encoder_maps.get(instruction[idx+len(app.templatify_frames.instructions.encoder.start):ide])):
             return encoding_map
+    
+    def resolve_path(app, path):
+        return path
 
     async def stream_file(app, r: io.BlazeioProtocol, metadata: io.ddict, file: str):
-        if not io.path.exists(file): return
+        if not io.path.exists(file := app.resolve_path(file)): return
 
         async with io.async_open(file, "rb") as f:
             while (chunk := await f.read(app.static_chunk_size)):
