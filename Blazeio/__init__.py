@@ -344,7 +344,7 @@ class Httpkeepalive:
     async def __main_handler__(app, r):
         requests, start = 0, perf_counter()
         while not r.transport.is_closing():
-            if requests >= 50:
+            if requests >= 1000:
                 if (perf_counter() - start) <= 1: raise ServerGotInTrouble()
                 requests, start = 0, perf_counter()
 
