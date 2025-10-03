@@ -7,19 +7,35 @@ URL_DECODE_MAP = {"%20": " ", "%21": "!", "%22": '"', "%23": "#", "%24": "$", "%
 class ContentDecoders:
     __slots__ = ()
     def __init__(app): ...
-
+    
+    @classmethod
     async def br_decoder(app, data):
         if len(data) >= 102400:
             data = await to_thread(brotlicffi_decompress, data)
         else:
             data = brotlicffi_decompress(data)
         return data
-
+    
+    @classmethod
     async def gzip_decoder(app, data):
         data = (decompressor := decompressobj(16 + zlib_MAX_WBITS)).decompress(data)
 
         if (chunk := decompressor.flush()):
             data += chunk
+        return data
+
+class ContentEncoders:
+    __slots__ = ()
+    def __init__(app): ...
+    
+    @classmethod
+    def br_encoder(app, data: (bytes, bytearray)):
+        return to_thread(brotlicffi_compress, bytes(data))
+
+    @classmethod
+    def gzip_encoder(app, data: (bytes, bytearray)):
+        data = (encoder := compressobj(wbits=31)).compress(bytes(data))
+        if (_ := encoder.flush()): data += _
         return data
 
 class HTTPParser:

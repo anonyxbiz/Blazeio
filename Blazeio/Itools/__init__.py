@@ -119,14 +119,17 @@ def load_from_locals(app, fn, __locals__, _type = Utype):
             setattr(app, key, __locals__[key])
 
 class Super:
-    __slots__ = ("supers", "_super")
-    def __init__(app, _super = None):
+    __slots__ = ("supers", "_super", "_class_scopes")
+    def __init__(app, _super = None, _class_scopes = False):
         if _super is None or getattr(app, "_super", None): return app.resolve_init()
-        app._super = _super
+        app._super, app._class_scopes = _super, _class_scopes if isinstance(_class_scopes, dict) else False
         app.supers = app._super.__class__.__mro__[1:]
 
     def resolve_init(app):
         for _super in app.supers:
+            if app._class_scopes is not False:
+                app._class_scopes[_super.__name__] = Dot_Dict()
+
             _super.__init__(app._super)
         return app
 

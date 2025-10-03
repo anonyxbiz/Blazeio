@@ -78,9 +78,13 @@ class __ioConf__:
     def __getattr__(app, key, default = None):
         return default
 
-    def add(app, **kwargs):
+    def add(app, *args, **kwargs):
         for key in kwargs:
             setattr(app, key, kwargs[key])
+
+    def __call__(app, fn):
+        setattr(app, fn.__name__, fn)
+        return fn
 
     def run(app, coro):
         return app.loop.run_until_complete(coro)
@@ -191,6 +195,9 @@ class __Scope__:
         object.__setattr__(app, "set_event", SharpEvent())
         object.__setattr__(app, "framer", framer)
 
+    @property
+    def __name__(app): return "__Scope__"
+
     async def wait_for_key(app, key):
         while not (value := app.get(key)):
             await app.set_event.wait_clear()
@@ -220,6 +227,14 @@ class __Scope__:
     def __str__(app):
         return str(app.obj())
 
+    def __call__(app, fn):
+        app[fn.__name__] = fn
+        return fn
+
+    def items(app):
+        for key in app.added_keys:
+            yield (key, app.get(key))
+
     def get(app, key, default = None):
         return app.__getattr__(key, default)
 
@@ -231,9 +246,8 @@ class __Scope__:
             if not key in excs and all([not key.startswith("__") and not key.endswith("__")]) and not "SharpEvent" in dir(glob):
                 app[key] = glob
 
-    def add(app, fn):
-        app[fn.__name__] = fn
-        return fn
+    def add(app, *args, **kwargs):
+        return app.__call__(*args, **kwargs)
 
     def __id__(app):
         try:
@@ -244,10 +258,6 @@ class __Scope__:
         name = obj.get_name()
         _id = int(name[(idx := name.find(key := "Task-")) + len(key):])
         return _id
-
-    def items(app):
-        for key in app.added_keys:
-            yield (key, app.get(key))
 
 class Enqueue:
     __slots__ = ("queue", "queue_event", "queue_add_event", "maxsize", "queueunderflow", "loop")

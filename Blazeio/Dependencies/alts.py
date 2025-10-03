@@ -4,6 +4,7 @@ from ..Dependencies import _getframe
 from ..Modules.streaming import Context, Abort
 from ..Other._refuture import reTask
 
+@ioConf
 def get_func_name(frame: int = 1):
     try:
         caller_frame = _getframe(frame)
@@ -23,14 +24,12 @@ def get_func_name(frame: int = 1):
         print(e)
         return e.__class__.__name__
 
-ioConf.add(get_func_name=get_func_name)
-
 async def agather(*coros):
     return await gather(*[loop.create_task(coro) if iscoroutine(coro) else coro for coro in coros])
 
 class __Coro__:
     __slots__ = ()
-    def __init__(app): pass
+    def __init__(app): ...
 
     def __getattr__(app, name):
         if (m := getattr(app, "_%s" % name, None)):
@@ -574,9 +573,9 @@ class Errdetail(BlazeioException):
         except: return str(detail)
 
 class Ehandler:
-    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err", "on_exit_cbs", "kwargs", "entered")
-    def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False):
-        app.kwargs = ddict(onerr=onerr, ignore=ignore, _raise=_raise, exit_on_err=exit_on_err)
+    __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err", "on_exit_cbs", "kwargs", "entered", "frame")
+    def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False, frame = 5):
+        app.kwargs = ddict(onerr=onerr, ignore=ignore, _raise=_raise, exit_on_err=exit_on_err, frame = frame)
         app.entered = False
         app(app.kwargs)
 
@@ -609,7 +608,7 @@ class Ehandler:
         if exc_v is not None:
             app.err = exc_v
             if not app.should_ignore(exc_v):
-                fut = run_coroutine_threadsafe(traceback_logger(exc_v, frame = 5), get_event_loop())
+                fut = run_coroutine_threadsafe(traceback_logger(exc_v, frame = app.kwargs.get("frame")), get_event_loop())
                 if app.onerr: fut.add_done_callback(lambda fut: app.onerr())
 
         if app.on_exit_cbs:
@@ -636,7 +635,7 @@ class Ehandler:
         if exc_v is not None:
             app.err = exc_v
             if not app.should_ignore(exc_v):
-                await traceback_logger(exc_v, frame = 5)
+                await traceback_logger(exc_v, frame = app.kwargs.get("frame"))
                 if app.onerr: create_task(app.onerr())
         
         if app.on_exit_cbs:
