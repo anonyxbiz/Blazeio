@@ -1,5 +1,19 @@
 import Blazeio as io
 
+class Map(io.ddict):
+    @property
+    def __name__(app):
+        return "Map"
+
+    def __call__(app, fn, *args, **kwargs):
+        app[fn.__name__] = fn
+        return fn
+
+    def attach_fns(app, parent, source):
+        for name in source:
+            parent.maps.instruction_maps[name] = getattr(parent, name)
+
+@io.Scope
 class Asynctemplate:
     def __init__(app):
         if not hasattr(app, "static_chunk_size"):
@@ -25,8 +39,8 @@ class Asynctemplate:
             )
         )
         app.maps = io.ddict(
-            instruction_maps = io.ddict(stream_file = app.stream_file),
-            encoder_maps = io.ddict(strip_newlines = app.strip_newlines_encoder)
+            instruction_maps = Map(stream_file = app.stream_file),
+            encoder_maps = Map(strip_newlines = app.strip_newlines_encoder)
         )
 
     def strip_newlines_encoder(app, value: str):
@@ -36,7 +50,7 @@ class Asynctemplate:
         if not instruction or (idx := instruction.find(app.templatify_frames.instructions.content.start)) == -1 or (ide := instruction.find(app.templatify_frames.instructions.content.end)) == -1: return
 
         if (instruction_map := app.maps.instruction_maps.get(instruction[:idx])):
-            return instruction_map(r, metadata, instruction[idx+len(app.templatify_frames.instructions.content.start):ide])
+            return instruction_map(r, metadata) if not (arg := instruction[idx+len(app.templatify_frames.instructions.content.start):ide]) else instruction_map(r, metadata, arg)
 
     def encoder_from_instruction(app, instruction: (None, str)):
         if not instruction or (idx := instruction.find(app.templatify_frames.instructions.encoder.start)) == -1 or (ide := instruction.find(app.templatify_frames.instructions.encoder.end)) == -1: return
@@ -85,7 +99,5 @@ class Asynctemplate:
                     if value: yield value
 
         if chunk: yield chunk
-
-io.Scope.Asynctemplate = Asynctemplate
 
 if __name__ == "__main__": ...

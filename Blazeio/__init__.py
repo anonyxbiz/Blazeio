@@ -212,6 +212,14 @@ class Routemanager(ddict):
     def __init__(app, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @property
+    def __name__(app):
+        return "Routemanager"
+
+    def __call__(app, fn, *args, **kwargs):
+        app[app.normalize_funcname(fn.__name__)] = (fn, args, kwargs)
+        return fn
+
     def normalize_funcname(app, funcname: str):
         for i, x in ioConf.default_http_server_config["funcname_normalizers"].items():
             funcname = funcname.replace(i, x)
@@ -220,12 +228,14 @@ class Routemanager(ddict):
     def add(app, fn, *args, **kwargs):
         return app.__call__(fn, *args, **kwargs)
 
-    def __call__(app, fn, *args, **kwargs):
-        app[app.normalize_funcname(fn.__name__)] = (fn, args, kwargs)
-        return fn
-
+class rawRoutemanager(Routemanager):
     @property
-    def __name__(app): return "Routemanager"
+    def __name__(app):
+        return "rawRoutemanager"
+
+    def __call__(app, fn, *args, **kwargs):
+        app[fn.__name__] = fn
+        return fn
 
 class Deprecated:
     def __init__(app):
