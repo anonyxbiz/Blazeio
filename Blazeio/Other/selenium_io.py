@@ -29,8 +29,26 @@ class _FetchAPI:
         def api(url, *args, **kwargs): return app.fetch(url, method.upper(), *args, **kwargs)
         return api
 
-    async def fetch(app, url: str, method: str, headers: (dict, None) = None, body: any = None):
-        return Fetchresponse(await io.to_thread(app.instance.execute_script, "const options = { method: '%s', headers: %s, credentials: 'include', mode: 'cors' };\n%s\n\nreturn await fetch('%s', options).then(async response => ({ ok: response.ok, status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()), body: await response.text(), url: response.url }));" % (method, io.dumps(headers or {}, indent=0), ("options.body = %s;" % io.dumps(body, indent=0)) if body else "", url)))
+    async def fetch(app, url: str, method: str, headers: (dict, None) = None, body: any = None, json: dict = None):
+        if json:
+            body = io.dumps(json, indent=0)
+            headers["content-type"] = "application/json"
+
+        if not headers:
+            headers = {}
+
+        if body:
+            if not "content-length" in headers:
+                headers["content-length"] = str(len(body))
+        
+        while True:
+            try:
+                resp = await io.to_thread(app.instance.execute_script, "const options = { method: '%s', headers: %s, credentials: 'include', mode: 'cors' };\n%s\n\nreturn await fetch('%s', options).then(async response => ({ ok: response.ok, status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()), body: await response.text(), url: response.url }));" % (method, io.dumps(headers or {}, indent=0), ("options.body = %s;" % io.dumps(body, indent=0)) if body else "", url))
+                break
+            except TimeoutException:
+                ...
+
+        return Fetchresponse(resp)
 
 class Chrome(webdriver.Chrome):
     def __init__(app, driver_options: tuple = ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36", "--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled", ("excludeSwitches", ["enable-automation"]), ("useAutomationExtension", False), "--disable-infobars", "--disable-popup-blocking", "--disable-save-password-bubble", "--disable-extensions", "--disable-gpu", "--disable-web-security", "--disable-notifications", "--disable-default-apps", "--disable-translate", "--disable-logging") if io.os_name != "NT" else ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36",), *args, **kwargs):
