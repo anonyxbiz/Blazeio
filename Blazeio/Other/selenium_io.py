@@ -16,6 +16,16 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException, NoSuchElementException, TimeoutException, ElementNotInteractableException, StaleElementReferenceException, SessionNotCreatedException
 
+from logging import basicConfig, getLogger, ERROR
+from warnings import filterwarnings
+
+basicConfig(level=ERROR)
+getLogger('selenium').setLevel(ERROR)
+getLogger('urllib3').setLevel(ERROR)
+getLogger('chardet').setLevel(ERROR)
+
+filterwarnings("ignore", category=DeprecationWarning)
+
 class Fetchresponse(io.ddict):
     def json(app):
         return io.loads(app.body)
