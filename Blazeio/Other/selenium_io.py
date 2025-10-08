@@ -30,12 +30,12 @@ class _FetchAPI:
         return api
 
     async def fetch(app, url: str, method: str, headers: (dict, None) = None, body: any = None, json: dict = None):
+        if not headers:
+            headers = {}
+
         if json:
             body = io.dumps(json, indent=0)
             headers["content-type"] = "application/json"
-
-        if not headers:
-            headers = {}
 
         if body:
             if not "content-length" in headers:
