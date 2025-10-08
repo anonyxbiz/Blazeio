@@ -26,7 +26,9 @@ class _FetchAPI:
         app.instance = instance
 
     def __getattr__(app, method: str):
-        def api(url, *args, **kwargs): return app.fetch(url, method.upper(), *args, **kwargs)
+        async def api(url, *args, **kwargs):
+            async with app.instance.__cond__:
+                return await app.fetch(url, method.upper(), *args, **kwargs)
         return api
 
     async def fetch(app, url: str, method: str, headers: (dict, None) = None, body: any = None, json: dict = None):
@@ -53,6 +55,7 @@ class _FetchAPI:
 class Chrome(webdriver.Chrome):
     def __init__(app, driver_options: tuple = ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36", "--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled", ("excludeSwitches", ["enable-automation"]), ("useAutomationExtension", False), "--disable-infobars", "--disable-popup-blocking", "--disable-save-password-bubble", "--disable-extensions", "--disable-gpu", "--disable-web-security", "--disable-notifications", "--disable-default-apps", "--disable-translate", "--disable-logging") if io.os_name != "NT" else ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36",), *args, **kwargs):
         app.__dynamic_methods__, app.__driver_args__, app.__driver_kwargs__, app.__driver_options__ = io.ddict(fetch = _FetchAPI), args, kwargs, driver_options
+        app.__cond__ = io.ioCondition()
 
     def __getattr__(app, key, *args):
         if (value := app.__dynamic_methods__.get(key)):
