@@ -578,6 +578,9 @@ class Parsers:
     def raw_cookies(app):
         cookies = ""
         if (Cookies := app.response_headers.get("set-cookie")):
+            if not isinstance(Cookies, list):
+                Cookies = [Cookies]
+
             splitter = "="
             for cookie in Cookies:
                 key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
@@ -592,9 +595,12 @@ class Parsers:
     def dict_cookies(app, source = None):
         if not source:
             source = app.response_headers.get("set-cookie")
-            
+
         cookies = ddict()
         if (Cookies := source):
+            if not isinstance(Cookies, list):
+                Cookies = [Cookies]
+
             splitter = "="
             for cookie in Cookies:
                 key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])

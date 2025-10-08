@@ -467,7 +467,7 @@ class __plog__:
 
     def to_line(app, lineno: int, col: int = 0): return "\033[%d;%dH" % (lineno, col)
 
-    def __log__(app, name: any = None, *logs, sepr = "  ", logger_: any = None, _format: bool = True, frame: int = 3, func: any = None, dnewline: bool = True, newline: bool = True):
+    async def __log__(app, name: any = None, *logs, sepr = "  ", logger_: any = None, _format: bool = True, frame: int = 3, func: any = None, dnewline: bool = True, newline: bool = True):
         if not logs:
             logs, name = (name,), None
 
@@ -486,11 +486,12 @@ class __plog__:
             indent += 1
             frmt += "%s%s%s" % (sepr0, sepr*indent, log)
 
+        lineno = None
+
         if name and str(name).startswith(app.line_sepr[0]) and (ida := str(name).find(app.line_sepr[1])) != -1 and (idb := str(name).find(app.line_sepr[1])) != -1 and (ide := str(name).find(app.line_sepr[2])) != -1:
             name = str(name)
-            if not (line := app.lines.get(name[:ide + 1])):
-                line = app.to_line(int(name[idb + len(app.line_sepr[1]):ide]))
-
+            lineno = int(name[idb + len(app.line_sepr[1]):ide])
+            line = app.to_line(lineno)
             name = name[ide + 1:]
         else:
             line = ""
@@ -500,7 +501,10 @@ class __plog__:
         else:
             txt = frmt
 
-        return logger_(line + txt)
+        if lineno is not None:
+            await app.clear_mv(lineno, lineno + int(Taskscope.get("plog_lineno_incr", 5)))
+
+        return await logger_(line + txt)
 
     async def clear(app, a: int = 0, b: int = 20):
         for line in range(a, b):
