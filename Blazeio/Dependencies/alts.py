@@ -776,4 +776,7 @@ class URL:
         else:
             return getattr(app, key)
 
+def anydumps(_dict, *args, **kwargs):
+    return dumps(ensure_dumpable(_dict), *args, **kwargs)
+
 if __name__ == "__main__": ...
