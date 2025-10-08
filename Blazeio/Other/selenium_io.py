@@ -31,6 +31,8 @@ defaults = io.ddict(
     desired_capabilities = {'goog:loggingPrefs': {'performance': 'ALL'}, 'pageLoadStrategy': 'eager'}
 )
 
+utils = io.ddict(sync = io.ioCondition())
+
 class Fetchresponse(io.ddict):
     def json(app):
         return io.loads(app.body)
@@ -89,25 +91,26 @@ class Chrome(webdriver.Chrome):
         return options
     
     async def __aenter__(app):
-        caps = DesiredCapabilities.CHROME.copy()
-        caps.update(app.__desired_capabilities__)
-
-        if io.debug_mode:
-            kwargs = io.ddict(options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
-        else:
-            kwargs = io.ddict(service=Service(ChromeDriverManager().install()), options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
-
-        await io.to_thread(super().__init__, *app.__driver_args__, **app.__driver_kwargs__, **kwargs)
-
-        await io.to_thread(app.execute_cdp_cmd, "Page.addScriptToEvaluateOnNewDocument", {
-            "source": """
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            """
-        })
-
-        return app
+        async with utils.sync:
+            caps = DesiredCapabilities.CHROME.copy()
+            caps.update(app.__desired_capabilities__)
+    
+            if io.debug_mode:
+                kwargs = io.ddict(options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
+            else:
+                kwargs = io.ddict(service=Service(ChromeDriverManager().install()), options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
+    
+            await io.to_thread(super().__init__, *app.__driver_args__, **app.__driver_kwargs__, **kwargs)
+    
+            await io.to_thread(app.execute_cdp_cmd, "Page.addScriptToEvaluateOnNewDocument", {
+                "source": """
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                """
+            })
+    
+            return app
 
     async def __aexit__(app, *args):
         await app.quit()
