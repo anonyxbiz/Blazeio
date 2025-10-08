@@ -26,6 +26,11 @@ getLogger('chardet').setLevel(ERROR)
 
 filterwarnings("ignore", category=DeprecationWarning)
 
+defaults = io.ddict(
+    chrome_options = ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36", "--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled", ("excludeSwitches", ["enable-automation"]), ("excludeSwitches", ["enable-logging"]), ("useAutomationExtension", False), "--disable-infobars", "--disable-popup-blocking", "--disable-save-password-bubble", "--disable-extensions", "--disable-gpu", "--disable-web-security", "--disable-notifications", "--disable-default-apps", "--disable-translate", "--disable-logging", "--disable-renderer-backgrounding", "--disable-images", "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows", "--aggressive-cache-discard","--memory-pressure-off","--max_old_space_size=100","--disable-features=VizDisplayCompositor","--disable-software-rasterizer","--disable-component-extensions-with-background-pages","--disable-client-side-phishing-detection","--disable-crash-reporter","--disable-ipc-flooding-protection", "--log-level=3", "--disable-http2", "--disable-quic", "--disable-features=UseHttp2", "--enable-features=UseHttp1.1", ("excludeSwitches", ["enable-http2"]), ("prefs", {"profile.managed_default_content_settings.images": 2, "profile.managed_default_content_settings.stylesheets": 2}), "--blink-settings=imagesEnabled=false"),
+    desired_capabilities = {'goog:loggingPrefs': {'performance': 'ALL'}, 'pageLoadStrategy': 'eager'}
+)
+
 class Fetchresponse(io.ddict):
     def json(app):
         return io.loads(app.body)
@@ -39,7 +44,7 @@ class _FetchAPI:
         def api(url, *args, **kwargs): return app.fetch(url, method.upper(), *args, **kwargs)
         return api
 
-    async def fetch(app, url: str, method: str, headers: (dict, None) = None, body: any = None, json: dict = None):
+    async def fetch(app, url: str, method: str, headers: (dict, None) = None, body: any = None, json: dict = None, retries: int = 3):
         if not headers:
             headers = {}
 
@@ -50,10 +55,10 @@ class _FetchAPI:
         if body:
             if not "content-length" in headers:
                 headers["content-length"] = str(len(body))
-        
-        while True:
+
+        for i in range(retries):
             try:
-                resp = await io.to_thread(app.instance.execute_script, "const options = { method: '%s', headers: %s, credentials: 'include', mode: 'cors' };\n%s\n\nreturn await fetch('%s', options).then(async response => ({ ok: response.ok, status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()), body: await response.text(), url: response.url }));" % (method, io.dumps(headers or {}, indent=0), ("options.body = %s;" % io.dumps(body, indent=0)) if body else "", url))
+                resp = await app.instance.execute_script("const options = { method: '%s', headers: %s, credentials: 'include', mode: 'cors' };\n%s\n\nreturn await fetch('%s', options).then(async response => ({ ok: response.ok, status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()), body: await response.text(), url: response.url }));" % (method, io.dumps(headers or {}, indent=0), ("options.body = %s;" % io.dumps(body, indent=0)) if body else "", url))
                 break
             except TimeoutException:
                 ...
@@ -61,8 +66,8 @@ class _FetchAPI:
         return Fetchresponse(resp)
 
 class Chrome(webdriver.Chrome):
-    def __init__(app, driver_options: tuple = ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36", "--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled", ("excludeSwitches", ["enable-automation"]), ("useAutomationExtension", False), "--disable-infobars", "--disable-popup-blocking", "--disable-save-password-bubble", "--disable-extensions", "--disable-gpu", "--disable-web-security", "--disable-notifications", "--disable-default-apps", "--disable-translate", "--disable-logging") if io.os_name != "NT" else ("--headless", "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Safari/537.36",), *args, **kwargs):
-        app.__dynamic_methods__, app.__driver_args__, app.__driver_kwargs__, app.__driver_options__ = io.ddict(fetch = _FetchAPI), args, kwargs, driver_options
+    def __init__(app, driver_options: tuple = defaults.chrome_options, desired_capabilities: dict = defaults.desired_capabilities, *args, **kwargs):
+        app.__dynamic_methods__, app.__driver_args__, app.__driver_kwargs__, app.__driver_options__, app.__desired_capabilities__ = io.ddict(fetch = _FetchAPI), args, kwargs, driver_options, desired_capabilities
 
     def __getattr__(app, key, *args):
         if (value := app.__dynamic_methods__.get(key)):
@@ -84,8 +89,8 @@ class Chrome(webdriver.Chrome):
         return options
     
     async def __aenter__(app):
-        caps = DesiredCapabilities.CHROME
-        caps['goog:loggingPrefs'] = {'performance': 'ALL'}
+        caps = DesiredCapabilities.CHROME.copy()
+        caps.update(app.__desired_capabilities__)
 
         if io.debug_mode:
             kwargs = io.ddict(options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
@@ -111,14 +116,20 @@ class Chrome(webdriver.Chrome):
     async def save_screenshot(app, *args):
         await io.to_thread(super().save_screenshot, *args)
 
-    async def quit(app):
-        await io.to_thread(super().quit)
+    def quit(app):
+        return io.to_thread(super().quit)
 
-    async def get(app, *args, **kwargs):
-        return await io.to_thread(super().get, *args, **kwargs)
+    def get(app, *args, **kwargs):
+        return io.to_thread(super().get, *args, **kwargs)
+
+    def execute_script(app, *args, **kwargs):
+        return io.to_thread(super().execute_script, *args, **kwargs)
+
+    def get_log(app, *args, **kwargs):
+        return io.to_thread(super().get_log, *args, **kwargs)
 
     async def get_request(app, cond):
-        for log in await io.to_thread(app.get_log, 'performance'):
+        for log in await app.get_log('performance'):
                 if "Network.requestWillBeSentExtraInfo" in str(log["message"]):
                     log = io.loads(log["message"])
                     if cond(log):
