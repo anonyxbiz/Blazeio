@@ -19,7 +19,8 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         'cancel_on_disconnect',
         '__wait_closed__',
     )
-
+    non_bodied_methods = ("GET", "HEAD", "OPTIONS", "DELETE")
+    no_response_body_methods = ("HEAD",)
     def __init__(app, **kwargs):
         app.__chunk_size__ = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
         app.__timeout__ = kwargs.get("__timeout__", kwargs.get("timeout"))

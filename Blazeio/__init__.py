@@ -13,7 +13,66 @@ from .Other._refuture import *
 
 is_on_render = lambda: environ.get("RENDER")
 
-class Handler:
+class SrvConfig:
+    def __init__(app):
+        app.host =  "0.0.0.0"
+        app.port = 8000
+        app.__timeout__ = float(60*10)
+        app.__timeout_check_freq__ = 30
+        app.__health_check_freq__ = 30
+        app.__log_requests__ = False
+        app.INBOUND_CHUNK_SIZE = None
+        app.server_protocol = BlazeioServerProtocol
+        app.sock = None
+        app._pending_coros = deque()
+
+    def __getattr__(app, name):
+        return None
+    
+    def set_server_context(app, context):
+        app.server_context = context
+
+    def schedule_coro(app, coro):
+        return app._pending_coros.append(coro)
+
+    async def resolve_coros(app):
+        while app._pending_coros:
+            await app._pending_coros.popleft()
+
+ioConf.ServerConfig = SrvConfig()
+
+class OOP_RouteDef:
+    def __init__(app): ...
+
+    def attach(app, class_):
+        for method in dir(class_):
+            with Ehandler(ignore = [ValueError]):
+                method = getattr(class_, method)
+                if not isinstance(method, (Callable,)):
+                    raise ValueError()
+
+                if (name := str(method.__name__)) == "__main_handler__":
+                    app.__main_handler__ = method
+                    app.create_task(plog.info("Added %s => %s." % (name, name), func = app.attach, dnewline = False, newline = False))
+                    raise ValueError()
+
+                if not name.startswith("_") or name.startswith("__"):
+                    if not name.endswith("_middleware"):
+                        raise ValueError()
+
+                if not "r" in (params := dict((signature := sig(method)).parameters)):
+                    raise ValueError()
+
+                if not name.endswith("_middleware"):
+                    route_name = name.replace("_", "/")
+
+                app.add_route(method, route_name = name)
+
+    def instantiate(app, to_instantiate: Callable):
+        app.attach(to_instantiate)
+        return to_instantiate
+
+class Handler(OOP_RouteDef):
     def __init__(app):
         app.__main_handler__ = NotImplemented
         app.__default_handler__ = NotImplemented
@@ -128,34 +187,6 @@ class Handler:
         if app.ServerConfig.__log_requests__:
             await Log.debug(r, "Completed with status %s in %s seconds" % (str(r.__status__), round(perf_counter() - r.__perf_counter__, 4)))
 
-class SrvConfig:
-    def __init__(app):
-        app.host =  "0.0.0.0"
-        app.port = 8000
-        app.__timeout__ = float(60*10)
-        app.__timeout_check_freq__ = 30
-        app.__health_check_freq__ = 30
-        app.__log_requests__ = False
-        app.INBOUND_CHUNK_SIZE = None
-        app.server_protocol = BlazeioServerProtocol
-        app.sock = None
-        app._pending_coros = deque()
-
-    def __getattr__(app, name):
-        return None
-    
-    def set_server_context(app, context):
-        app.server_context = context
-
-    def schedule_coro(app, coro):
-        return app._pending_coros.append(coro)
-
-    async def resolve_coros(app):
-        while app._pending_coros:
-            await app._pending_coros.popleft()
-
-ioConf.ServerConfig = SrvConfig()
-
 class OnExit:
     __slots__ = ("func", "args", "kwargs")
     def __init__(app, func, *args, **kwargs):
@@ -264,47 +295,14 @@ class Taskmng:
         app.tasks.append(task := app.loop.create_task(*args, **kwargs))
         return task
 
-class OOP_RouteDef:
-    def __init__(app):
-        ...
-
-    def attach(app, class_):
-        for method in dir(class_):
-            with Ehandler(ignore = [ValueError]):
-                method = getattr(class_, method)
-                if not isinstance(method, (Callable,)):
-                    raise ValueError()
-
-                if (name := str(method.__name__)) == "__main_handler__":
-                    app.__main_handler__ = method
-                    app.create_task(plog.info("Added %s => %s." % (name, name), func = app.attach, dnewline = False, newline = False))
-                    raise ValueError()
-
-                if not name.startswith("_") or name.startswith("__"):
-                    if not name.endswith("_middleware"):
-                        raise ValueError()
-
-                if not "r" in (params := dict((signature := sig(method)).parameters)):
-                    raise ValueError()
-
-                if not name.endswith("_middleware"):
-                    route_name = name.replace("_", "/")
-
-                app.add_route(method, route_name = name)
-
-    def instantiate(app, to_instantiate: Callable):
-        app.attach(to_instantiate)
-        return to_instantiate
-
 class Rproxy:
-    def __init__(app):
-        ...
+    def __init__(app): ...
 
     def bind_to_proxy(app, *args, **kwargs):
         return app.ServerConfig.schedule_coro(app.add_to_proxy(*args, **kwargs))
 
     async def add_to_proxy(app, *args, **kwargs):
-        from .Other.multiplexed_proxy import scope
+        from .Other.proxy import scope
         state = await scope.whclient.add_to_proxy(args[0], app.ServerConfig.port, *args[1:], **kwargs)
         app.ServerConfig.server_address = state.get("server_address")
         return state
@@ -334,63 +332,8 @@ class Serverctx:
         app.server_context_close()
         return False
 
-class Httpkeepalive:
-    def __init__(app, web, after_middleware = None, timeout: int = 60*60*5, _max: int = 1000**2):
-        app.web, app.after_middleware, app.__default_handler__ = web, after_middleware, None
-        app.timeout, app._max = timeout, _max
-
-        if not app.after_middleware:
-            if (after_middleware := app.web.declared_routes.pop("after_middleware", None)):
-                app.after_middleware = after_middleware.get("func")
-
-        app.configure()
-
-    def configure(app):
-        if app.web.__main_handler__ is not NotImplemented:
-            app.__default_handler__ = app.web.__main_handler__
-
-        app.keepalive_headers = (
-            b"Connection: Keep-Alive\r\n"
-            b"Keep-Alive: timeout=%d, max=%d\r\n" % (app.timeout, app._max)
-        )
-
-    def get_handler(app):
-        return app.__default_handler__ or app.web.__default_handler__
-
-    async def __main_handler__(app, r):
-        requests, start = 0, perf_counter()
-        while not r.transport.is_closing():
-            if requests >= 1000:
-                if float(perf_counter() - start) <= 0.1: raise ServerGotInTrouble()
-                requests, start = 0, perf_counter()
-
-            try:
-                exc = None
-                r += app.keepalive_headers
-                await app.get_handler()(r)
-            except Abort as e:
-                await e.text(r)
-            except (Eof, ServerGotInTrouble) as e:
-                ...
-            except Exception as e:
-                exc = e
-            finally:
-                requests += 1
-                if app.after_middleware: await app.after_middleware(r)
-
-                if r.__is_prepared__:
-                    await r.eof()
-                else:
-                    await Abort("Internal Server Error", 500).text(r)
-
-                if exc:
-                    await traceback_logger(exc, frame = 4)
-
-                r.utils.clear_protocol(r)
-
 class Server:
-    def __init__(app):
-        ...
+    def __init__(app): ...
 
     def on_exit_middleware(app, *args, **kwargs): app.on_exit.append(OnExit(*args, **kwargs))
 
@@ -505,12 +448,12 @@ class Server:
     async def shutdown(app, e = None):
         shutdown_tasks = [current_task()]
         if isinstance(e, KeyboardInterrupt):
-            shutdown_tasks.append(app.loop.create_task(plog.warning(":: %s" % "KeyboardInterrupt Detected.")))
+            await plog.warning(":: %s" % "KeyboardInterrupt Detected.")
 
         elif isinstance(e, Exception):
-            shutdown_tasks.append(app.loop.create_task(traceback_logger(e)))
+            await traceback_logger(e)
 
-        shutdown_tasks.append(app.loop.create_task(plog.warning(":: %s" % "Shutting down gracefully.")))
+        await plog.warning(":: %s" % "Shutting down gracefully.")
 
         app._server_closing.set()
         app.server.close()
@@ -621,7 +564,7 @@ class Protocol_methods(Serverctx):
         yield from app.is_server_running.wait().__await__()
         return app
 
-class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_methods):
+class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_methods):
     def __init__(app, *args, name: str = "Blazeio_App", evloop = None, **kwargs):
         app.server_name = app.gen_server_name(name)
         app.register_to_scope(app.server_name, app)
@@ -660,7 +603,8 @@ class App(Handler, OOP_RouteDef, Rproxy, Server, Taskmng, Deprecated, Callbacks,
 
         if (idx := name.rfind(id_split)) != -1: name = name[:idx]
 
-        while Scope.get(server_name := "%s%s%s" % (name, id_split, server_id)): server_id += 1
+        if Scope.get(server_name := name):
+            while Scope.get(server_name := "%s%s%s" % (name, id_split, server_id)): server_id += 1
         return server_name
 
     def register_to_scope(app, key: str, instance: any):

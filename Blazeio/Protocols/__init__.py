@@ -44,10 +44,11 @@ class BlazeioProtocol:
 
     async def ensure_reading(app):
         if not app.transport.is_closing():
-            if not app.__stream__ and not app.transport.is_reading():
-                app.transport.resume_reading()
+            if not app.__stream__:
+                if not app.transport.is_reading():
+                    app.transport.resume_reading()
 
-            await app.__evt__.wait_clear()
+                await app.__evt__.wait_clear()
 
     def __initialize__(app):
         ...
@@ -63,3 +64,5 @@ class BlazeioProtocol:
                 yield app.__stream__.popleft()
             else:
                 if app.transport.is_closing() or app.__is_at_eof__: break
+
+if __name__ == "__main__": ...

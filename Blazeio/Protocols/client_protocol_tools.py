@@ -1,7 +1,6 @@
-from ..Dependencies import *
+from ..Dependencies.alts import *
 from ..Modules.request import *
 from ..Modules.streaming import ClientContext
-from ..Dependencies.alts import DictView, plog, memarray, traceback_logger, URL, Ehandler
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
@@ -761,6 +760,8 @@ class Pulltools(Parsers, Decoders):
     async def pull(app, *args, http=True, **kwargs):
         if http and not app.is_prepared(): await app.prepare_http()
 
+        if app.method in app.no_response_body_methods: return
+
         if not app.handler: app.handler = app.protocol.pull
 
         try:
@@ -874,7 +875,7 @@ class Pulltools(Parsers, Decoders):
 
     async def close(app, *args, **kwargs):
         return await app.__aexit__(*args, **kwargs)
-    
+
     async def data(app):
         if not app.is_prepared(): await app.prepare_http()
 
@@ -921,5 +922,4 @@ class Pulltools(Parsers, Decoders):
         async for chunk in pipe:
             if chunk: await app.write(chunk)
 
-if __name__ == "__main__":
-    ...
+if __name__ == "__main__": ...

@@ -128,12 +128,12 @@ class ioCondition:
     def available(app, n: int):
         return int(n - app.waiter_count)
 
-    async def __aexit__(app, exc_type, exc_value, tb):
+    async def __aexit__(app, exc_type = None, exc_value = None, tb = None):
         if app.locked() or not app._lock_event.is_set():
             app.release()
 
-        if exc_value: raise exc_value
-        await sleep(0)
+        #await sleep(0)
+        return False
 
     async def __aenter__(app):
         await app.acquire()
@@ -501,8 +501,8 @@ class __plog__:
         else:
             txt = frmt
 
-        if lineno is not None:
-            await app.clear_mv(lineno, lineno + int(Taskscope.get("plog_lineno_incr", 5)))
+        if lineno is not None and (plog_lineno_incr := Taskscope.get("plog_lineno_incr", None)):
+            await app.clear_mv(lineno, lineno + int(plog_lineno_incr))
 
         return await logger_(line + txt)
 
@@ -692,11 +692,11 @@ class perf_timing:
 
     def __dict__(app):
         if not app._done: app.__call__()
-        return {"elapsed": float(app), "rps": app.rps}
+        return ddict(elapsed = float(app), rps = app.rps)
 
     def get(app):
         if not app._done: app.__call__()
-        return {"elapsed": float(app), "rps": app.rps}
+        return ddict(elapsed = float(app), rps = app.rps)
 
     def __int__(app):
         return int(app.elapsed)
