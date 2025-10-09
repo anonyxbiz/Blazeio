@@ -32,7 +32,7 @@ class Client:
         analytics = io.ddict(requests = [])
 
         async with io.Session(app.url, prepare_http = False, send_headers = False, connect_only = True) as conn:
-            while app.available_time():
+            while int(app.available_time()):
                 analytics.requests.append(request := io.ddict(latency = io.perf_timing(), ttfb = io.perf_timing(), prepare = io.perf_timing(), request_info = io.ddict()))
 
                 r = await conn.prepare((app.url % "/tests/io/raw/get") if app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) else app.url, app.m.upper(), prepare_http = False) # Convert the objects into a http/1.1 request and send it without preparing the response — No I/O involved here.
@@ -73,7 +73,7 @@ class Utils:
 
     async def log_timing(app, lineno: int = 10):
         async with app.sync_serializer:
-            while app.available_time():
+            while int(app.available_time()):
                 await io.plog.yellow("<line_%d>" % lineno, io.dumps(io.ddict(detail = "Bench Running", conns = len(app.conns), remaining_time = app.available_time()), indent=2), func = app.log_timing)
                 await io.sleep(0.1)
 
@@ -123,7 +123,7 @@ class Main(Server, Runner):
     request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
     metric_types = ("elapsed", "rps")
 
-    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 5, m: (str, io.Utype) = "head", payload_size: (int, io.Utype) = 1024, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, perf_counter: (None, io.Unone) = None):
+    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "head", payload_size: (int, io.Utype) = 1024, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, perf_counter: (None, io.Unone) = None):
         io.set_from_args(app, locals(), (io.Utype, io.Unone))
         io.Super(app).__init__()
 
