@@ -75,7 +75,7 @@ class Utils:
         async with app.sync_serializer:
             while int(app.available_time()):
                 await io.plog.yellow("<line_%d>" % lineno, "detail: Bench Running", "conns: %d" % len(app.conns), "remaining_time: %s" % app.available_time(), func = app.log_timing)
-                await io.sleep(0.5)
+                await io.sleep(0.05)
 
 class Runner(Client, Utils):
     def __init__(app):
