@@ -75,7 +75,7 @@ class Utils:
         async with app.sync_serializer:
             while int(app.available_time()):
                 await io.plog.yellow("<line_%d>" % lineno, "detail: Bench Running", "conns: %d" % len(app.conns), "remaining_time: %s" % app.available_time(), func = app.log_timing)
-                await io.sleep(0.1)
+                await io.sleep(0.5)
 
 class Runner(Client, Utils):
     def __init__(app):
@@ -128,7 +128,7 @@ class Main(Server, Runner):
         io.Super(app).__init__()
 
 if __name__ == "__main__":
-    # clear && py -m Blazeio.Versioning -update 1 && clear && py -m Blazeio.Bench
+    # clear && py -m Blazeio.Versioning -update 1 -quiet 1 && clear && py -m Blazeio.Bench
     from Blazeio.Other.class_parser import Parser
     parser = Parser(Main, io.Utype)
 
