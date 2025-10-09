@@ -69,12 +69,12 @@ class Utils:
     def __init__(app): ...
 
     def available_time(app):
-        return (io.perf_counter() - app.perf_counter) < app.d
+        return (app.d - (io.perf_counter() - app.perf_counter))
 
     async def log_timing(app, lineno: int = 10):
         async with app.sync_serializer:
             while app.available_time():
-                await io.plog.yellow("<line_%d>" % lineno, io.dumps(io.ddict(detail = "Bench Running", conns = len(app.conns), remaining_time = (io.perf_counter() - app.perf_counter)), indent=2), func = app.log_timing)
+                await io.plog.yellow("<line_%d>" % lineno, io.dumps(io.ddict(detail = "Bench Running", conns = len(app.conns), remaining_time = app.available_time()), indent=2), func = app.log_timing)
                 await io.sleep(0.1)
 
 class Runner(Client, Utils):
@@ -128,6 +128,7 @@ class Main(Server, Runner):
         io.Super(app).__init__()
 
 if __name__ == "__main__":
+    # clear && py -m Blazeio.Versioning -update 1 && clear && py -m Blazeio.Bench
     from Blazeio.Other.class_parser import Parser
     parser = Parser(Main, io.Utype)
 
