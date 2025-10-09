@@ -74,7 +74,7 @@ class Utils:
     async def log_timing(app, lineno: int = 10):
         async with app.sync_serializer:
             while int(app.available_time()):
-                await io.plog.yellow("<line_%d>" % lineno, io.dumps(io.ddict(detail = "Bench Running", conns = len(app.conns), remaining_time = app.available_time()), indent=2), func = app.log_timing)
+                await io.plog.yellow("<line_%d>" % lineno, "detail: Bench Running", "conns: %d" % len(app.conns), "remaining_time: %s" % app.available_time(), func = app.log_timing)
                 await io.sleep(0.1)
 
 class Runner(Client, Utils):
