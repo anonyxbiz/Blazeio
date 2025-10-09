@@ -138,14 +138,17 @@ class Transporters:
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
     async def non_mux_transporter(app, r, srv: io.ddict):
-        async with io.getSession(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
+        async with io.Session(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
             task = io.create_task(app.non_mux_puller(r, resp))
 
             async for chunk in resp.protocol:
                 if chunk:
                     await r.writer(chunk)
 
-            if not task.done(): task.cancel()
+            try:
+                await task
+            except io.CancelledError:
+                ...
 
 class App(Sslproxy, Transporters):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web")
