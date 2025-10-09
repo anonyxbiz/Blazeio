@@ -357,9 +357,6 @@ class Httpkeepalive:
     def get_handler(app):
         return app.__default_handler__ or app.web.__default_handler__
 
-    def prepare_keepalive(app, r):
-        r += app.keepalive_headers
-
     async def __main_handler__(app, r):
         requests, start = 0, perf_counter()
         while not r.transport.is_closing():
@@ -369,6 +366,7 @@ class Httpkeepalive:
 
             try:
                 exc = None
+                r += app.keepalive_headers
                 await app.get_handler()(r)
             except Abort as e:
                 await e.text(r)

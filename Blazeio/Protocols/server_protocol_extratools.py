@@ -103,9 +103,8 @@ class ExtraToolset:
     def __iadd__(app, data: (bytes, bytearray)):
         if not app.__prepared_headers__:
             app.__prepared_headers__ = bytearray(b"")
-        try:
-            return app.__prepared_headers__.extend(data)
-        except: ...
+        app.__prepared_headers__.extend(data)
+        return app
 
     def __getattr__(app, *_args):
         if isinstance(app.store, dict) and (value := app.store.get(_args[0], None)):
@@ -261,6 +260,8 @@ class ExtraToolset:
             app.write = app.write_raw
 
         await app.writer(app.headers_to_http_bytes(headers))
+
+        if app.method == "HEAD": raise Eof()
 
     def br(app, data: (bytes, bytearray)):
         return to_thread(brotlicffi_compress, bytes(data))
