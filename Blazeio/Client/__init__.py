@@ -474,7 +474,7 @@ class __SessionPool__:
         instance.timeout = float(app.timeout)
         instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
-        instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
+        # instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
 
         return instance
 
