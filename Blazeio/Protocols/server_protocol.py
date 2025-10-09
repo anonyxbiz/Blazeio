@@ -86,8 +86,8 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
                 if app.transport.is_closing() or app.__is_at_eof__: break
 
     async def writer(app, data: (bytes, bytearray)):
-        #if not app.__is_prepared__:
-            #app.__is_prepared__ = True
+        if not app.__is_prepared__:
+            app.__is_prepared__ = True
         await app.buffer_overflow_manager()
 
         if not app.transport.is_closing():
