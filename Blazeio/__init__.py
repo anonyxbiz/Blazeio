@@ -364,7 +364,7 @@ class Httpkeepalive:
         requests, start = 0, perf_counter()
         while not r.transport.is_closing():
             if requests >= 1000:
-                if (perf_counter() - start) <= 1: raise ServerGotInTrouble()
+                if float(perf_counter() - start) <= 0.1: raise ServerGotInTrouble()
                 requests, start = 0, perf_counter()
 
             try:
