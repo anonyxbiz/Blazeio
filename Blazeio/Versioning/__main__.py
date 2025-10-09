@@ -3,7 +3,7 @@ import Blazeio as io
 
 class App:
     version_line = "__version__ = "
-    lineno int = 10
+    lineno = 10
     def __init__(app, update: (bool, io.Utype) = False, quiet: (bool, io.Utype) = False):
         io.set_from_args(app, locals(), io.Utype)
         io.ioConf.run(app())
