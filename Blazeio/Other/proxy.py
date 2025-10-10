@@ -144,12 +144,12 @@ class Transporters:
             async for chunk in resp.protocol:
                 if chunk:
                     await r.writer(chunk)
-            
+
             if not task.done(): task.cancel()
 
             try:
                 await task
-            except io.CancelledError:
+            except (io.CancelledError, RuntimeError):
                 ...
 
 class App(Sslproxy, Transporters):

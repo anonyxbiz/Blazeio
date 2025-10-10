@@ -134,7 +134,7 @@ class Main(Server, Runner):
     request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
     metric_types = ("elapsed", "rps")
 
-    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 100, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, perf_counter: (None, io.Unone) = None):
+    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, perf_counter: (None, io.Unone) = None):
         io.set_from_args(app, locals(), (io.Utype, io.Unone))
         io.Super(app).__init__()
 
