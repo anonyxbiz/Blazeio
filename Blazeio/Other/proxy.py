@@ -271,7 +271,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
             raise io.Abort("Server could not be found", 503)
 
         if not sock and srv.server_config.enforce_https:
-            raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 80), r.tail)))
+            raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 443), r.tail)))
 
         try:
             app.protocols[r.identifier] = r
