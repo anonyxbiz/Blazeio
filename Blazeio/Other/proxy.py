@@ -425,7 +425,7 @@ class Runner:
         if (INBOUND_CHUNK_SIZE := app.args.get("INBOUND_CHUNK_SIZE")): io.ioConf.INBOUND_CHUNK_SIZE = INBOUND_CHUNK_SIZE
         if (OUTBOUND_CHUNK_SIZE := app.args.get("INBOUND_CHUNK_SIZE")): io.ioConf.OUTBOUND_CHUNK_SIZE = OUTBOUND_CHUNK_SIZE
 
-        web.attach(main_app := App(proxy_port = srv.port, ssl = srv.ssl, log = app.args.get("log"), keepalive = app.args.get("keepalive"), enforce_https = app.args.get("enforce_https"), web = web))
+        web.attach(main_app := App(proxy_port = srv.port, ssl = srv.ssl, web = web, **{key: val for key, val in app.args.items() if key in App.__slots__ and key not in srv}))
 
         if srv.ssl:
             srv.conf.ssl = main_app.configure_ssl()
