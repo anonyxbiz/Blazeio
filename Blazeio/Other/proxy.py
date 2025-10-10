@@ -107,10 +107,7 @@ class Transporters:
             return
 
     async def non_mux_puller(app, r, resp):
-        try:
-            async for chunk in r: await resp.write(chunk)
-        except:
-            return
+        async for chunk in r: await resp.push(chunk)
 
     async def conn(app, srv):
         if not (conn := app.is_conn(srv)):
@@ -138,10 +135,13 @@ class Transporters:
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
     async def non_mux_transporter(app, r, srv: io.ddict):
-        async with io.Session(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
+        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
+            await resp.push(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.port)))
+
+        # async with io.Session(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
             task = io.create_task(app.non_mux_puller(r, resp))
 
-            async for chunk in resp.protocol:
+            async for chunk in resp:
                 if chunk:
                     await r.writer(chunk)
 
@@ -175,7 +175,7 @@ class App(Sslproxy, Transporters):
             data[str(key)] = val
 
         return data
-    
+
     def update_protocol_event(app):
         if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 

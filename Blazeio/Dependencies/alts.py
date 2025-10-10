@@ -132,7 +132,7 @@ class ioCondition:
         if app.locked() or not app._lock_event.is_set():
             app.release()
 
-        #await sleep(0)
+        # await sleep(0)
         return False
 
     async def __aenter__(app):
