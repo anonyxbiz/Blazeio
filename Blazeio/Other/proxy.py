@@ -243,10 +243,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
         server_hostname = ".%s" % server_hostname
         while (idx := server_hostname.find(".")) != -1:
             server_hostname = server_hostname[idx + 1:]
-            wild_host = "*.%s" % server_hostname
-            app.create_task(io.plog.yellow("wild_host", wild_host))
-
-            if (srv := app.hosts.get(wild_host)): return srv
+            if (srv := app.hosts.get("*.%s" % server_hostname)): return srv
 
     async def __main_handler__(app, r):
         app.protocol_count += 1
