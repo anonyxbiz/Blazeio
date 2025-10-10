@@ -1,10 +1,11 @@
 # Blazeio/Versioning/__main__.py
 import Blazeio as io
+import Blazeio.Other.class_parser as class_parser
 
 class App:
     version_line = "__version__ = "
     lineno = 10
-    def __init__(app, update: (bool, io.Utype) = False, quiet: (bool, io.Utype) = False):
+    def __init__(app, update: (bool, class_parser.Store_true, io.Utype) = False, quiet: (bool, class_parser.Store_true, io.Utype) = False):
         io.set_from_args(app, locals(), io.Utype)
         io.ioConf.run(app())
 
@@ -56,7 +57,4 @@ class App:
             return cond
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
-    parser = ArgumentParser()
-    io.add_defaults_to_parser(App, parser, io.Utype)
-    App(**parser.parse_args().__dict__)
+    App(**class_parser.Parser(App, io.Utype).args())
