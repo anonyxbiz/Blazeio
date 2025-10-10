@@ -240,7 +240,6 @@ class App(Sslproxy, Transporter, MuxTransporter):
         return True
 
     def wildcard_srv(app, server_hostname: str):
-        server_hostname = ".%s" % server_hostname
         while (idx := server_hostname.find(".")) != -1:
             server_hostname = server_hostname[idx + 1:]
             if (srv := app.hosts.get("*.%s" % server_hostname)): return srv
