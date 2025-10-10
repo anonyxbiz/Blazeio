@@ -138,7 +138,6 @@ class Transporters:
         async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
             await resp.push(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.port)))
 
-        # async with io.Session(srv.remote + r.tail, r.method, r.headers, add_host = False, decode_resp = False, prepare_http = False) as resp:
             task = io.create_task(app.non_mux_puller(r, resp))
 
             async for chunk in resp:
