@@ -177,7 +177,8 @@ def load_from_type_in_locals(app, fn, __locals__, _type):
 
             setattr(app, key, __locals__[key])
 
-def set_from_args(app, __locals__, _type):
+def set_from_args(app, __locals__, _type, _to = None):
+    setto = _to if _to is not None else app
     if not isinstance(_type, (tuple, list)):
         _type = (_type,)
 
@@ -189,7 +190,7 @@ def set_from_args(app, __locals__, _type):
             elif annotation not in _type:
                 continue
 
-            setattr(app, key, __locals__[key])
+            setattr(setto, key, __locals__[key])
 
 def get_from_args(app, __locals__, _type):
     if not isinstance(_type, (tuple, list)):

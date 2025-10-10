@@ -1,4 +1,5 @@
 import Blazeio as io
+import Blazeio.Other.class_parser as class_parser
 from os import mkdir, access as os_access, R_OK as os_R_OK, W_OK as os_W_OK, X_OK as os_X_OK, makedirs
 from pathlib import Path
 from ssl import TLSVersion
@@ -89,7 +90,7 @@ class Sslproxy:
         context.sni_callback = app.sni_callback
         return context
 
-class Transporters:
+class MuxTransporter:
     __slots__ = ()
     def __init__(app):
         app.__conn__ = io.ioCondition()
@@ -99,16 +100,6 @@ class Transporters:
         if not (conn := srv.get("conn")) or (not conn.protocol) or (conn.protocol.transport.is_closing()): return
         return conn
 
-    async def puller(app, r, resp):
-        try:
-            while (chunk := await r): await resp.writer(chunk)
-            await resp.__eof__()
-        except:
-            return
-
-    async def non_mux_puller(app, r, resp):
-        async for chunk in r: await resp.push(chunk)
-
     async def conn(app, srv):
         if not (conn := app.is_conn(srv)):
             async with app.__conn__:
@@ -117,13 +108,20 @@ class Transporters:
     
         return await srv.conn.create_stream()
 
-    async def multiplexed_transporter(app, r, srv: io.ddict):
+    async def mux_puller(app, r, resp):
+        try:
+            while (chunk := await r): await resp.writer(chunk)
+            await resp.__eof__()
+        except:
+            return
+
+    async def mux_transporter(app, r, srv: io.ddict):
         task = None
         async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True, decode_resp = False) as resp:
             await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
 
             if r.method not in r.non_bodied_methods:
-                task = io.create_task(app.puller(r, resp))
+                task = io.create_task(app.mux_puller(r, resp))
             else:
                 async with resp.protocol: ...
 
@@ -134,11 +132,18 @@ class Transporters:
         if task:
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
-    async def non_mux_transporter(app, r, srv: io.ddict):
+class Transporter:
+    __slots__ = ()
+    def __init__(app): ...
+
+    async def puller(app, r, resp):
+        async for chunk in r: await resp.push(chunk)
+
+    async def transporter(app, r, srv: io.ddict):
         async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
             await resp.push(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.port)))
 
-            task = io.create_task(app.non_mux_puller(r, resp))
+            task = io.create_task(app.puller(r, resp))
 
             async for chunk in resp:
                 if chunk:
@@ -151,13 +156,12 @@ class Transporters:
             except (io.CancelledError, RuntimeError):
                 ...
 
-class App(Sslproxy, Transporters):
+class App(Sslproxy, Transporter, MuxTransporter):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web")
     def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
-
         for coro in (app.update_mem_db(), app.protocol_manager()): app.create_task(coro)
 
     def create_task(app, coro):
@@ -285,9 +289,9 @@ class App(Sslproxy, Transporters):
             app.protocols[r.identifier] = r
             app.update_protocol_event()
             if srv.server_config.multiplexed:
-                await app.multiplexed_transporter(r, srv)
+                await app.mux_transporter(r, srv)
             else:
-                await app.non_mux_transporter(r, srv)
+                await app.transporter(r, srv)
         except OSError:
             raise io.Abort("Service Unavailable", 500)
         finally:
@@ -403,8 +407,9 @@ add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k
 available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 class Runner:
-    def __init__(app, args: io.Utype):
-        io.load_from_locals(app, app.__init__, locals(), io.Utype)
+    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False):
+        app.args = io.ddict()
+        io.set_from_args(app, locals(), io.Utype, app.args)
 
     def __enter__(app):
         return app
@@ -451,7 +456,7 @@ class Runner:
         if app.args.fresh:
             rmtree(scope.HOME)
             Path_manager()
-        
+
         srvs = []
     
         srvs.append(io.ddict(server = io.App(app.args.host, (port := int(app.args.port)), __timeout__ = float((60**2) * 24), name = "Blazeio_Other_Proxy"), conf = io.ddict(), ssl = app.args.ssl, port = port, task = None))
@@ -471,18 +476,7 @@ class Runner:
             scope.web.runner(**srv.conf)
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
-
-    parser = ArgumentParser()
-    parser.add_argument("-port", "--port", type = int, default = 8080)
-    parser.add_argument("-http_port", "--http_port", type = int, default = 0)
-    parser.add_argument("-INBOUND_CHUNK_SIZE", "--INBOUND_CHUNK_SIZE", type = int, default = 1024*4)
-    parser.add_argument("-OUTBOUND_CHUNK_SIZE", "--OUTBOUND_CHUNK_SIZE", type = int, default = 1024*4)
-    parser.add_argument("-host", "--host", default = "0.0.0.0")
-
-    for i in ("ssl", "fresh", "web_runner", "keepalive", "enforce_https"):
-        parser.add_argument("-%s" % i, "--%s" % i, action = "store_true")
-
-    io.Scope.args = parser.parse_args()
-    with Runner(io.ddict(io.Scope.args.__dict__)) as runner:
+    parser = class_parser.Parser(Runner, io.Utype)
+    io.Scope.args = parser.args()
+    with Runner(**io.Scope.args) as runner:
         runner()
