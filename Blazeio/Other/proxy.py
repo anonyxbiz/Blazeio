@@ -246,7 +246,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
     
     def is_from_home(app, r, host: str):
         if r.ip_host in app.privileged_ips:
-            await io.plog.yellow(io.anydumps(r.state()))
+            app.create_task(io.plog.yellow(io.anydumps(r.state())))
             if not host.startswith(scope.privileged_domain): return False
         else:
             return False
