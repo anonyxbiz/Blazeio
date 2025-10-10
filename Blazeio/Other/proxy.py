@@ -238,11 +238,11 @@ class App(Sslproxy, Transporter, MuxTransporter):
             return False
 
         return True
-    
+
     def wildcard_srv(app, server_hostname: str):
-        for srv in app.hosts:
-            if not srv.startswith("*"): continue
-            if server_hostname.endswith(srv[1:]): return app.hosts[srv]
+        while (idx := server_hostname.find(".")) != -1:
+            server_hostname = server_hostname[idx + 1:]
+            if (srv := app.hosts.get(server_hostname)): return srv
 
     async def __main_handler__(app, r):
         app.protocol_count += 1
