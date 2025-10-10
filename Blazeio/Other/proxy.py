@@ -14,7 +14,7 @@ try:
 except ImportError:
     SO_REUSEPORT = None
 
-scope = io.ddict(server_name = "blazeio.other.proxy", parent_dir = "Blazeio_Other_Proxy", server_set = io.SharpEvent(False, io.loop))
+scope = io.ddict(privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", server_set = io.SharpEvent(False, io.loop))
 
 class Pathops:
     __slots__ = ("parent", "cert_dir", "dirs")
@@ -246,7 +246,8 @@ class App(Sslproxy, Transporter, MuxTransporter):
     
     def is_from_home(app, r, host: str):
         if r.ip_host in app.privileged_ips:
-            if not host.startswith(scope.server_name): return False
+            await io.plog.yellow(io.anydumps(r.state()))
+            if not host.startswith(scope.privileged_domain): return False
         else:
             return False
 
@@ -265,7 +266,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
         sock = r.transport.get_extra_info("ssl_object")
 
         await scope.web.parse_default(r)
-        
+
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
 
