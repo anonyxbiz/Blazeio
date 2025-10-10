@@ -157,10 +157,11 @@ class Transporter:
                 ...
 
 class App(Sslproxy, Transporter, MuxTransporter):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web")
-    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None):
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips")
+    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
+        app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
         for coro in (app.update_mem_db(), app.protocol_manager()): app.create_task(coro)
 
@@ -244,7 +245,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
                 app.protocols.pop(r.identifier)
     
     def is_from_home(app, r, host: str):
-        if r.ip_host == "127.0.0.1":
+        if r.ip_host in app.privileged_ips:
             if not host.startswith(scope.server_name): return False
         else:
             return False
@@ -407,7 +408,7 @@ add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k
 available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 class Runner:
-    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False):
+    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         app.args = io.ddict()
         io.set_from_args(app, locals(), io.Utype, app.args)
 
