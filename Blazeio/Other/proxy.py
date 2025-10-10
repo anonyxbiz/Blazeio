@@ -210,20 +210,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
         await io.Deliver.json({"discovered": True})
 
     async def _proxy_state(app, r):
-        json = {}
-
-        for key in app.__slots__:
-            val = getattr(app, key, None)
-            
-            if not isinstance(val, (int, dict, str)):
-                val = str(val)
-                
-            elif isinstance(val, dict):
-                val = {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}
-
-            json[key] = val
-
-        raise io.Eof(await io.Deliver.json(json))
+        raise io.Eof(await io.Deliver.text(io.anydumps({key: getattr(app, key, None) for key in app.__slots__}), headers = {"Content-type": "application/json; charset=utf-8"}))
 
     async def logger(app, r, i):
         await io.plog.cyan("%s:%d | %s@%s%s" % (r.ip_host, r.ip_port, r.method.upper(), i[-1], r.tail), ", ".join(["(%s=%s)" % (i, str(getattr(r, i, ""))[:100]) for i in r.__slots__]))
