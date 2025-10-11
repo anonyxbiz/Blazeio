@@ -237,10 +237,12 @@ class Routes:
 
     async def _remote_webhook(app, r):
         json = io.Dotify(await r.get_json())
-        if json.get("from_certbot", False):
-            host = list(json.keys())[0]
-            app.hosts[host] = json
-            json.certfile, json.keyfile = await app.from_certbot(host, int(json.get("port")))
+        hostname = list(json.keys())[0]
+        host = json[hostname]
+
+        if host.get("from_certbot", False):
+            app.hosts[hostname] = host
+            host.certfile, host.keyfile = await app.from_certbot(hostname, int(host))
 
         app.hosts.update(json)
 
