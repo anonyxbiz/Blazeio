@@ -196,10 +196,10 @@ class Routes:
         await io.Deliver.json(json)
 
     async def _discover(app, r):
-        await io.Deliver.json({"discovered": True})
+        await io.Deliver.text('{"discovered": true}', headers = {"Content-type": "application/json; charset=utf-8"})
 
     async def _proxy_state(app, r):
-        raise io.Eof(await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4))
+        await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4)
 
 class Sutils:
     def __init__(app): ...
@@ -247,7 +247,7 @@ class Protocolmanagers:
                     r.cancel(str(io.Protocoltimeout()))
                     app.protocols.pop(r.identifier)
 
-class Server:
+class Server(Routes):
     def __init__(app): ...
 
     async def __main_handler__(app, r):
@@ -295,7 +295,7 @@ class Server:
             app.protocols.pop(r.identifier, None)
             app.update_protocol_event()
 
-class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Routes, Sutils, Protocolmanagers, Server):
+class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination")
     def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         io.set_from_args(app, locals(), io.Utype)
