@@ -171,7 +171,7 @@ class Transporter:
 
     async def puller(app, r, resp):
         try:
-            async for chunk in r: await resp.push(chunk)
+            while (chunk := await r): await resp.push(chunk)
         except (io.CancelledError, RuntimeError):
             ...
 
