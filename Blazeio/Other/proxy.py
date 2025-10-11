@@ -242,7 +242,7 @@ class Routes:
 
         if host.get("from_certbot", False):
             app.hosts[hostname] = host
-            host.certfile, host.keyfile = await app.from_certbot(hostname, int(host))
+            host.certfile, host.keyfile = await app.from_certbot(hostname, int(host.get("port")))
 
         app.hosts.update(json)
 
