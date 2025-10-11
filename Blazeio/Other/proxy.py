@@ -214,23 +214,28 @@ class Sutils:
 
     @classmethod
     async def from_certbot(app, host: str, port: int):
-        certfile, keyfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host
+        async with io.Ehandler(_raise = 0):
+            certfile, keyfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host
 
-        if not io.path.exists(certfile) or not io.path.exists(keyfile):
-            proc = await app.run_subprocess_sync("sudo certbot certonly --standalone --domain %s --http-01-port %d" % (host, port))
+            if not io.path.exists(certfile) or not io.path.exists(keyfile):
+                cmd = "certbot certonly --standalone --domain %s --http-01-port %d" % (host, port)
+                
+                await io.plog.yellow("Running command", cmd)
 
-            await io.plog.yellow(proc.stdout.decode(), proc.stderr.decode())
+                proc = await app.run_subprocess_sync(cmd)
 
-            if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
+                await io.plog.yellow(proc.stdout.decode(), proc.stderr.decode())
 
-        certfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(certfile))
-        keyfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(keyfile))
+                if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
 
-        if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
-            for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
-                await io.asave(new, await io.aread(parent))
+            certfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(certfile))
+            keyfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(keyfile))
+    
+            if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
+                for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
+                    await io.asave(new, await io.aread(parent))
 
-        return (certfile_cp, keyfile_cp)
+            return (certfile_cp, keyfile_cp)
 
 class Routes:
     def __init__(app): ...
@@ -242,7 +247,7 @@ class Routes:
 
         if host.get("from_certbot", False):
             app.hosts[hostname] = host
-            host.certfile, host.keyfile = await app.from_certbot(hostname, int(host.get("port")))
+            host["certfile"], host["keyfile"] = await app.from_certbot(hostname, int(host.get("port")))
 
         app.hosts.update(json)
 
