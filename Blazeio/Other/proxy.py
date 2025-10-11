@@ -249,8 +249,9 @@ class Routes:
             app.hosts[hostname] = host
             enforce_https = host["server_config"]["enforce_https"]
             host["enforce_https"] = False
+            await io.sleep(60*10)
             host["certfile"], host["keyfile"] = await app.from_certbot(hostname, int(host.get("port")))
-            host["server_config"]["enforce_https"] = enforce_https
+            # host["server_config"]["enforce_https"] = enforce_https
 
         app.hosts.update(json)
 
