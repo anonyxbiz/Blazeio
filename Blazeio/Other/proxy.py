@@ -315,7 +315,7 @@ class Server(Routes):
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
-        if not sock and and srv.server_config.enforce_https:
+        if not sock and srv.server_config.enforce_https:
             raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 443), r.tail)))
 
         try:
