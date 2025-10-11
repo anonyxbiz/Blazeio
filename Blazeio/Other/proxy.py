@@ -14,7 +14,7 @@ try:
 except ImportError:
     SO_REUSEPORT = None
 
-scope = io.ddict(privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", server_set = io.SharpEvent(False, io.loop))
+scope = io.ddict(server_set = io.SharpEvent(), privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", access_key = io.environ.get("blazeio.proxy.access_key", None) or io.token_urlsafe(16))
 
 class Pathops:
     __slots__ = ("parent", "cert_dir", "dirs")
@@ -215,12 +215,10 @@ class Sutils:
         return data
 
     def is_from_home(app, r, host: str):
-        if r.ip_host in app.privileged_ips:
-            if not host.startswith(scope.privileged_domain): return False
+        if host.startswith(scope.privileged_domain) and (r.ip_host in app.privileged_ips or r.params().get("access_key") == scope.access_key):
+            return True
         else:
             return False
-
-        return True
 
     def wildcard_srv(app, server_hostname: str):
         while (idx := server_hostname.find(".")) != -1:
@@ -305,7 +303,7 @@ class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Routes,
         app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
 
-        web.add_callback(web.on_run_callbacks, io.plog.magenta("Blazeio Proxy (Version: %s)" % io.__version__, "PID: %s" % io.pid, "Server [%s] running on %s" % (web.server_name, web.ServerConfig.server_address), func = app.__init__))
+        web.add_callback(web.on_run_callbacks, io.plog.magenta("Blazeio Proxy (Version: %s)" % io.__version__, "PID: %s" % io.pid, "Server [%s] running on %s" % (web.server_name, web.ServerConfig.server_address), io.anydumps({key: getattr(app, key, None) or getattr(scope, key, None) for key in ("privileged_ips", "privileged_domain", "server_name", "access_key")}, indent = 1), func = app.__init__))
 
         for coro in (app.update_hosts_daemon(), app.protocol_manager()): app.create_task(coro)
 
