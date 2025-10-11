@@ -5,6 +5,56 @@ from ..Modules.streaming import *
 from ..Modules.server_tools import *
 from ..Modules.reasons import *
 
+class ServerProtocolEssentials:
+    def __init__(app): ...
+
+    @classmethod
+    def defaults(cls, app):
+        app.cancel_on_disconnect = True
+        app.__is_buffer_over_high_watermark__ = False
+        app.__is_at_eof__ = False
+        app.__is_alive__ = True
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.__is_prepared__ = False
+        app.__status__ = 0
+        app.content_length = None
+        app.transfer_encoding = None
+        app.current_length = 0
+        app.__prepared_headers__ = None
+        app.pull = None
+        app.__miscellaneous__ = None
+        app.store = None
+        app.__timeout__ = None
+
+    @classmethod
+    def reset(cls, app):
+        app.__stream__ = deque()
+        app.cancel_on_disconnect = True
+        app.__is_buffer_over_high_watermark__ = False
+        app.__is_at_eof__ = False
+        app.__is_alive__ = True
+        app.method = None
+        app.tail = "handle_all_middleware"
+        app.path = "handle_all_middleware"
+        app.headers = None
+        app.__is_prepared__ = False
+        app.__status__ = 0
+        app.content_length = None
+        app.transfer_encoding = None
+        app.current_length = 0
+        app.__prepared_headers__ = None
+        app.pull = None
+        app.__miscellaneous__ = None
+        app.store = None
+        app.__timeout__ = None
+        app.__evt__ = SharpEvent(evloop = app.__evt__.loop)
+        app.__overflow_evt__ = SharpEvent(evloop = app.__evt__.loop)
+        app.__initialize__()
+        return app
+
 class Rutils(ContentDecoders):
     __slots__ = ()
     def __init__(app):
@@ -77,7 +127,8 @@ class Rutils(ContentDecoders):
     @classmethod
     def clear_protocol(cls, app = None):
         if not app: app = Context._r()
-        app.__init__(app.on_client_connected, app.__evt__.loop, len(app.__buff__))
+        ServerProtocolEssentials.reset(app)
+        return app
 
 class ExtraToolset:
     __slots__ = ()
@@ -171,7 +222,7 @@ class ExtraToolset:
         end, buff = False, memarray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app.request():
+        async for chunk in app():
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
@@ -219,7 +270,7 @@ class ExtraToolset:
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app.request():
+        async for chunk in app():
             if chunk:
                 app.current_length += len(chunk)
                 yield chunk

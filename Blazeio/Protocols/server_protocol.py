@@ -13,30 +13,6 @@ class BlazeioPayloadUtils:
     def close(app):
         app.transport.close()
 
-class ServerProtocolEssentials:
-    def __init__(app): ...
-
-    @classmethod
-    def defaults(cls, app):
-        app.cancel_on_disconnect = True
-        app.__is_buffer_over_high_watermark__ = False
-        app.__is_at_eof__ = False
-        app.__is_alive__ = True
-        app.method = None
-        app.tail = "handle_all_middleware"
-        app.path = "handle_all_middleware"
-        app.headers = None
-        app.__is_prepared__ = False
-        app.__status__ = 0
-        app.content_length = None
-        app.transfer_encoding = None
-        app.current_length = 0
-        app.__prepared_headers__ = None
-        app.pull = None
-        app.__miscellaneous__ = None
-        app.store = None
-        app.__timeout__ = None
-
 class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUtils, ExtraToolset):
     __slots__ = ('on_client_connected','__stream__','__is_buffer_over_high_watermark__','__is_at_eof__','__is_alive__','transport','method','tail','path','headers','__is_prepared__','__status__','content_length','current_length','__perf_counter__','ip_host','ip_port','identifier','__prepared_headers__','__miscellaneous__','__timeout__','__buff__','__buff__memory__','store','transfer_encoding','pull','write','encoder','encoder_obj','__evt__','__overflow_evt__','cancel', 'cancel_on_disconnect',)
     non_bodied_methods = ("GET", "HEAD", "OPTIONS", "DELETE")
@@ -148,6 +124,6 @@ class Httpkeepalive:
                 if exc:
                     await traceback_logger(exc, frame = 4)
 
-                r.utils.clear_protocol(r)
+                ServerProtocolEssentials.reset(r)
 
 if __name__ == "__main__": ...

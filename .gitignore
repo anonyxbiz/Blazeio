@@ -4,6 +4,7 @@ Blazeio.egg-info
 Blazeio/__pycache__
 Blazeio/Dependencies/__pycache__
 Blazeio/Modules/__pycache__
+Blazeio/Modules/Server/__pycache__
 Blazeio/Client/__pycache__
 Blazeio/Client/test.py
 Blazeio/Other/__pycache__

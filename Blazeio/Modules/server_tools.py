@@ -1,4 +1,5 @@
 from ..Dependencies import *
+from ..Dependencies.alts import *
 from .request import *
 from .streaming import *
 
