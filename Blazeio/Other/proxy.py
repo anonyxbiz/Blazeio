@@ -195,7 +195,8 @@ class App(Sslproxy, Transporter, MuxTransporter):
         await app.web
         while True:
             if io.path.exists(app.blazeio_proxy_hosts):
-                if io.path.getsize(app.blazeio_proxy_hosts) != app.updaters_coordination:
+                if (size := io.path.getsize(app.blazeio_proxy_hosts)) != app.updaters_coordination.previous_size:
+                    app.updaters_coordination.previous_size = size
                     async with app.updaters_coordination.sync:
                         app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
                         await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=1))
