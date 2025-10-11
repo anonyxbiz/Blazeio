@@ -474,6 +474,8 @@ class Runner:
 
         if SO_REUSEPORT: web.sock().setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
 
+        web.sock().setsockopt(SOL_SOCKET, TCP_NODELAY, 1)
+
         scope.server_set.set()
 
         if app.args.keepalive: web.with_keepalive()
