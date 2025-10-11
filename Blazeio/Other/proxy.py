@@ -402,7 +402,7 @@ class WebhookClient:
                 for i in ("certfile", "keyfile"):
                     host_data_ref[i] = srv.get(i)
 
-                if (certbot_logs := srv["server_config"].get("certbot_logs")):
+                if (certbot_logs := srv["server_config"].get("certbot_logs")) is not None:
                     host_data_ref["server_config"]["certbot_logs"] = certbot_logs
 
             if io.anydumps(srv) == io.anydumps(host_data_ref): return host_data
