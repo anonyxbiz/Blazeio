@@ -295,7 +295,7 @@ class Server(Routes):
 
         sock = r.transport.get_extra_info("ssl_object")
 
-        await scope.web.parse_default(r, normalize_headers = False)
+        await scope.web.parse_default(r)
 
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
