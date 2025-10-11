@@ -183,24 +183,6 @@ class Transporter:
 
             await task
 
-class Routes:
-    def __init__(app): ...
-
-    async def _remote_webhook(app, r):
-        app.hosts.update(io.Dotify(json := await io.Request.get_json(r)))
-
-        await app.update_file_db()
-
-        await io.plog.cyan("remote_webhook", "added: %s" % io.anydumps(json, indent=1))
-
-        await io.Deliver.json(json)
-
-    async def _discover(app, r):
-        await io.Deliver.text('{"discovered": true}', headers = {"Content-type": "application/json; charset=utf-8"})
-
-    async def _proxy_state(app, r):
-        await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4)
-
 class Sutils:
     def __init__(app): ...
 
@@ -224,6 +206,55 @@ class Sutils:
         while (idx := server_hostname.find(".")) != -1:
             server_hostname = server_hostname[idx + 1:]
             if (srv := app.hosts.get("*.%s" % server_hostname)): return srv
+
+    @classmethod
+    def run_subprocess_sync(app, cmd):
+        with ThreadPoolExecutor() as pool:
+            return io.getLoop.run_in_executor(pool, lambda: subprocess_run(cmd, shell=True, check=True, capture_output=True))
+
+    @classmethod
+    async def from_certbot(app, host: str, port: int):
+        certfile, keyfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host
+
+        if not io.path.exists(certfile) or not io.path.exists(keyfile):
+            proc = await app.run_subprocess_sync("sudo certbot certonly --standalone --domain %s --http-01-port %d" % (host, port))
+
+            await io.plog.yellow(proc.stdout.decode(), proc.stderr.decode())
+
+            if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
+
+        certfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(certfile))
+        keyfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(keyfile))
+
+        if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
+            for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
+                await io.asave(new, await io.aread(parent))
+
+        return (certfile_cp, keyfile_cp)
+
+class Routes:
+    def __init__(app): ...
+
+    async def _remote_webhook(app, r):
+        json = io.Dotify(await r.get_json())
+        if json.get("from_certbot", False):
+            host = list(json.keys())[0]
+            app.hosts[host] = json
+            json.certfile, json.keyfile = await app.from_certbot(host, int(json.get("port")))
+
+        app.hosts.update(json)
+
+        await app.update_file_db()
+
+        await io.plog.cyan("remote_webhook", "added: %s" % io.anydumps(json, indent=1))
+
+        await io.Deliver.json(json)
+
+    async def _discover(app, r):
+        await io.Deliver.text('{"discovered": true}', headers = {"Content-type": "application/json; charset=utf-8"})
+
+    async def _proxy_state(app, r):
+        await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4)
 
 class Protocolmanagers:
     def __init__(app): ...
@@ -297,7 +328,7 @@ class Server(Routes):
 
 class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination")
-    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
+    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}, }), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
         app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
@@ -331,33 +362,6 @@ class WebhookClient:
                 except: state["hosts"] = {}
 
         return state 
-  
-    def run_subprocess_sync(app, cmd):
-        with ThreadPoolExecutor() as pool:
-            return io.get_event_loop().run_in_executor(pool, lambda: subprocess_run(cmd, shell=True, check=True, capture_output=True))
-
-    async def from_certbot(app, host):
-        certfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host
-        keyfile = "/etc/letsencrypt/live/%s/privkey.pem" % host
-
-        if not io.path.exists(certfile) or not io.path.exists(keyfile):
-            proc = await app.run_subprocess_sync("sudo certbot certonly --standalone --domain %s" % host)
-
-            await io.plog.yellow(proc.stdout.decode(), proc.stderr.decode())
-
-            if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
-
-        certfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(certfile))
-        keyfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(keyfile))
-
-        if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
-            for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
-                async with io.async_open(parent, "rb") as f:
-                    content = await f.read()
-                async with io.async_open(new, "wb") as f:
-                    await f.write(content)
-
-        return (certfile_cp, keyfile_cp)
 
     async def add_to_proxy(app, host: str, port: int, certfile: (None, str) = None, keyfile: (None, str) = None, hostname: str = "127.0.0.1", ow: bool = False, from_certbot: bool = False, multiplexed: bool = False, enforce_https: bool = True, in_try: (int, bool) = False, **kw):
         if not in_try:
@@ -371,13 +375,11 @@ class WebhookClient:
 
         state = app.get_state()
         ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
-        
-        if from_certbot:
-            certfile, keyfile = await app.from_certbot(host)
 
         host_data = {
             "hostname": hostname,
             "port": port,
+            "from_certbot": from_certbot,
             "remote": "http://%s:%d" % (hostname, port),
             "certfile": certfile,
             "keyfile": keyfile,
