@@ -333,7 +333,7 @@ class Server(Routes):
             app.update_protocol_event()
 
 class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination")
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination", "certbot_sync")
     def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}, }), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
