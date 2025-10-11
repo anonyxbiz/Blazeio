@@ -246,13 +246,12 @@ class Routes:
         host = json[hostname]
 
         if host.get("from_certbot", False):
-            enforce_https = host["server_config"]["enforce_https"]
-            host["server_config"]["enforce_https"] = False
-            app.hosts[hostname] = host
+            app.hosts[hostname] = io.ddict(**host, pending_certbot = True)
+
+            await io.plog.yellow(io.anydumps(app.hosts))
 
             await io.sleep(60*10)
             host["certfile"], host["keyfile"] = await app.from_certbot(hostname, int(host.get("port")))
-            host["server_config"]["enforce_https"] = enforce_https
 
         app.hosts.update(json)
 
@@ -320,7 +319,7 @@ class Server(Routes):
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
-        if not sock and srv.server_config.enforce_https:
+        if not sock and not srv.get("pending_certbot", None) and srv.server_config.enforce_https:
             raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 443), r.tail)))
 
         try:
