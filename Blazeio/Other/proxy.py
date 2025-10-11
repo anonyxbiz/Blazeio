@@ -187,7 +187,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
     async def update_file_db(app):
         async with app.updaters_coordination.sync:
             async with app.host_update_cond:
-                data = io.dumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
+                data = io.anydumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
                 await io.asave(app.blazeio_proxy_hosts, data)
                 app.updaters_coordination.previous_size = len(data)
 
@@ -207,7 +207,7 @@ class App(Sslproxy, Transporter, MuxTransporter):
 
         await app.update_file_db()
 
-        await io.plog.cyan("remote_webhook", "added: %s" % io.dumps(json, indent=1))
+        await io.plog.cyan("remote_webhook", "added: %s" % io.anydumps(json, indent=1))
 
         await io.Deliver.json(json)
 
@@ -301,7 +301,7 @@ class WebhookClient:
 
     def save_state(app, data: dict):
         with open(app.conf, "wb") as f:
-            f.write(io.dumps(data, indent=1).encode())
+            f.write(io.anydumps(data, indent=1).encode())
 
     def get_state(app):
         if not io.path.exists(app.conf): raise io.Errdetail("Proxy configuration file not found!")
@@ -373,7 +373,7 @@ class WebhookClient:
         }
 
         if not ow and state.get("hosts"):
-            if io.dumps(srv := state["hosts"].get(host, {})) == io.dumps(host_data): return host_data
+            if io.anydumps(srv := state["hosts"].get(host, {})) == io.anydumps(host_data): return host_data
 
         async with io.getSession.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
             if not ow: await io.plog.cyan("Proxy.add_to_proxy", await session.text())
