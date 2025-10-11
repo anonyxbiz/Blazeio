@@ -219,7 +219,7 @@ class Sutils:
 
             if not io.path.exists(certfile) or not io.path.exists(keyfile):
                 cmd = "certbot certonly --standalone --domain %s --http-01-port %d" % (host, port)
-                
+
                 await io.plog.yellow("Running command", cmd)
 
                 proc = await app.run_subprocess_sync(cmd)
@@ -247,7 +247,10 @@ class Routes:
 
         if host.get("from_certbot", False):
             app.hosts[hostname] = host
+            enforce_https = host["enforce_https"]
+            host["enforce_https"] = False
             host["certfile"], host["keyfile"] = await app.from_certbot(hostname, int(host.get("port")))
+            host["enforce_https"] = enforce_https
 
         app.hosts.update(json)
 
