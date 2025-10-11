@@ -300,6 +300,8 @@ class Server(Routes):
         sock = r.transport.get_extra_info("ssl_object")
 
         await scope.web.parse_default(r, normalize_headers = False)
+        
+        headers = {key.capitalize(): val for key, val in r.headers.items()}
 
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
@@ -307,11 +309,11 @@ class Server(Routes):
         if sock:
             server_hostname = sock.context.server_hostname
         else:
-            if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
+            if (idx := (server_hostname := headers.get("Host", "")).rfind(":")) != -1:
                 server_hostname = server_hostname[:idx]
 
         if app.is_from_home(r, server_hostname):
-            if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
+            if not (route := getattr(app, headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
 
             raise io.Eof(await route(r))
