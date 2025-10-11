@@ -14,7 +14,7 @@ try:
 except ImportError:
     SO_REUSEPORT = None
 
-scope = io.ddict(server_set = io.SharpEvent(), privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", access_key = io.environ.get("blazeio.proxy.access_key", None) or io.token_urlsafe(16))
+scope = io.ddict(server_set = io.SharpEvent(), privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", access_key = None)
 
 class Pathops:
     __slots__ = ("parent", "cert_dir", "dirs")
@@ -307,6 +307,8 @@ class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Routes,
 
         for coro in (app.update_hosts_daemon(), app.protocol_manager()): app.create_task(coro)
 
+class App(Proxy): ...
+
 class WebhookClient:
     __slots__ = ("conf", "availablity")
     def __init__(app):
@@ -416,9 +418,10 @@ add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k
 available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 class Runner:
-    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0"):
+    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0", access_key: (str, io.Utype) = io.environ.get("blazeio.proxy.access_key", None) or io.token_urlsafe(16)):
         app.args = io.ddict()
         io.set_from_args(app, locals(), io.Utype, app.args)
+        scope.access_key = app.args.access_key
 
     def __enter__(app):
         return app
