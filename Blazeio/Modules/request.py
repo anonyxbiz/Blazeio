@@ -45,10 +45,10 @@ class HTTPParser:
     @classmethod
     async def make(app, r, header, normalize_headers):
         if (sep_idx := header.find(app.header_key_val)) != -1:
-            key = header[:sep_idx]
+            key = header[:sep_idx].decode("utf-8")
             val = header[sep_idx + 2:]
 
-            r.headers[key.capitalize() if normalize_headers else (key := key.decode("utf-8"))] = val.decode("utf-8")
+            r.headers[key.capitalize() if normalize_headers else key] = val.decode("utf-8")
 
     @classmethod
     async def header_parser(app, r, data, normalize_headers):
