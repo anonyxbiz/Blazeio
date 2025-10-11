@@ -14,6 +14,11 @@ try:
 except ImportError:
     SO_REUSEPORT = None
 
+try:
+    from socket import TCP_QUICKACK
+except ImportError:
+    TCP_QUICKACK = None
+
 scope = io.ddict(server_set = io.SharpEvent(), privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", access_key = None)
 
 class Pathops:
@@ -472,9 +477,17 @@ class Runner:
 
         scope.whclient.save_state(state)
 
-        if SO_REUSEPORT: web.sock().setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+        if SO_REUSEPORT:
+            web.sock().setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
 
-        web.sock().setsockopt(SOL_SOCKET, TCP_NODELAY, 1)
+        if TCP_QUICKACK:
+            web.sock().setsockopt(IPPROTO_TCP, TCP_QUICKACK, 1)
+
+        web.sock().setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        web.sock().setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        web.sock().setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 30)
+        web.sock().setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 10)
+        web.sock().setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 3)
 
         scope.server_set.set()
 
