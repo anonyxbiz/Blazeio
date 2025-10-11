@@ -400,7 +400,7 @@ class WebhookClient:
             srv = state["hosts"].get(host, {})
             host_data_ref = io.ddict(host_data)
 
-            if from_certbot:
+            if from_certbot and srv:
                 for i in ("certfile", "keyfile"):
                     host_data_ref[i] = srv.get(i)
 
