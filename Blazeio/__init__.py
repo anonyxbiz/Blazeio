@@ -120,8 +120,8 @@ class Handler(OOP_RouteDef):
         if app.__main_handler__ is NotImplemented:
             app.__main_handler__ = app.__default_handler__
     
-    async def parse_default(app, r):
-        return await app.__default_parser__(r, app)
+    async def parse_default(app, r, *args, **kwargs):
+        return await app.__default_parser__(r, app, *args, **kwargs)
 
     async def serve_route_with_middleware(app, r, prepare = True):
         if prepare: await app.__default_parser__(r, app)
