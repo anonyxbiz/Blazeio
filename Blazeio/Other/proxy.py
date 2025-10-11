@@ -218,7 +218,7 @@ class Sutils:
             certfile, keyfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host
 
             if not io.path.exists(certfile) or not io.path.exists(keyfile):
-                cmd = "certbot certonly --standalone --domain %s --http-01-port %d" % (host, port)
+                cmd = "certbot certonly --standalone --domain %s" % host
 
                 await io.plog.yellow("Running command", cmd)
 
@@ -247,10 +247,6 @@ class Routes:
 
         if host.get("from_certbot", False):
             app.hosts[hostname] = io.ddict(**host, pending_certbot = True)
-
-            await io.plog.yellow(io.anydumps(app.hosts))
-
-            await io.sleep(60*10)
             host["certfile"], host["keyfile"] = await app.from_certbot(hostname, int(host.get("port")))
 
         app.hosts.update(json)
@@ -300,8 +296,6 @@ class Server(Routes):
         sock = r.transport.get_extra_info("ssl_object")
 
         await scope.web.parse_default(r, normalize_headers = False)
-        
-        headers = {key.capitalize(): val for key, val in r.headers.items()}
 
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
@@ -309,11 +303,11 @@ class Server(Routes):
         if sock:
             server_hostname = sock.context.server_hostname
         else:
-            if (idx := (server_hostname := headers.get("Host", "")).rfind(":")) != -1:
+            if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
                 server_hostname = server_hostname[:idx]
 
         if app.is_from_home(r, server_hostname):
-            if not (route := getattr(app, headers.get("route", r.path.replace("/", "_")), None)):
+            if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
 
             raise io.Eof(await route(r))
@@ -321,10 +315,8 @@ class Server(Routes):
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
 
-        if not sock and not srv.get("pending_certbot", None) and srv.server_config.enforce_https:
+        if not sock and and srv.server_config.enforce_https:
             raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 443), r.tail)))
-        elif srv.get("pending_certbot", None):
-            await io.plog.yellow(io.anydumps(srv))
 
         try:
             app.protocols[r.identifier] = r
