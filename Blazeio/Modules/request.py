@@ -43,24 +43,24 @@ class HTTPParser:
     h_s = b'\r\n'
 
     @classmethod
-    async def make(app, r, header):
+    async def make(app, r, header, normalize_headers):
         if (sep_idx := header.find(app.header_key_val)) != -1:
             key = header[:sep_idx]
             val = header[sep_idx + 2:]
 
-            r.headers[key.decode("utf-8").capitalize()] = val.decode("utf-8")
+            r.headers[key.capitalize() if normalize_headers else (key := key.decode("utf-8"))] = val.decode("utf-8")
 
     @classmethod
-    async def header_parser(app, r, data):
+    async def header_parser(app, r, data, normalize_headers):
         r.headers = {}
         while (idx := data.find(app.h_s)):
             if idx == -1:
-                await app.make(r, data)
+                await app.make(r, data, normalize_headers)
                 break
 
             header, data = data[:idx], data[idx + 2:]
 
-            await app.make(r, header)
+            await app.make(r, header, normalize_headers)
 
 class Depreciated:
     URL_DECODE_MAP = URL_DECODE_MAP
@@ -248,7 +248,7 @@ class Request(Depreciated):
         return params
 
     @classmethod
-    async def set_method(app, r, server, chunk):
+    async def set_method(app, r, server, chunk, normalize_headers):
         if (idx := chunk.find(server.__server_config__["__http_request_initial_separatir__"])) != -1:
             r.method, chunk = chunk[:idx].decode("utf-8"), chunk[idx + 1:]
 
@@ -260,7 +260,7 @@ class Request(Depreciated):
                     r.path = r.tail
 
                 if server.__server_config__["__http_request_auto_header_parsing__"]:
-                    await HTTPParser.header_parser(r, chunk)
+                    await HTTPParser.header_parser(r, chunk, normalize_headers)
                 else:
                     if not r.__miscellaneous__: r.__miscellaneous__ = deque()
                     r.__miscellaneous__.append(chunk)
@@ -287,17 +287,17 @@ class Request(Depreciated):
             else: return True
 
     @classmethod
-    async def prepare_http_request(app, r, server=None):
+    async def prepare_http_request(app, r, server=None, normalize_headers = True):
         if not server: server = app
         __buff__ = memarray()
 
-        async for chunk in r.request():
+        async for chunk in r:
             __buff__.extend(chunk)
 
             if (idx := __buff__.find(server.__server_config__["__http_request_heading_end_seperator__"])) != -1:
                 __heading__, __buff__ = __buff__[:idx], b'' + __buff__[idx + server.__server_config__["__http_request_heading_end_seperator_len__"]:]
 
-                await app.set_method(r, server, __heading__)
+                await app.set_method(r, server, __heading__, normalize_headers)
                 
                 if __buff__: r.prepend(__buff__)
 

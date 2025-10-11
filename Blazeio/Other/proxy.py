@@ -299,7 +299,7 @@ class Server(Routes):
 
         sock = r.transport.get_extra_info("ssl_object")
 
-        await scope.web.parse_default(r)
+        await scope.web.parse_default(r, normalize_headers = False)
 
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
@@ -321,6 +321,8 @@ class Server(Routes):
 
         if not sock and not srv.get("pending_certbot", None) and srv.server_config.enforce_https:
             raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 443), r.tail)))
+        elif srv.get("pending_certbot", None):
+            await io.plog.yellow(io.anydumps(srv))
 
         try:
             app.protocols[r.identifier] = r
