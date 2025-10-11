@@ -157,12 +157,13 @@ class Transporter:
                 ...
 
 class App(Sslproxy, Transporter, MuxTransporter):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips")
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination")
     def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
         app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
+        app.updaters_coordination = io.ddict(sync = io.ioCondition(), previous_size = 0, interval = 30)
         for coro in (app.update_mem_db(), app.protocol_manager()): app.create_task(coro)
 
     def create_task(app, coro):
@@ -184,18 +185,22 @@ class App(Sslproxy, Transporter, MuxTransporter):
         if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
 
     async def update_file_db(app):
-        async with app.host_update_cond:
-            data = io.dumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
-            async with io.async_open(app.blazeio_proxy_hosts, "wb") as f:
-                await f.write(data)
+        async with app.updaters_coordination.sync:
+            async with app.host_update_cond:
+                data = io.dumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
+                await io.asave(app.blazeio_proxy_hosts, data)
+                app.updaters_coordination.previous_size = len(data)
 
     async def update_mem_db(app):
         await app.web
-        if not io.path.exists(app.blazeio_proxy_hosts): return
+        while True:
+            if io.path.exists(app.blazeio_proxy_hosts):
+                if io.path.getsize(app.blazeio_proxy_hosts) != app.updaters_coordination:
+                    async with app.updaters_coordination.sync:
+                        app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
+                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=1))
 
-        async with io.async_open(app.blazeio_proxy_hosts, "rb") as f: app.hosts.update(io.Dotify(io.loads(await f.read())))
-
-        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.dumps(app.hosts))
+            await io.sleep(app.updaters_coordination.interval)
 
     async def _remote_webhook(app, r):
         app.hosts.update(io.Dotify(json := await io.Request.get_json(r)))
