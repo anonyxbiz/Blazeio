@@ -395,7 +395,7 @@ add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k
 available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 class Runner:
-    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*4, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0"):
+    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, enforce_https: (bool, class_parser.Store_true, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0"):
         app.args = io.ddict()
         io.set_from_args(app, locals(), io.Utype, app.args)
 
