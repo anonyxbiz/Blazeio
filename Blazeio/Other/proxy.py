@@ -282,6 +282,8 @@ class App(Sslproxy, Transporter, MuxTransporter):
                 await app.transporter(r, srv)
         except OSError:
             raise io.Abort("Service Unavailable", 500)
+        except io.ClientDisconnected:
+            ...
         finally:
             app.protocols.pop(r.identifier, None)
             app.update_protocol_event()
