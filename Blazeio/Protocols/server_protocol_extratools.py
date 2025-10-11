@@ -253,17 +253,20 @@ class ExtraToolset:
 
             if end: break
 
-    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False):
+    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False, domain = False):
         if secure: secure = "Secure; "
         else: secure = ""
 
         if http_only: http_only = "HttpOnly; "
         else: http_only = ""
-        
+
+        if domain: domain = "Domain=%s; " % domain
+        else: domain = ""
+
         if app.__prepared_headers__ is None:
             app.__prepared_headers__ = bytearray()
 
-        app.__prepared_headers__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%sPath=/\r\n" % (name, value, expires, http_only, secure), "utf-8")
+        app.__prepared_headers__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%s%sPath=/\r\n" % (name, value, expires, domain, http_only, secure), "utf-8")
 
     async def handle_raw(app, *args, **kwargs):
         if app.headers is None: await app.reprepare()
