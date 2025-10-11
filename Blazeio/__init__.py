@@ -504,7 +504,7 @@ class Server:
                 args = ()
 
             await app.ServerConfig.resolve_coros()
-            await app.on_start_callbacks_runner()
+            await app.callback_runner(app.on_start_callbacks)
 
             app.server = await app.get_server()(protocol, *args, **kwargs)
 
@@ -525,6 +525,8 @@ class Server:
 
             await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, "Server [%s] running on %s" % (app.server_name, app.ServerConfig.server_address), "Request Logging is %s.\n" % ("enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
+            await app.callback_runner(app.on_run_callbacks)
+
             await app._server_closing.wait()
             app.wait_closed.set()
 
@@ -534,6 +536,7 @@ class Server:
 class Callbacks:
     def __init__(app):
         app.on_start_callbacks = []
+        app.on_run_callbacks = []
 
     def add_on_start_callback(app, fn, *args, **kwargs):
         app.on_start_callbacks.append(cb := (fn, args, kwargs))
@@ -543,11 +546,21 @@ class Callbacks:
         if cb in app.on_start_callbacks:
             app.on_start_callbacks.remove(cb)
 
-    async def on_start_callbacks_runner(app):
-        for cb in app.on_start_callbacks:
+    def add_callback(app, to, fn, *args, **kwargs):
+        to.append(cb := (fn, args, kwargs))
+        return cb
+        
+    async def callback_runner(app, callbacks: list):
+        for cb in list(callbacks):
             fn, args, kwargs = cb
-            app.rm_on_start_callback(cb)
-            await fn(*args, **kwargs) if iscoroutinefunction(fn) else fn(*args, **kwargs)
+            callbacks.remove(cb)
+
+            if iscoroutine(fn):
+                await fn
+            elif iscoroutinefunction(fn):
+                await fn(*args, **kwargs)
+            else:
+                await to_thread(fn, *args, **kwargs)
 
 class Protocol_methods(Serverctx):
     def __init__(app):

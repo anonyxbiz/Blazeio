@@ -18,8 +18,7 @@ scope = io.ddict(privileged_domain = "blazeio.", server_name = "blazeio.other.pr
 
 class Pathops:
     __slots__ = ("parent", "cert_dir", "dirs")
-    def __init__(app):
-        ...
+    def __init__(app): ...
 
     def __call__(app):
         app.dirs = []
@@ -39,8 +38,38 @@ class Pathops:
 Path_manager = Pathops()
 Path_manager()
 
+class Taskmanager:
+    def __init__(app): ...
+
+    def create_task(app, coro):
+        app.tasks.append(task := io.create_task(coro))
+        task.add_done_callback(lambda task: app.tasks.remove(task))
+        return task
+
+class Dbstuff:
+    def __init__(app):
+        app.updaters_coordination = io.ddict(sync = io.ioCondition(), previous_size = 0, interval = 30)
+
+    async def update_file_db(app):
+        async with app.updaters_coordination.sync:
+            async with app.host_update_cond:
+                data = io.anydumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
+                await io.asave(app.blazeio_proxy_hosts, data)
+                app.updaters_coordination.previous_size = len(data)
+
+    async def update_hosts_daemon(app):
+        await app.web
+        while True:
+            if io.path.exists(app.blazeio_proxy_hosts):
+                if (size := io.path.getsize(app.blazeio_proxy_hosts)) != app.updaters_coordination.previous_size:
+                    app.updaters_coordination.previous_size = size
+                    async with app.updaters_coordination.sync:
+                        app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
+                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=1))
+
+            await io.sleep(app.updaters_coordination.interval)
+
 class Sslproxy:
-    __slots__ = ()
     def __init__(app):
         app.ssl_configs = io.ddict(certfile = "proxytest.cert", keyfile = "proxytest.pem")
         app.cert_dir = Path_manager.cert_dir
@@ -91,7 +120,6 @@ class Sslproxy:
         return context
 
 class MuxTransporter:
-    __slots__ = ()
     def __init__(app):
         app.__conn__ = io.ioCondition()
         app.__serialize__ = io.ioCondition()
@@ -133,14 +161,16 @@ class MuxTransporter:
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
 class Transporter:
-    __slots__ = ()
     def __init__(app): ...
 
     async def puller(app, r, resp):
-        async for chunk in r: await resp.push(chunk)
+        try:
+            async for chunk in r: await resp.push(chunk)
+        except (io.CancelledError, RuntimeError):
+            ...
 
     async def transporter(app, r, srv: io.ddict):
-        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
+        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None, __chunk_size__ = int(srv.get("OUTBOUND_CHUNK_SIZE", io.ioConf.OUTBOUND_CHUNK_SIZE))) as resp:
             await resp.push(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.port)))
 
             task = io.create_task(app.puller(r, resp))
@@ -151,57 +181,10 @@ class Transporter:
 
             if not task.done(): task.cancel()
 
-            try:
-                await task
-            except (io.CancelledError, RuntimeError):
-                ...
+            await task
 
-class App(Sslproxy, Transporter, MuxTransporter):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination")
-    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
-        io.set_from_args(app, locals(), io.Utype)
-        io.Super(app).__init__()
-        app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
-        app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
-        app.updaters_coordination = io.ddict(sync = io.ioCondition(), previous_size = 0, interval = 30)
-        for coro in (app.update_mem_db(), app.protocol_manager()): app.create_task(coro)
-
-    def create_task(app, coro):
-        app.tasks.append(task := io.create_task(coro))
-        task.add_done_callback(lambda task: app.tasks.remove(task))
-        return task
-
-    def json(app):
-        data = io.ddict()
-        for key in app.__slots__:
-            if not isinstance(val := getattr(app, key), (str, int, dict)):
-                val = str(val)
-
-            data[str(key)] = val
-
-        return data
-
-    def update_protocol_event(app):
-        if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
-
-    async def update_file_db(app):
-        async with app.updaters_coordination.sync:
-            async with app.host_update_cond:
-                data = io.anydumps({key: {a:b for a, b in val.items() if a not in ("conn",)} for key, val in app.hosts.items()}).encode()
-                await io.asave(app.blazeio_proxy_hosts, data)
-                app.updaters_coordination.previous_size = len(data)
-
-    async def update_mem_db(app):
-        await app.web
-        while True:
-            if io.path.exists(app.blazeio_proxy_hosts):
-                if (size := io.path.getsize(app.blazeio_proxy_hosts)) != app.updaters_coordination.previous_size:
-                    app.updaters_coordination.previous_size = size
-                    async with app.updaters_coordination.sync:
-                        app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
-                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=1))
-
-            await io.sleep(app.updaters_coordination.interval)
+class Routes:
+    def __init__(app): ...
 
     async def _remote_webhook(app, r):
         app.hosts.update(io.Dotify(json := await io.Request.get_json(r)))
@@ -218,25 +201,19 @@ class App(Sslproxy, Transporter, MuxTransporter):
     async def _proxy_state(app, r):
         raise io.Eof(await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4))
 
-    async def logger(app, r, i):
-        await io.plog.cyan("%s:%d | %s@%s%s" % (r.ip_host, r.ip_port, r.method.upper(), i[-1], r.tail), ", ".join(["(%s=%s)" % (i, str(getattr(r, i, ""))[:100]) for i in r.__slots__]))
+class Sutils:
+    def __init__(app): ...
 
-    async def protocol_manager(app, run = False):
-        if not run:
-            while 1:
-                await app.protocol_update_event.wait_clear()
-                await app.protocol_manager(True)
-            return
+    def json(app):
+        data = io.ddict()
+        for key in app.__slots__:
+            if not isinstance(val := getattr(app, key), (str, int, dict)):
+                val = str(val)
 
-        for i in list(app.protocols):
-            if not (r := app.protocols.get(i)): continue
+            data[str(key)] = val
 
-            if app.log: await app.logger(r, i)
+        return data
 
-            if (elapsed := float(io.perf_counter() - r.__perf_counter__)) >= app.timeout:
-                r.cancel(str(io.Protocoltimeout()))
-                app.protocols.pop(r.identifier)
-    
     def is_from_home(app, r, host: str):
         if r.ip_host in app.privileged_ips:
             if not host.startswith(scope.privileged_domain): return False
@@ -249,6 +226,31 @@ class App(Sslproxy, Transporter, MuxTransporter):
         while (idx := server_hostname.find(".")) != -1:
             server_hostname = server_hostname[idx + 1:]
             if (srv := app.hosts.get("*.%s" % server_hostname)): return srv
+
+class Protocolmanagers:
+    def __init__(app): ...
+
+    async def logger(app, r, i):
+        await io.plog.cyan("%s:%d | %s@%s%s" % (r.ip_host, r.ip_port, r.method.upper(), i[-1], r.tail), ", ".join(["(%s=%s)" % (i, str(getattr(r, i, ""))[:100]) for i in r.__slots__]))
+
+    def update_protocol_event(app):
+        if not app.protocol_update_event.is_set(): app.protocol_update_event.set()
+
+    async def protocol_manager(app):
+        while 1:
+            await app.protocol_update_event.wait_clear()
+
+            for i in list(app.protocols):
+                if not (r := app.protocols.get(i)): continue
+
+                if app.log: await app.logger(r, i)
+    
+                if (elapsed := float(io.perf_counter() - r.__perf_counter__)) >= app.timeout:
+                    r.cancel(str(io.Protocoltimeout()))
+                    app.protocols.pop(r.identifier)
+
+class Server:
+    def __init__(app): ...
 
     async def __main_handler__(app, r):
         app.protocol_count += 1
@@ -271,7 +273,8 @@ class App(Sslproxy, Transporter, MuxTransporter):
         if app.is_from_home(r, server_hostname):
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
-            return await route(r)
+
+            raise io.Eof(await route(r))
 
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
@@ -293,6 +296,18 @@ class App(Sslproxy, Transporter, MuxTransporter):
         finally:
             app.protocols.pop(r.identifier, None)
             app.update_protocol_event()
+
+class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Routes, Sutils, Protocolmanagers, Server):
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination")
+    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float(60*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, enforce_https: (bool, io.Utype) = False, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0"):
+        io.set_from_args(app, locals(), io.Utype)
+        io.Super(app).__init__()
+        app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
+        app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
+
+        web.add_callback(web.on_run_callbacks, io.plog.magenta("Blazeio Proxy (Version: %s)" % io.__version__, "PID: %s" % io.pid, "Server [%s] running on %s" % (web.server_name, web.ServerConfig.server_address), func = app.__init__))
+
+        for coro in (app.update_hosts_daemon(), app.protocol_manager()): app.create_task(coro)
 
 class WebhookClient:
     __slots__ = ("conf", "availablity")
@@ -418,7 +433,7 @@ class Runner:
         if (INBOUND_CHUNK_SIZE := app.args.get("INBOUND_CHUNK_SIZE")): io.ioConf.INBOUND_CHUNK_SIZE = INBOUND_CHUNK_SIZE
         if (OUTBOUND_CHUNK_SIZE := app.args.get("INBOUND_CHUNK_SIZE")): io.ioConf.OUTBOUND_CHUNK_SIZE = OUTBOUND_CHUNK_SIZE
 
-        web.attach(main_app := App(proxy_port = srv.port, ssl = srv.ssl, web = web, **{key: val for key, val in app.args.items() if key in App.__slots__ and key not in srv}))
+        web.attach(main_app := Proxy(proxy_port = srv.port, ssl = srv.ssl, web = web, **{key: val for key, val in app.args.items() if key in Proxy.__slots__ and key not in srv}))
 
         if srv.ssl:
             srv.conf.ssl = main_app.configure_ssl()

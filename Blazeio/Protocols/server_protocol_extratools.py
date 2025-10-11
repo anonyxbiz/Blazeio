@@ -222,7 +222,7 @@ class ExtraToolset:
         end, buff = False, memarray()
         read, size, idx = 0, False, -1
 
-        async for chunk in app():
+        async for chunk in app:
             if size == False:
                 buff.extend(chunk)
                 if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
@@ -270,7 +270,7 @@ class ExtraToolset:
 
         if app.method in app.non_bodied_methods or app.current_length >= app.content_length: return
 
-        async for chunk in app():
+        async for chunk in app:
             if chunk:
                 app.current_length += len(chunk)
                 yield chunk

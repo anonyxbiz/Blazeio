@@ -21,6 +21,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
     )
     non_bodied_methods = ("GET", "HEAD", "OPTIONS", "DELETE")
     no_response_body_methods = ("HEAD",)
+    expected_kwargs = ("__chunk_size__", "__timeout__", "timeout", "evloop")
     def __init__(app, **kwargs):
         app.__chunk_size__ = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
         app.__timeout__ = kwargs.get("__timeout__", kwargs.get("timeout"))

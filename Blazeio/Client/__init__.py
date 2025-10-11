@@ -67,7 +67,7 @@ class Proxyconnector:
 class BlazeioClient(BlazeioClientProtocol):
     __slots__ = ("host", "port", "args", "kwargs", "socks5proxy", "loop", "httpproxy", "proxy",)
     def __init__(app, host: str, port: int, *args, socks5proxy: (dict, None) = None, httpproxy: (dict, None) = None, loop: any = None, proxy: (Proxyconnector, None) = None, **kwargs):
-        super().__init__()
+        super().__init__(**{i: kwargs.pop(i) for i in BlazeioClientProtocol.expected_kwargs if i in kwargs})
         app.host, app.port, app.args, app.kwargs, app.socks5proxy, app.httpproxy, app.loop, app.proxy = host, port, args, kwargs, socks5proxy, httpproxy, loop, proxy
 
     async def __aenter__(app):
