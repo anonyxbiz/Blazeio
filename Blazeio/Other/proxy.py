@@ -65,7 +65,7 @@ class Dbstuff:
                     app.updaters_coordination.previous_size = size
                     async with app.updaters_coordination.sync:
                         app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
-                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=1))
+                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=0)[:102400])
 
             await io.sleep(app.updaters_coordination.interval)
 
@@ -184,7 +184,8 @@ class Transporter:
             await task
 
 class Sutils:
-    def __init__(app): ...
+    def __init__(app):
+        app.certbot_sync = io.ioCondition()
 
     def json(app):
         data = io.ddict()
@@ -214,17 +215,15 @@ class Sutils:
 
     @classmethod
     async def from_certbot(app, host: str, port: int):
-        async with io.Ehandler(_raise = 0):
-            certfile, keyfile = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host
+        async with app.certbot_sync:
+            certfile, keyfile, logs = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host, ""
 
             if not io.path.exists(certfile) or not io.path.exists(keyfile):
                 cmd = "certbot certonly --standalone --domain %s" % host
 
-                await io.plog.yellow("Running command", cmd)
-
                 proc = await app.run_subprocess_sync(cmd)
 
-                await io.plog.yellow(proc.stdout.decode(), proc.stderr.decode())
+                logs = "".join([proc.stdout.decode(), proc.stderr.decode()])
 
                 if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
 
@@ -235,7 +234,7 @@ class Sutils:
                 for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
                     await io.asave(new, await io.aread(parent))
 
-            return (certfile_cp, keyfile_cp)
+            return (certfile_cp, keyfile_cp, logs)
 
 class Routes:
     def __init__(app): ...
@@ -246,14 +245,13 @@ class Routes:
         host = json[hostname]
 
         if host.get("from_certbot", False):
-            app.hosts[hostname] = io.ddict(**host, pending_certbot = True)
-            host["certfile"], host["keyfile"] = await app.from_certbot(hostname, int(host.get("port")))
+            host["certfile"], host["keyfile"], host["server_config"]["certbot_logs"] = await app.from_certbot(hostname, int(host.get("port")))
 
         app.hosts.update(json)
 
         await app.update_file_db()
 
-        await io.plog.cyan("remote_webhook", "added: %s" % io.anydumps(json, indent=1))
+        await io.plog.cyan("remote_webhook", "added: %s" % io.anydumps(json, indent=0))
 
         await io.Deliver.json(json)
 
@@ -404,6 +402,9 @@ class WebhookClient:
             if from_certbot:
                 for i in ("certfile", "keyfile"):
                     host_data_ref[i] = srv.get(i)
+
+                if (certbot_logs := srv["server_config"].get("certbot_logs")):
+                    host_data_ref["server_config"]["certbot_logs"] = certbot_logs
 
             if io.anydumps(srv) == io.anydumps(host_data_ref): return host_data
 
