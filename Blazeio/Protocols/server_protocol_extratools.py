@@ -165,12 +165,10 @@ class ExtraToolset:
             func = getattr(app.utils, *_args)
             if not args:
                 args = (app,)
-
             elif args[0] is app:
                 ...
             else:
                 args = (app, *args)
-
             return func(*args, **kwargs)
 
         return method
