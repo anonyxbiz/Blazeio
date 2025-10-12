@@ -108,8 +108,10 @@ class Httpkeepalive:
                 await app.get_handler()(r)
             except Abort as e:
                 await e.text(r)
-            except (Eof, ServerGotInTrouble) as e:
+            except (Eof, ServerGotInTrouble):
                 ...
+            except CloseConnection:
+                raise
             except Exception as e:
                 exc = e
             finally:

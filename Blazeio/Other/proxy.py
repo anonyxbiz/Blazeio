@@ -327,10 +327,9 @@ class Server(Routes):
                 await app.mux_transporter(r, srv)
             else:
                 await app.transporter(r, srv)
+            r.close()
         except OSError:
             raise io.Abort("Service Unavailable", 500)
-        except io.ClientDisconnected:
-            ...
         finally:
             app.protocols.pop(r.identifier, None)
             app.update_protocol_event()
