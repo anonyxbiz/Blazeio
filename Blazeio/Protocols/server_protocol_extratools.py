@@ -163,10 +163,14 @@ class ExtraToolset:
 
         def method(*args, **kwargs):
             func = getattr(app.utils, *_args)
+            if not args:
+                args = (app,)
 
-            if (not args) or (args[0] is app):
+            elif args[0] is app:
+                ...
+            else:
                 args = (app, *args)
-            
+
             return func(*args, **kwargs)
 
         return method
