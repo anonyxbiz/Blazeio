@@ -168,7 +168,7 @@ class ExtraToolset:
             elif args[0] is app:
                 ...
             else:
-                args = (app, *args)
+                ...#args = (app, *args)
             return func(*args, **kwargs)
 
         return method
