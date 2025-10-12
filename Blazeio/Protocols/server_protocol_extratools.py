@@ -183,13 +183,13 @@ class ExtraToolset:
 
         if isinstance(data, (bytes, bytearray)):
             await app.writer(b"%X\r\n%s\r\n" % (len(data), data))
-        elif isinstance(data, (str, int)):
-            raise Err("Only (bytes, bytearray, Iterable) are accepted")
-        else:
+        elif isinstance(data, AsyncIterable):
             async for chunk in data:
                 await app.writer(b"%X\r\n%s\r\n" % (len(chunk), chunk))
 
             await app.write_chunked_eof()
+        else:
+            raise Err("Only (bytes, bytearray, AsyncIterable) are accepted, not `%s`" % str(data))
 
     async def write_event_stream(app, data, start: bytes = b"data: ", end: bytes = b"\n\n"):
         if app.encoder: data = await app.encoder(data)
