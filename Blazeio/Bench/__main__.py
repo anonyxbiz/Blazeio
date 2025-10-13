@@ -1,7 +1,7 @@
 # Blazeio.Bench.__main__.py
 import Blazeio as io
 
-io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*4, 1024*4
+io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
 
 web = io.App("0.0.0.0", 6000, name = "web")
 
@@ -133,7 +133,7 @@ class Main(Server, Runner):
         io.Super(app).__init__()
 
 if __name__ == "__main__":
-    # clear && py -m Blazeio.Versioning -update 1 -quiet 1 && clear && py -m Blazeio.Bench
+    # clear && py -m Blazeio.Versioning -update -quiet && clear && py -m Blazeio.Bench
     from Blazeio.Other.class_parser import Parser
     parser = Parser(Main, io.Utype)
 
