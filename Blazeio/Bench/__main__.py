@@ -10,11 +10,7 @@ class Utils:
 
     def remaining_time(app):
         if not app.perf_counter: return 1
-        
-        if not (perf_counter := io.Taskscope.get("remaining_time_perfcounter", None)):
-            io.Taskscope.remaining_time_perfcounter = (perf_counter := io.perf_counter())
-
-        return (app.d - (io.perf_counter() - perf_counter))
+        return (app.d - (io.perf_counter() - app.perf_counter))
 
     async def log_timing(app, lineno: int = 10):
         async with app.sync_serializer:
@@ -105,7 +101,7 @@ class Runner(Client, Utils):
         async with app.sync_serializer: ...
 
         await io.plog.cyan(io.anydumps(io.ddict(
-            Total_requests = sum([len(i.requests) for i in analytics]),
+            Total_requests = (Total_requests := sum([len(i.requests) for i in analytics])),
             Concurrency_level = app.c,
             **analytics[0].requests[0].request_info,
             Averages = io.ddict(**
