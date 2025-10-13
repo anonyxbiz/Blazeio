@@ -22,17 +22,8 @@ class Server:
     def __init__(app):
         app.payload = b"." * app.payload_size
 
-    async def _tests_io_raw_get(app, r: io.BlazeioProtocol, content = b"."*1024, status = 200):
-        await r.writer(
-            b'HTTP/1.1 %d %b\r\n' % (status, io.StatusReason.reasons.get(status, "Unknown").encode()) +
-            b'Server: %b\r\n' % ("Blazeio/%s (%s)" % (io.__version__, io.os_name)).encode() +
-            b'Content-Type: text/plain\r\n' +
-            b'Content-disposition: inline; filename="%b.txt"\r\n' % r.path.encode() +
-            b'Content-Length: %d\r\n' % (len(content)*app.writes) +
-            b'\r\n'
-        )
-        
-        if r.method in r.no_response_body_methods: raise io.Eof()
+    async def _tests_io_get(app, r: io.BlazeioProtocol, content: bytes = b"."*1024):
+        await r.prepare({"Content-Type": r.headers.get("Content-type"), "Content-Length": str((len(content)*app.writes))}, 200)
 
         for i in range(app.writes):
             await r.writer(content)
@@ -48,9 +39,13 @@ class Client:
         conn = io.Session(app.url, prepare_http = False, send_headers = False, connect_only = True)
 
         while int(app.remaining_time()):
+            if not app.runner_notified:
+                app.runner_notified = True
+                app.serializer.notify_all()
+
             analytics.requests.append(request := io.ddict(latency = io.perf_timing(), ttfb = io.perf_timing(), prepare = io.perf_timing(), request_info = io.ddict(), duration = io.perf_timing()))
 
-            r = await conn.prepare((app.url % "/tests/io/raw/get") if app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) else app.url, app.m.upper(), prepare_http = False) # Convert the objects into a http/1.1 request and send it without preparing the response — No I/O involved here.
+            r = await conn.prepare((app.url % "/tests/io/get") if app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) else app.url, app.m.upper(), prepare_http = False) # Convert the objects into a http/1.1 request and send it without preparing the response — No I/O involved here.
 
             request.prepare = request.prepare.get()
 
@@ -81,24 +76,23 @@ class Client:
 
             request.latency = request.latency.get()
             request.duration = request.duration.get().elapsed
+            if r.status_code >= 400: break
 
         return analytics
 
 class Runner(Client, Utils):
     def __init__(app):
+        app.runner_notified = False
         io.getLoop.create_task(app.runner())
 
     async def runner(app):
         await web # Wait for server to run
-        
-        if app.serialize_connections: await app.serializer.__aenter__()
 
-        for i in range(app.c):
-            app.conns.append(io.getLoop.create_task(app.client(i)))
-
-        io.getLoop.create_task(app.log_timing())
-
-        if app.serialize_connections: await app.serializer.__aexit__()
+        async with app.serializer:
+            for i in range(app.c):
+                app.conns.append(io.getLoop.create_task(app.client(i)))
+            io.getLoop.create_task(app.log_timing())
+            await app.serializer.wait()
 
         app.perf_counter = io.perf_counter()
 
@@ -128,7 +122,7 @@ class Runner(Client, Utils):
         raise KeyboardInterrupt()
 
 class Main(Server, Runner):
-    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes")
+    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified")
     serializer = io.ioCondition()
     sync_serializer = io.ioCondition()
     request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
