@@ -10,7 +10,11 @@ class Utils:
 
     def remaining_time(app):
         if not app.perf_counter: return 1
-        return (app.d - (io.perf_counter() - app.perf_counter))
+        
+        if not (perf_counter := io.Taskscope.get("remaining_time_perfcounter", None)):
+            io.Taskscope.remaining_time_perfcounter = (perf_counter := io.perf_counter())
+
+        return (app.d - (io.perf_counter() - perf_counter))
 
     async def log_timing(app, lineno: int = 10):
         async with app.sync_serializer:
