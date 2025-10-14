@@ -71,8 +71,12 @@ class Simpleserve:
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
             app.range_ = range_
             br = range_[idx + 1:]
-            app.start = int(br[:br.rfind("-")])
-            app.end = app.file_size - 1
+            _ = br.find("-")
+            start, end = br[:_], br[_ + 1:]
+            app.start, app.end = int(start), int(end) if end else app.file_size - 1
+
+            if app.end > app.file_size:
+                raise Abort("Range Not Satisfiable", 416, {"Content-Range": "bytes */%d" % app.file_size, "Content-Type": app.content_type})
 
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
             app.status = 206
