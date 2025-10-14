@@ -772,9 +772,9 @@ class Pulltools(Parsers, Decoders):
                 async for chunk in app.decoder(): yield chunk
 
         except GeneratorExit as e:
-            ...
+            return
         except StopIteration as e:
-            ...
+            return
 
     async def aread(app, decode=False):
         if not app.is_prepared(): await app.prepare_http()
