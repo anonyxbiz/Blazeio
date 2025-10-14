@@ -689,7 +689,7 @@ class Parsers:
             app.received_len += len(chunk)
             yield chunk
 
-            if app.received_len >= app.content_length: break
+            if app.received_len >= app.content_length: return
 
     def get_filename(app):
         if (content_disposition := app.headers.get("content-disposition")):
