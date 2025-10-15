@@ -209,13 +209,13 @@ class Formdata:
         app.boundary = "%s%s" % (app.multipart_line, token_urlsafe(16)[:16])
         app.formdata = (
             *(
-                'Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(val))
+                'Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(val)) if not isinstance(val, tuple) else 'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (key, val[0], val[1])
                 for key, val in formdata.items()
             ),
-            'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type) if filename else ''
+            'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type) if (content_type is not None and file_key is not None) else '',
         )
         app.content_type = 'multipart/form-data; boundary=%s' % app.boundary
-        app.header = ("\r\n".join(("--%s\r\n%s" % (app.boundary, i) for i in app.formdata))).encode()
+        app.header = ("\r\n".join(("--%s\r\n%s" % (app.boundary, i) for i in app.formdata if i))).encode()
         app.eof_boundary = ("\r\n--%s--\r\n" % app.boundary).encode()
         app.content_length = len(app.header + app.eof_boundary)
 
@@ -921,5 +921,10 @@ class Pulltools(Parsers, Decoders):
     async def pipe_from(app, pipe):
         async for chunk in pipe:
             if chunk: await app.write(chunk)
+
+    async def apipe_to(app, pipe):
+        async for chunk in app:
+            if chunk: await pipe(chunk)
+            yield int((app.received_len / app.content_length) * 100)
 
 if __name__ == "__main__": ...

@@ -63,6 +63,6 @@ class BlazeioProtocol:
             while app.__stream__:
                 yield app.__stream__.popleft()
             else:
-                if app.transport.is_closing() or app.__is_at_eof__: break
+                if app.transport.is_closing(): break
 
 if __name__ == "__main__": ...

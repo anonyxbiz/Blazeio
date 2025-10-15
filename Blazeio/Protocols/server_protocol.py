@@ -53,13 +53,8 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
     def state(app):
         return {key: str(value)[:500] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
 
-    async def request(app):
-        while True:
-            await app.ensure_reading()
-            while app.__stream__:
-                yield app.__stream__.popleft()
-            else:
-                if app.transport.is_closing() or app.__is_at_eof__: break
+    def request(app, *args, **kwargs):
+        return app.__aiter__(*args, **kwargs)
 
     async def writer(app, data: (bytes, bytearray)):
         if not app.__is_prepared__:
@@ -93,35 +88,26 @@ class Httpkeepalive:
         return app.__default_handler__ or app.web.__default_handler__
 
     async def __main_handler__(app, r):
-        requests, start = 0, perf_counter()
         while not r.transport.is_closing():
             exc = None
             try:
-                if requests >= 1000:
-                    if float(perf_counter() - start) <= 0.1: raise RecursionError()
-                    requests, start = 0, perf_counter()
-
-                await r.ensure_reading()
-                if not r.__stream__: raise RecursionError()
-
                 r += app.keepalive_headers
                 await app.get_handler()(r)
             except Abort as e:
                 await e.text(r)
-            except (Eof, ServerGotInTrouble):
+            except (Eof, ServerGotInTrouble, BrokenPipeError):
                 ...
-            except CloseConnection:
+            except (CancelledError, KeyboardInterrupt, CloseConnection):
                 raise
             except Exception as e:
                 exc = e
             finally:
-                requests += 1
-                if app.after_middleware: await app.after_middleware(r)
-
                 if r.__is_prepared__:
                     await r.eof()
                 else:
-                    await Abort("Internal Server Error", 500).text(r)
+                    await Abort("Server Got In Trouble", 500).text(r)
+
+                if app.after_middleware: await app.after_middleware(r)
 
                 if exc:
                     await traceback_logger(exc, frame = 4)

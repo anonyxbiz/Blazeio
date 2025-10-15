@@ -48,15 +48,10 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         app.__wait_closed__.set()
         if hasattr(app, "transport"): app.transport.close()
 
-    async def pull(app):
-        while True:
-            await app.ensure_reading()
-            while app.__stream__:
-                yield app.__stream__.popleft()
-            else:
-                if app.transport.is_closing() or app.__is_at_eof__: break
-
-    async def push(app, data: (bytes, bytearray)):
+    def pull(app):
+        return app.__aiter__()
+        
+    async def writer(app, data: (bytes, bytearray)):
         await app.buffer_overflow_manager()
 
         if not app.transport.is_closing():
@@ -64,7 +59,6 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         else:
             raise ServerDisconnected()
 
-    def writer(app, data): return app.push(data)
+    def push(app, data): return app.writer(data)
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...

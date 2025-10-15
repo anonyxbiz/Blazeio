@@ -31,7 +31,6 @@ class ServerProtocolEssentials:
 
     @classmethod
     def reset(cls, app):
-        app.__stream__ = deque()
         app.cancel_on_disconnect = True
         app.__is_buffer_over_high_watermark__ = False
         app.__is_at_eof__ = False
@@ -50,8 +49,8 @@ class ServerProtocolEssentials:
         app.__miscellaneous__ = None
         app.store = None
         app.__timeout__ = None
-        app.__evt__ = SharpEvent(evloop = app.__evt__.loop)
-        app.__overflow_evt__ = SharpEvent(evloop = app.__evt__.loop)
+        app.__evt__.clear()
+        app.__overflow_evt__.clear()
         app.__initialize__()
         return app
 

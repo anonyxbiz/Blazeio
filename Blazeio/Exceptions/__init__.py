@@ -62,3 +62,11 @@ class Missingdependency(BlazeioException):
 class CloseConnection(BlazeioException):
     __slots__ = ()
     def __init__(app): ...
+
+class ProtocolError(BlazeioException):
+    __slots__ = ('message')
+    def __init__(app, message=None):
+        app.message = str(message)
+
+    def __str__(app) -> str:
+        return app.message
