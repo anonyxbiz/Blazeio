@@ -10,7 +10,7 @@ async def __main_handler__(r):
         await r.ensure_reading()
 
     if r.__stream__:
-        await io.plog.yellow(r.__stream__)
+        # await io.plog.yellow(r.__stream__)
         r.__stream__.clear()
     else:
         r.transport.resume_reading() # Allow the transport to receive more data
