@@ -97,7 +97,7 @@ class Httpkeepalive:
                 await e.text(r)
             except (Eof, ServerGotInTrouble, BrokenPipeError):
                 ...
-            except (CancelledError, KeyboardInterrupt, CloseConnection):
+            except (CancelledError, KeyboardInterrupt, CloseConnection, ClientDisconnected):
                 raise
             except Exception as e:
                 exc = e
