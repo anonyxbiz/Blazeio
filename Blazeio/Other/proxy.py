@@ -173,11 +173,11 @@ class Transporter:
         try:
             while (chunk := await r): await resp.push(chunk)
         except (io.CancelledError, RuntimeError):
-            ...
+            r.close()
 
     async def transporter(app, r, srv: io.ddict):
-        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None, __chunk_size__ = int(srv.get("OUTBOUND_CHUNK_SIZE", io.ioConf.OUTBOUND_CHUNK_SIZE))) as resp:
-            await resp.push(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(srv.port)))
+        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
+            await resp.push(r.__miscellaneous__)
 
             task = io.create_task(app.puller(r, resp))
 
@@ -198,9 +198,7 @@ class Sutils:
         for key in app.__slots__:
             if not isinstance(val := getattr(app, key), (str, int, dict)):
                 val = str(val)
-
             data[str(key)] = val
-
         return data
 
     def is_from_home(app, r, host: str):
@@ -265,77 +263,6 @@ class Routes:
     async def _proxy_state(app, r):
         await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4)
 
-class MinParser:
-    __slots__ = ("max_protocol_header_buff_size",)
-    network_config = io.ddict(
-        http = io.ddict(
-            one_point_one = io.ddict(
-                crlf = b"\r\n",
-                dcrlf = b"\r\n\r\n",
-                start = b"HTTP/1.1",
-                initial_delimiter = b' ',
-                methods = (b"GET", b"HEAD", b"POST", b"PUT", b"DELETE", b"CONNECT", b"OPTIONS", b"TRACE", b"PATCH"),
-                headers = io.ddict(
-                    delimiter = b': ',
-                )
-            )
-        )
-    )
-
-    def __init__(app, max_protocol_header_buff_size: int = 102400):
-        app.max_protocol_header_buff_size = max_protocol_header_buff_size
-
-    def header_make(app, r: io.BlazeioProtocol, header: bytes):
-        if (idx := header.find(app.network_config.http.one_point_one.headers.delimiter)) != -1:
-            r.headers[header[:idx].decode().capitalize()] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
-
-    def header_parser(app, r: io.BlazeioProtocol, header: bytes):
-        r.headers = {}
-        while header:
-            if (idx := header.find(app.network_config.http.one_point_one.crlf)) == -1:
-                app.header_make(r, header)
-                break
-            else:
-                _, header = app.header_make(r, header[:idx]), header[idx + len(app.network_config.http.one_point_one.crlf):]
-
-    def set_method(app, r: io.BlazeioProtocol, header: bytes):
-        if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1:
-            raise io.Abort("Request has no headers", 400)
-
-        r.method, header = header[:idx].decode("utf-8"), header[idx + 1:]
-
-        if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1:
-            raise io.Abort("Request has no method", 400)
-
-        tail, header = header[:idx].decode("utf-8"), header[idx + 1:]
-        r.tail, r.path = tail, tail
-
-        if (idx := r.path.find('?')) != -1:
-            r.path = r.path[:idx]
-
-        app.header_parser(r, header)
-
-        if r.headers:
-            if not r.pull:
-                if (content_length := r.headers.get("Content-length")):
-                    r.content_length = int(content_length)
-                    r.pull = r.handle_raw
-                elif (transfer_encoding := r.headers.get("Transfer-encoding")):
-                    r.transfer_encoding = transfer_encoding
-                    r.pull = r.handle_chunked
-                else:
-                    r.content_length = 0
-                    r.pull = r.handle_raw
-
-        return r
-
-    def parse(app, r: io.BlazeioProtocol, buff: bytes):
-        idx = buff.find(app.network_config.http.one_point_one.dcrlf)
-        header, buff = buff[:idx], buff[idx + len(app.network_config.http.one_point_one.dcrlf):]
-        app.set_method(r, header)
-        if buff: r.prepend(buff)
-        return r
-
 class Protocolmanagers:
     def __init__(app): ...
 
@@ -361,15 +288,14 @@ class Protocolmanagers:
 class Server(Routes):
     def __init__(app): ...
 
-    async def min_parser(app, r: io.BlazeioProtocol):
-        buff = bytearray()
-        while not app.network_config.http.one_point_one.dcrlf in buff:
-            if len(buff) >= app.max_protocol_header_buff_size:
+    async def r_parser(app, r: io.BlazeioProtocol):
+        r.__miscellaneous__ = bytearray()
+        while not app.min_parser.network_config.http.one_point_one.dcrlf in r.__miscellaneous__:
+            if len(r.__miscellaneous__) >= app.max_protocol_header_buff_size:
                 raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
-            buff.extend(await r)
+            r.__miscellaneous__.extend(await r)
 
-        r.store = (buff,)
-        app.min_parser.parse(r, buff)
+        return app.min_parser.parse(r, r.__miscellaneous__)
 
     async def __main_handler__(app, r):
         app.protocol_count += 1
@@ -378,7 +304,7 @@ class Server(Routes):
 
         sock = r.transport.get_extra_info("ssl_object")
 
-        await app.min_parser(r)
+        body = await app.r_parser(r)
 
         r.headers["ip_host"] = str(r.ip_host)
         r.headers["ip_port"] = str(r.ip_port)
@@ -390,6 +316,9 @@ class Server(Routes):
                 server_hostname = server_hostname[:idx]
 
         if app.is_from_home(r, server_hostname):
+            if body:
+                r.prepend(body)
+
             if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
                 raise io.Abort("Not Found", 404)
 
@@ -416,13 +345,13 @@ class Server(Routes):
             app.update_protocol_event()
 
 class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "enforce_https", "proxy_port", "web", "privileged_ips", "updaters_coordination", "ssutils_coordination", "min_parser")
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "proxy_port", "web", "privileged_ips", "updaters_coordination", "ssutils_coordination", "min_parser", "max_protocol_header_buff_size")
     def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float((60**2)*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}, }), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0", max_protocol_header_buff_size: (int, io.Utype) = None):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
         app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
         app.blazeio_proxy_hosts = io.path.join(scope.HOME, blazeio_proxy_hosts)
-        app.min_parser = MinParser(app.max_protocol_header_buff_size)
+        app.min_parser = io.MinParser()
         web.add_callback(web.on_run_callbacks, io.plog.magenta("Blazeio Proxy (Version: %s)" % io.__version__, "PID: %s" % io.pid, "Server [%s] running on %s" % (web.server_name, web.ServerConfig.server_address), io.anydumps({key: getattr(app, key, None) or getattr(scope, key, None) for key in ("privileged_ips", "privileged_domain", "server_name", "access_key")}, indent = 1), func = app.__init__))
 
         for coro in (app.update_hosts_daemon(), app.protocol_manager()): app.create_task(coro)
@@ -519,9 +448,11 @@ add_to_proxy = lambda *a, **k: io.ioConf.run(scope.whclient.add_to_proxy(*a, **k
 available = lambda *a, **k: io.ioConf.run(scope.whclient.available(*a, **k))
 
 class Runner:
-    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store_true, io.Utype) = False, fresh: (bool, class_parser.Store_true, io.Utype) = False, web_runner: (bool, class_parser.Store_true, io.Utype) = False, keepalive: (bool, class_parser.Store_true, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0", access_key: (str, io.Utype) = io.environ.get("blazeio.proxy.access_key", None) or io.token_urlsafe(16), max_protocol_header_buff_size: (int, io.Utype) = 1024*100):
+    def __init__(app, port: (int, io.Utype) = 8080, http_port: (int, io.Utype) = 0, INBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, OUTBOUND_CHUNK_SIZE: (int, io.Utype) = 1024*100, host: (str, io.Utype) = "0.0.0.0", ssl: (bool, class_parser.Store, io.Utype) = False, fresh: (bool, class_parser.Store, io.Utype) = False, web_runner: (bool, class_parser.Store, io.Utype) = False, keepalive: (bool, class_parser.Store, io.Utype) = False, privileged_ips: (str, io.Utype) = "0.0.0.0", access_key: (str, io.Utype) = io.environ.get("blazeio.proxy.access_key", None) or io.token_urlsafe(16), max_protocol_header_buff_size: (int, io.Utype) = 1024*100):
         app.args = io.ddict()
         io.set_from_args(app, locals(), io.Utype, app.args)
+        io.INBOUND_CHUNK_SIZE, io.OUTBOUND_CHUNK_SIZE = app.args.INBOUND_CHUNK_SIZE, app.args.OUTBOUND_CHUNK_SIZE
+
         scope.access_key = app.args.access_key
 
     def __enter__(app):
@@ -571,7 +502,7 @@ class Runner:
 
         scope.server_set.set()
 
-        if app.args.keepalive: web.with_keepalive()
+        web.with_keepalive()
 
         return web
 
@@ -598,28 +529,7 @@ class Runner:
         with scope.web:
             scope.web.runner(**srv.conf)
 
-class Test:
-    def __init__(app):
-        io.ioConf.run(app.test())
-    
-    async def test(app):
-        r = io.ServerProtocolEssentials.defaults(io.ddict(handle_raw = None, handle_chunked = None, prepend = lambda *args: None))
-
-        obj = MinParser()
-
-        buff = b'GET / HTTP/1.1\r\nHost: example.com\r\nContent-Type: text/html\r\n\r\n'
-        
-        timer = io.perf_timing()
-        obj.parse(r, buff)
-        timer()
-        
-        r.parser_timing = timer.get()
-
-        await io.plog.yellow(io.anydumps(r))
-
 if __name__ == "__main__":
-    io.exit(Test())
-
     parser = class_parser.Parser(Runner, io.Utype)
     io.Scope.args = parser.args()
     with Runner(**io.Scope.args) as runner:

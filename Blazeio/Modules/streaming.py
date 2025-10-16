@@ -125,13 +125,9 @@ class Abort(BlazeioException):
 class NotFoundErr(Abort):
     __slots__ = ()
 
-class Eof(BlazeioException):
-    __slots__ = ()
-    def __init__(app, *args): pass
-
 class __Payload__:
     __slots__ = ()
-    def __init__(app): pass
+    def __init__(app): ...
 
     def __getattr__(app, name):
         return getattr(current_task().get_coro().cr_frame.f_locals.get("app"), name)
@@ -177,5 +173,4 @@ class Protocols:
         async for chunk in client.pull():
             await server.write(chunk)
 
-if __name__ == "__main__":
-    pass
+if __name__ == "__main__": ...

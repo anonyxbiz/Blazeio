@@ -70,3 +70,9 @@ class ProtocolError(BlazeioException):
 
     def __str__(app) -> str:
         return app.message
+
+class Eof(BlazeioException):
+    __slots__ = ()
+    def __init__(app, *args): ...
+
+if __name__ == "__main__": ...

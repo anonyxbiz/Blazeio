@@ -6,6 +6,7 @@ from .Protocols.client_protocol import *
 
 from .Modules.streaming import *
 from .Modules.server_tools import *
+from .Parsers.min_http_parser import *
 from .Modules.request import *
 from .Modules.reasons import *
 from .Modules.templatify import *
@@ -79,7 +80,8 @@ class Handler(OOP_RouteDef):
     def __init__(app):
         app.__main_handler__ = NotImplemented
         app.__default_handler__ = NotImplemented
-        app.__default_parser__ = Request.prepare_http_request
+        app.__default_parser__ = app.parse_default
+        app.__min_parser__ = MinParser()
 
     async def log_request(app, r):
         r.__perf_counter__ = perf_counter()
@@ -119,9 +121,18 @@ class Handler(OOP_RouteDef):
 
         if app.__main_handler__ is NotImplemented:
             app.__main_handler__ = app.__default_handler__
-    
+
     async def parse_default(app, r, *args, **kwargs):
-        return await app.__default_parser__(r, app, *args, **kwargs)
+        buff = bytearray()
+        while not app.__min_parser__.network_config.http.one_point_one.dcrlf in buff:
+            if len(buff) >= app.__server_config__["__http_request_max_buff_size__"]:
+                raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
+            buff.extend(await r)
+
+        if (body := app.__min_parser__.parse(r, buff)):
+            r.prepend(body)
+
+        return r
 
     async def serve_route_with_middleware(app, r, prepare = True):
         if prepare: await app.__default_parser__(r, app)

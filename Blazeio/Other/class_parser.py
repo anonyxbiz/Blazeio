@@ -24,7 +24,7 @@ class Parser(ArgumentParser):
             arg_type = obj.__init__.__annotations__.get(arg)
             if not isinstance(arg_type, tuple) or not for_type in arg_type: continue
 
-            default, positional, store_true = obj.__init__.__defaults__[arg_count], Positional in arg_type, Store_true in arg_type
+            default, positional, store_true = obj.__init__.__defaults__[arg_count], Positional in arg_type, Store_true in arg_type or Store in arg_type
 
             if positional:
                 app.add_argument(arg, type = arg_type[0])

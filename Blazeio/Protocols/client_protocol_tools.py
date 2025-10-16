@@ -806,7 +806,9 @@ class Pulltools(Parsers, Decoders):
         return await app.aread(True)
 
     async def json(app):
-        return Dot_Dict(loads(await app.aread(True)))
+        if isinstance(json := loads(await app.aread(True)), dict):
+            json = Dot_Dict(json)
+        return json
 
     async def xml(app):
         if not xml_parse: raise Missingdependency("xmltodict must be installed to use this.")

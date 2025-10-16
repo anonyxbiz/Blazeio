@@ -138,7 +138,7 @@ class Depreciated:
             if (idx := params.find(y)) != -1:
                 key, value = params[:idx], params[idx + 1:]
                 if (idx_end := value.find(q)) != -1:
-                    pass
+                    ...
                 elif (idx := value.find(o)) != -1:
                     value, params = value[:idx], value[idx + 1:]
                 temp[app.url_decode_sync(key)] = app.url_decode_sync(value)

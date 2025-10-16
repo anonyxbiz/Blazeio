@@ -312,13 +312,15 @@ class dotdictView(Dot_Dict):
     def pop(app, key, default = None):
         return super().pop(app._capitalized.get(key), default)
 
-def ensure_dumpable(json: dict):
+def ensure_dumpable(json: dict, serialize: tuple = ()):
     new = {}
     for key, val in json.items():
         if isinstance(val, (str, int, list, tuple, bool, float)):
+            if isinstance(val, serialize):
+                val = str(val)
             new[key] = val
         elif isinstance(val, dict):
-            new[key] = ensure_dumpable(val)
+            new[key] = ensure_dumpable(val, serialize)
         else:
             new[key] = str(val)
 
