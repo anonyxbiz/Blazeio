@@ -257,11 +257,9 @@ class Routes:
 
         await io.Deliver.json(json)
 
-    async def _discover_deliver(app, r: io.BlazeioProtocol):
-        await io.Deliver.text('{"discovered": true}', headers = {"Content-type": "application/json; charset=utf-8"})
-
     async def _discover(app, r: io.BlazeioProtocol):
-        await r.writer(b'HTTP/1.1 200 OK\r\nConnection: Keep-Alive\r\nKeep-Alive: timeout=18000, max=1000000\r\nContent-type: application/json; charset=utf-8\r\nContent-length: 20\r\nServer: Blazeio/2.7.7.5 (posix)\r\n\r\n{"discovered": true}')
+        await r.prepare({"Content-type": "application/json; charset=utf-8", "Content-length": "20"}, 200)
+        await r.write(b'{"discovered": true}')
 
     async def _proxy_state(app, r):
         await io.Deliver.json({key: str(val) if not isinstance(val := getattr(app, key, None), (int, dict, str)) else (val if not isinstance(val, dict) else {k: str(v) if not isinstance(v, (int, str)) else v for k, v in val.items()}) for key in app.__slots__}, indent = 4)
