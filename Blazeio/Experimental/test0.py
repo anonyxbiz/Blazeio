@@ -10,9 +10,6 @@ class Server:
         ...
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
-        while not b'\r\n\r\n' in r.__buff__:
-            await r.ensure_reading()
-
         await r.ensure_reading()
 
         if r.__stream__:
