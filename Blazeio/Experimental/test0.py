@@ -11,7 +11,8 @@ class Server:
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
         # while not b'\r\n\r\n' in r.__buff__:
-        await r.ensure_reading()
+        if not r.__stream__:
+            await r.ensure_reading()
 
         if r.__stream__:
             r.__stream__.clear() # empty the __stream__ so that we can resume reading
