@@ -1,6 +1,5 @@
 # Blazeio.Experimental.test0.py
 import Blazeio as io
-import Blazeio.Other.class_parser as class_parser
 
 io.INBOUND_CHUNK_SIZE = 4096
 
@@ -10,13 +9,7 @@ class Server:
     def __init__(app):
         ...
 
-    def connection_closure(app, r: io.BlazeioProtocol, canceller):
-        return canceller()
-
     async def __main_handler__(app, r: io.BlazeioProtocol):
-        if r.cancel.__name__ == "cancel":
-            r.cancel = lambda cancel = r.cancel, r = r: app.connection_closure(r, cancel)
-
         while not b'\r\n\r\n' in r.__buff__:
             await r.ensure_reading()
 
@@ -29,12 +22,10 @@ class Server:
 
 class Main(Server):
     def __init__(app):
-        io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
 
 if __name__  == "__main__":
-    web.attach(main := Main(**class_parser.Parser(Main, io.Utype).args()))
-
+    web.attach(main := Main())
     with web:
         web.with_keepalive()
         web.runner()
