@@ -49,6 +49,7 @@ class ServerProtocolEssentials:
         app.__miscellaneous__ = None
         app.store = None
         app.__timeout__ = None
+        app.__stream__.clear()
         app.__evt__.clear()
         app.__overflow_evt__.clear()
         app.__initialize__()
