@@ -562,19 +562,42 @@ class Callbacks:
             else:
                 await to_thread(fn, *args, **kwargs)
 
+class Class_attacher:
+    __slots__ = ("web",)
+    def __init__(app, web):
+        app.web = web
+
+    @property
+    def __name__(app):
+        return "Class_attacher"
+
+    def __call__(app, fn, *args, **kwargs):
+        app.web.attach(fn())
+        return fn
+
+class Class_attacher_module:
+    __slots__ = ("web",)
+    attach_key = "attach"
+    def __init__(app, web):
+        app.web = web
+
+    def __getattr__(app, key, *args):
+        if key != app.attach_key: raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+        return Class_attacher(app.web)
+
 class Protocol_methods(Serverctx):
     def __init__(app):
-        super().__init__()
+        app.attachers = ddict(_class = Class_attacher_module(app))
 
     def __getattr__(app, name):
         if name == "route":
             app.route = Add_Route(app)
         elif name == "event_loop":
             return app.loop
-        else:
+        elif name in app.ServerConfig.__dict__:
             return app.ServerConfig.__dict__.get(name)
 
-        return getattr(app, name)
+        raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
     def __await__(app):
         yield from app.is_server_running.wait().__await__()
