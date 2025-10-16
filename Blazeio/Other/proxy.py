@@ -290,7 +290,7 @@ class MinParser:
             r.headers[header[:idx].decode().capitalize()] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
 
     def header_parser(app, r: io.BlazeioProtocol, header: bytes):
-        r.headers = io.ddict()
+        r.headers = {}
         while header:
             if (idx := header.find(app.network_config.http.one_point_one.crlf)) == -1:
                 app.header_make(r, header)
