@@ -14,7 +14,6 @@ class Server:
             await r.ensure_reading()
 
         await r.ensure_reading()
-        chunk = r.__stream__[0]
 
         if r.__stream__:
             r.__stream__.clear()
