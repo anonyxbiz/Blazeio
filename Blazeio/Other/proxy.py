@@ -166,17 +166,85 @@ class MuxTransporter:
         if task:
             async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
 
+class PoolSession(io.BlazeioClient):
+    __slots__ = ("args", "kwargs", "acquires", "available", "context")
+    def __init__(app, *args, **kwargs):
+        app.args, app.kwargs = args, kwargs
+        app.acquires = 0
+        app.available = io.SharpEvent()
+        app.context = io.ioCondition()
+        super().__init__(*args, **kwargs)
+
+    async def __aenter__(app):
+        if (not hasattr(app, "transport")) or app.transport.is_closing():
+            await app.create_connection()
+
+        app.acquires += 1
+        app.available.clear()
+        async with app.context:
+            await app.context.wait()
+
+        return app
+
+    async def __aexit__(app, *args):
+        async with app.context:
+            app.acquires -= 1
+            app.available.set()
+            app.context.notify(1)
+
+        return False
+
+class Pool:
+    __slots__ = ("sessions", "max_conns", "max_contexts", "log", "max_instances")
+    def __init__(app, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = True, timeout: int = 3600, max_instances: int = 100):
+        app.sessions, app.max_conns, app.max_contexts, app.log, app.max_instances = io.ddict(), max_conns, max_contexts, log, max_instances
+
+    def get_instance(app, instances):
+        for instance in instances:
+            if instance.available.is_set():
+                if (not app.max_contexts) and instance.acquires >= 1: continue
+                return instance
+
+    def get(app, *args, **kwargs):
+        if not (instances := app.sessions.get(args)):
+            app.sessions[args] = (instances := [])
+            instances.append(instance := PoolSession(*args, **kwargs))
+        else:
+            if not (instance := app.get_instance(instances)):
+                if (not app.max_contexts) or (len(instances) < app.max_contexts):
+                    instances.append(instance := PoolSession(*args, **kwargs))
+                else:
+                    waiters = [i.context.waiter_count for i in instances]
+                    instance = instances[waiters.index(min(waiters))]
+
+        return instance
+
 class Transporter:
-    def __init__(app): ...
+    def __init__(app):
+        app.session_pool = Pool(0, 0)
 
     async def puller(app, r, resp):
         try:
             while (chunk := await r): await resp.push(chunk)
         except (io.CancelledError, RuntimeError):
-            r.close()
+            ...
+
+    async def direct_transporter(app, r, srv: io.ddict):
+        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
+            await resp.push(r.__miscellaneous__)
+
+            task = io.create_task(app.puller(r, resp))
+
+            async for chunk in resp:
+                if chunk:
+                    await r.writer(chunk)
+
+            if not task.done(): task.cancel()
+
+            await task
 
     async def transporter(app, r, srv: io.ddict):
-        async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
+        async with app.session_pool.get(srv.hostname, srv.port, ssl = None) as resp:
             await resp.push(r.__miscellaneous__)
 
             task = io.create_task(app.puller(r, resp))
@@ -345,7 +413,7 @@ class Server(Routes):
             app.update_protocol_event()
 
 class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
-    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "proxy_port", "web", "privileged_ips", "updaters_coordination", "ssutils_coordination", "min_parser", "max_protocol_header_buff_size")
+    __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "proxy_port", "web", "privileged_ips", "updaters_coordination", "ssutils_coordination", "min_parser", "max_protocol_header_buff_size", "session_pool")
     def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float((60**2)*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}, }), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0", max_protocol_header_buff_size: (int, io.Utype) = None):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
