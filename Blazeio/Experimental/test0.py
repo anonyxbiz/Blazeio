@@ -37,9 +37,6 @@ class Server:
         return canceller()
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
-        if r.cancel.__name__ == app.canceller_name:
-            r.cancel = lambda canceller = r.cancel, r = r: app.connection_closure(r, canceller)
-
         while not b'\r\n\r\n' in r.__buff__:
             await r.ensure_reading()
 
