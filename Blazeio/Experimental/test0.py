@@ -1,7 +1,7 @@
 # Blazeio.Experimental.test0.py
 import Blazeio as io
 
-io.INBOUND_CHUNK_SIZE = 4096
+io.INBOUND_CHUNK_SIZE = 1024*60
 
 web = io.App("0.0.0.0", 4096)
 
