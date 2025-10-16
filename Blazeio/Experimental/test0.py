@@ -14,7 +14,7 @@ class Server:
         return canceller()
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
-        if r.cancel.__name__ == app.canceller_name:
+        if r.cancel.__name__ == "cancel":
             r.cancel = lambda cancel = r.cancel, r = r: app.connection_closure(r, cancel)
 
         while not b'\r\n\r\n' in r.__buff__:
