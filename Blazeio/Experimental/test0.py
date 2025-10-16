@@ -14,9 +14,10 @@ class Server:
             await r.ensure_reading()
 
         if r.__stream__:
-            r.__stream__.clear() # empty the __stream__ so that we can resume reading
+            chunk = r.__stream__[0]
+            r.__stream__.clear() # empty the __stream__
         else:
-            await r.ensure_reading() # Wait for a chunk to be received
+            await r.ensure_reading() # Wait for a chunk to be received, but dont retrive it from the __stream__
 
         await r.writer(b"HTTP/1.1 200 OK\r\nContent-type: text/plain\r\nContent-length: 20\r\nContent-type: text/plain\r\nDate: Wed, 15 Oct 2025 19:43:47 GMT\r\nServer: Blazeio/2.7.3.7 (posix)\r\nConnection: keep-alive\r\n\r\n{'discovered': true}")
 
