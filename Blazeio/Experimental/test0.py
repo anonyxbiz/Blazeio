@@ -54,7 +54,7 @@ class Server:
         await r.writer(b"HTTP/1.1 200 OK\r\nContent-type: text/plain\r\nContent-length: 20\r\nContent-type: text/plain\r\nDate: Wed, 15 Oct 2025 19:43:47 GMT\r\nServer: Blazeio/2.7.3.7 (posix)\r\nConnection: keep-alive\r\n\r\n{'discovered': true}")
 
 class Main(Tester, Server):
-    def __init__(app, local: (bool, io.Utype, class_parser.Store) = io.debug_mode, server_log: (bool, io.Utype, class_parser.Store) = 1, conns: (int, io.Utype) = 1, requests: (int, io.Utype) = 10):
+    def __init__(app, local: (bool, io.Utype, class_parser.Store) = io.debug_mode, server_log: (bool, io.Utype) = 1, conns: (int, io.Utype) = 1, requests: (int, io.Utype) = 10):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
 
