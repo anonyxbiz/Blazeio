@@ -1,6 +1,7 @@
 from secrets import token_urlsafe
 from collections import deque, defaultdict, OrderedDict
 from asyncio import sleep
+from time import perf_counter
 
 class Dot_Dict_Base(dict):
     def __setattr__(app, key, value):
@@ -30,6 +31,54 @@ class DotDict(Dot_Dict_Base):
 
     def json(app):
         return app
+
+ddict = Dot_Dict
+
+class perf_timing:
+    __slots__ = ("elapsed", "rps", "_done")
+    def __init__(app):
+        app.initialize()
+
+    def initialize(app):
+        app.elapsed = perf_counter()
+        app.rps = 0
+        app._done = 0
+
+    def __call__(app):
+        app._done = 1
+        app.elapsed = float(perf_counter() - app.elapsed)
+        app.rps = float(1.0/float(app))
+        return app
+
+    def __float__(app):
+        return float(app.elapsed)
+
+    def __dict__(app):
+        if not app._done: app.__call__()
+        return ddict(elapsed = float(app), rps = app.rps)
+
+    def get(app):
+        if not app._done: app.__call__()
+        return ddict(elapsed = float(app), rps = app.rps)
+
+    def __int__(app):
+        return int(app.elapsed)
+
+    def __enter__(app):
+        if app._done: app.initialize()
+        return app
+
+    def __exit__(app, exc_t, exc_v, tb):
+        app.__call__()
+        return False
+
+    async def __aenter__(app):
+        if app._done: app.initialize()
+        return app
+
+    async def __aexit__(app, exc_t, exc_v, tb):
+        app.__call__()
+        return False
 
 class Multirouter:
     __slots__ = ("routes", "route_name")
@@ -158,8 +207,6 @@ def Dotify(_dict_=None, **kwargs):
     else:
         return _dict_
 
-ddict = Dot_Dict
-
 def add_defaults_to_parser(obj, parser, for_type):
     for arg_count, arg in enumerate(obj.__init__.__annotations__.keys()):
         arg_type = obj.__init__.__annotations__.get(arg)
@@ -238,6 +285,32 @@ class DictView:
 
     def pop(app, key, default=None):
         return app._dict.pop(app._capitalized.get(key), default)
+
+class dotdictView(Dot_Dict):
+    """
+        Perf: {'create': {'elapsed': 7.165299030020833e-05, 'rps': 13956.15166666802}, 'add_time': {'elapsed': 4.93460102006793e-05, 'rps': 20265.062888229895}, 'get_time': {'elapsed': 2.623099135234952e-05, 'rps': 38122.844332013}, 'pop_time': {'elapsed': 2.5153975002467632e-05, 'rps': 39755.148039301894}}
+    """
+    def __init__(app, *args, **kwargs):
+        object.__setattr__(app, "_capitalized", {i.capitalize(): i for i in kwargs})
+        super().__init__(*args, **kwargs)
+
+    def __contains__(app, key):
+        if key in app._capitalized:
+            return True
+        return False
+
+    def __setitem__(app, key, value):
+        if key in app._capitalized:
+            app.pop(key)
+        else:
+            app._capitalized[key.capitalize()] = key
+        super().__setitem__(key, value)
+
+    def get(app, key, default = None):
+        return super().get(app._capitalized.get(key), default)
+
+    def pop(app, key, default = None):
+        return super().pop(app._capitalized.get(key), default)
 
 def ensure_dumpable(json: dict):
     new = {}

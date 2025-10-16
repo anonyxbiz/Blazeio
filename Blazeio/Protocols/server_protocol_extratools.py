@@ -28,6 +28,7 @@ class ServerProtocolEssentials:
         app.__miscellaneous__ = None
         app.store = None
         app.__timeout__ = None
+        return app
 
     @classmethod
     def reset(cls, app):

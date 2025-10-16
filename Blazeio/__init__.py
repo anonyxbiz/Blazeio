@@ -175,7 +175,6 @@ class Handler(OOP_RouteDef):
 
         except Abort as e:
             await e.text(r)
-
         except (Err, ServerGotInTrouble) as e:
             await traceback_logger(e, frame = 4)
         except (ClientDisconnected, Eof, ServerDisconnected, CloseConnection):

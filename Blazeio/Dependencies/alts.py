@@ -671,52 +671,6 @@ def perf_timer(start = None):
         start = perf_counter()
     return lambda start = start: perf_counter() - start
 
-class perf_timing:
-    __slots__ = ("elapsed", "rps", "_done")
-    def __init__(app):
-        app.initialize()
-
-    def initialize(app):
-        app.elapsed = perf_counter()
-        app.rps = 0
-        app._done = 0
-
-    def __call__(app):
-        app._done = 1
-        app.elapsed = float(perf_counter() - app.elapsed)
-        app.rps = float(1.0/float(app))
-        return app
-
-    def __float__(app):
-        return float(app.elapsed)
-
-    def __dict__(app):
-        if not app._done: app.__call__()
-        return ddict(elapsed = float(app), rps = app.rps)
-
-    def get(app):
-        if not app._done: app.__call__()
-        return ddict(elapsed = float(app), rps = app.rps)
-
-    def __int__(app):
-        return int(app.elapsed)
-
-    def __enter__(app):
-        if app._done: app.initialize()
-        return app
-
-    def __exit__(app, exc_t, exc_v, tb):
-        app.__call__()
-        return False
-
-    async def __aenter__(app):
-        if app._done: app.initialize()
-        return app
-
-    async def __aexit__(app, exc_t, exc_v, tb):
-        app.__call__()
-        return False
-
 async def json_save(filepath: str, json: (bytes, dict, list), mode: str = "wb", *args, **kwargs):
     async with async_open(filepath, mode, *args) as f:
         if isinstance(json, (list, dict)):
