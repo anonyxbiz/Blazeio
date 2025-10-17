@@ -7,16 +7,26 @@ web = io.App("0.0.0.0", 6000, name = "web")
 
 class Utils:
     def __init__(app): ...
-
+    
+    def total_duration(app):
+        return sum([sum([request.duration for request in i.requests if isinstance(request.duration, (int, float))]) for i in app.analytics])/len(app.analytics)
+        
     def remaining_time(app):
-        if not app.perf_counter: return 1
-        return (app.d - (io.perf_counter() - app.perf_counter))
+        if not app.analytics: return app.d
+        return (app.d - app.total_duration())
 
+    def session_active(app):
+        return int(app.remaining_time())
+
+    def done(app):
+        return app.conns and all([conn.done() for conn in app.conns])
+        
     async def log_timing(app, lineno: int = 10):
         async with app.sync_serializer:
-            while int(remaining_time := app.remaining_time()):
-                await io.plog.yellow("<line_%d>" % lineno, "detail: Bench Running", "conns: %d" % len(app.conns), "remaining_time: %s" % remaining_time, func = app.log_timing)
-                await io.sleep(0.05)
+            while not app.done():
+                await io.plog.yellow("<line_%d>" % lineno, "detail: Bench Running", "conns: %d" % len(app.conns), "remaining_time: %s" % app.remaining_time(), func = app.log_timing)
+
+                await io.sleep(0.01)
 
 class Server:
     def __init__(app):
@@ -36,19 +46,19 @@ class Client:
 
         analytics = io.ddict(requests = [])
 
-        conn = await io.Session(app.url, prepare_http = False, send_headers = False, connect_only = True)
+        r = await io.Session(app.url, prepare_http = False, send_headers = False, connect_only = True)
 
-        r = conn
+        app.analytics.append(analytics)
 
-        while int(app.remaining_time()):
+        while app.session_active():
             if not app.runner_notified:
                 app.runner_notified = True
                 app.serializer.notify_all()
 
             analytics.requests.append(request := io.ddict(latency = io.perf_timing(), ttfb = io.perf_timing(), prepare = io.perf_timing(), request_info = io.ddict(), duration = io.perf_timing()))
-            
+
             if not app.is_local:
-                await conn.prepare(app.url, app.m, prepare_http = False)
+                await r.prepare(app.url, app.m, prepare_http = False)
             else:
                 await r.writer(b'%b /tests/io/get HTTP/1.1\r\nHost: %b\r\n\r\n' % (app.m.encode(), r.host.encode()))
                 r.status_code = 0
@@ -100,24 +110,24 @@ class Runner(Client, Utils):
             await app.serializer.wait()
             io.getLoop.create_task(app.log_timing())
 
-        app.perf_counter = io.perf_counter()
-
-        analytics = await io.gather(*app.conns)
+        async with io.perf_timing() as timer:
+            await io.gather(*app.conns)
 
         async with app.sync_serializer: ...
 
         await io.plog.cyan(io.anydumps(io.ddict(
             Concurrency_level = app.c,
-            **analytics[0].requests[0].request_info,
-            Total_requests = (Total_requests := sum([len(i.requests) for i in analytics])),
-            duration = (duration := sum([sum([request.duration for request in i.requests]) for i in analytics])/len(analytics)),
-            transferred_mbs = (transferred_mbs := sum([sum([request.transferred_bytes for request in i.requests]) for i in analytics])/(1024**2)),
+            **app.analytics[0].requests[0].request_info,
+            session_duration = timer.get().elapsed,
+            Total_requests = (Total_requests := sum([len(i.requests) for i in app.analytics])),
+            duration = (duration := app.total_duration()),
+            transferred_mbs = (transferred_mbs := sum([sum([request.transferred_bytes for request in i.requests]) for i in app.analytics])/(1024**2)),
             transfer_rate = (transferred_mbs/duration),
             Requests_per_second = (Total_requests/duration),
             Averages = io.ddict(**
                 {
                     metric: {
-                        metric_type: (sum([(sum([request.get(metric).get(metric_type) for request in i.requests])/len(i.requests)) for i in analytics])/len(analytics))
+                        metric_type: (sum([(sum([request.get(metric).get(metric_type) for request in i.requests])/len(i.requests)) for i in app.analytics])/len(app.analytics))
                         for metric_type in app.metric_types
                     }
                     for metric in app.request_metrics
@@ -129,13 +139,13 @@ class Runner(Client, Utils):
         raise KeyboardInterrupt()
 
 class Main(Server, Runner):
-    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified", "is_local")
+    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified", "is_local", "analytics")
     serializer = io.ioCondition()
     sync_serializer = io.ioCondition()
     request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
     metric_types = ("elapsed", "rps")
 
-    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, perf_counter: (None, io.Unone) = None):
+    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, analytics: (list, io.Unone) = []):
         io.set_from_args(app, locals(), (io.Utype, io.Unone))
         app.is_local = app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port))
         io.Super(app).__init__()
