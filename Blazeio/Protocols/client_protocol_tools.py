@@ -462,40 +462,15 @@ class StaticStuff:
     def __init__(app):
         ...
 
-class Parsers:
-    __slots__ = ()
+class Deprecated:
     prepare_http_sepr1 = b"\r\n"
     prepare_http_sepr2 = b": "
     prepare_http_header_end = b"\r\n\r\n"
-    handle_chunked_endsig =  b"0\r\n\r\n"
-    handle_chunked_sepr1 = b"\r\n"
     http_redirect_status_range = (300,301,302,304,305,306,307,308,309)
     http_startswith = b"HTTP"
 
-    def __init__(app): ...
-
-    def is_prepared(app): return True if app.status_code and app.handler else False
-    
-    def gen_headers(app, headers):
-        response_headers = Dot_Dict({})
-        while headers:
-            if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
-            else: header, headers = headers, b""
-
-            if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
-
-            key, value = header[:idx].decode().lower(), header[idx + len(app.prepare_http_sepr2):].decode()
-
-            if key in response_headers:
-                if not isinstance(response_headers[key], list):
-                    response_headers[key] = [response_headers[key]]
-
-                response_headers[key].append(value)
-                continue
-
-            response_headers[key] = value
-        
-        return response_headers
+    def __init__(app):
+        ...
 
     async def _prepare_http_old(app):
         if app.is_prepared(): return True
@@ -574,6 +549,63 @@ class Parsers:
             return await app.create_connection(*args, **kwargs)
 
         return True
+
+    def gen_headers(app, headers):
+        response_headers = Dot_Dict({})
+        while headers:
+            if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
+            else: header, headers = headers, b""
+
+            if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
+
+            key, value = header[:idx].decode().lower(), header[idx + len(app.prepare_http_sepr2):].decode()
+
+            if key in response_headers:
+                if not isinstance(response_headers[key], list):
+                    response_headers[key] = [response_headers[key]]
+
+                response_headers[key].append(value)
+                continue
+
+            response_headers[key] = value
+        
+        return response_headers
+
+    async def prepare_connect(app, method, headers):
+        buff, idx = memarray(), -1
+
+        async for chunk in app.protocol.pull():
+            buff.extend(chunk)
+
+            if (idx := buff.rfind(app.prepare_http_sepr1)) != -1: break
+
+        if (auth_header := "Proxy-Authorization") in headers: headers.pop(auth_header)
+
+        if app.proxy_port != 443 and app.port == 443:
+            retry_count = 0
+            max_retry_count = 2
+
+            while retry_count < max_retry_count:
+                try: app.protocol.transport = await app.loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname = app.host)
+                except ConnectionResetError: break
+                except Exception as e:
+                    await traceback_logger(e)
+
+                    retry_count += 1
+                    if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))
+                    continue
+
+                break
+
+        await app.protocol.push(ioConf.gen_payload(method, headers, app.path))
+
+class Parsers:
+    __slots__ = ()
+    handle_chunked_endsig =  b"0\r\n\r\n"
+    handle_chunked_sepr1 = b"\r\n"
+    def __init__(app): ...
+
+    def is_prepared(app): return True if app.status_code and app.handler else False
 
     async def _prepare_http(app):
         if app.is_prepared(): return True
@@ -656,34 +688,6 @@ class Parsers:
             app.protocol = None
             await app.prepare()
             return await app._prepare_http()
-
-    async def prepare_connect(app, method, headers):
-        buff, idx = memarray(), -1
-
-        async for chunk in app.protocol.pull():
-            buff.extend(chunk)
-
-            if (idx := buff.rfind(app.prepare_http_sepr1)) != -1: break
-
-        if (auth_header := "Proxy-Authorization") in headers: headers.pop(auth_header)
-
-        if app.proxy_port != 443 and app.port == 443:
-            retry_count = 0
-            max_retry_count = 2
-
-            while retry_count < max_retry_count:
-                try: app.protocol.transport = await app.loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname = app.host)
-                except ConnectionResetError: break
-                except Exception as e:
-                    await traceback_logger(e)
-
-                    retry_count += 1
-                    if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))
-                    continue
-
-                break
-
-        await app.protocol.push(ioConf.gen_payload(method, headers, app.path))
 
     async def handle_chunked(app):
         end, buff = False, memarray()
