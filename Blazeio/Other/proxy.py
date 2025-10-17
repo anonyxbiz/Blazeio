@@ -185,6 +185,7 @@ class Transporter:
 
             async for chunk in resp:
                 if chunk:
+                    await io.plog.yellow(chunk)
                     await r.writer(chunk)
 
             if not task.done(): task.cancel()
