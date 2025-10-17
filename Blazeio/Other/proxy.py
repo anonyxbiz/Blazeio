@@ -318,7 +318,7 @@ class Server(Routes):
         if app.is_from_home(r, server_hostname):
             if body: r.prepend(body)
 
-            if not route := app.web.declared_routes.get(r.headers.get("route", r.path)):
+            if not (route := app.web.declared_routes.get(r.headers.get("route", r.path))):
                 raise io.Abort("Not Found", 404)
 
             raise io.Eof(await route.get("func")(r))
