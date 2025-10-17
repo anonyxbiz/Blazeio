@@ -148,8 +148,6 @@ class MinParserClient:
 
             if (chunk := await r.protocol):
                 buff.extend(chunk)
-            else:
-                raise ClientGotInTrouble("Bad Request")
 
         if (body := app.parse(r, buff)):
             r.protocol.prepend(body)
