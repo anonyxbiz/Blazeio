@@ -306,6 +306,11 @@ class Server(Routes):
         body = await app.r_parser(r)
         app.protocol_count += 1
         r.identifier = app.protocol_count
+        sock = r.transport.get_extra_info("ssl_object")
+        r.__perf_counter__ = io.perf_counter()
+
+        r.headers["ip_host"] = str(r.ip_host)
+        r.headers["ip_port"] = str(r.ip_port)
 
         if sock:
             server_hostname = sock.context.server_hostname
@@ -320,12 +325,6 @@ class Server(Routes):
                 raise io.Abort("Not Found", 404)
 
             raise io.Eof(await route(r))
-
-        sock = r.transport.get_extra_info("ssl_object")
-        r.__perf_counter__ = io.perf_counter()
-
-        r.headers["ip_host"] = str(r.ip_host)
-        r.headers["ip_port"] = str(r.ip_port)
 
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
