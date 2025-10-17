@@ -74,11 +74,12 @@ class Client:
 
             request.ttfb = request.ttfb.get()
 
-            request.prepare_http = io.perf_timing()
+            request.http_parsing = io.perf_timing()
 
-            await r.prepare_http() # Receive chunks upto the http crlf that marks end of headers and build the request objects
+            # await io.MinParsers.client.aparse(r)
+            await r.prepare_http()
 
-            request.prepare_http = request.prepare_http.get()
+            request.http_parsing = request.http_parsing.get()
 
             request.request_info.path, request.request_info.server_software = r.path, r.headers.get("server")
 
@@ -93,7 +94,6 @@ class Client:
 
             request.latency = request.latency.get()
             request.duration = request.duration.get().elapsed
-            if r.status_code >= 400: break
 
         return analytics
 
@@ -146,7 +146,7 @@ class Main(Server, Runner):
     __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified", "is_local", "analytics", "perf_counter", "server_only")
     serializer = io.ioCondition()
     sync_serializer = io.ioCondition()
-    request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
+    request_metrics = ("prepare", "http_parsing", "ttfb_io", "ttfb", "body_io", "latency")
     metric_types = ("elapsed", "rps")
 
     def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, analytics: (list, io.Unone) = [], perf_counter: (int, io.Unone) = io.perf_counter(), server_only: (bool, int, class_parser.Store, io.Utype) = False):

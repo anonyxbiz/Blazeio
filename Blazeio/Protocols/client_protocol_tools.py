@@ -1,6 +1,7 @@
 from ..Dependencies.alts import *
 from ..Modules.request import *
 from ..Modules.streaming import ClientContext
+from ..Parsers.min_http_parser import *
 
 ssl_context = create_default_context()
 ssl_context.check_hostname = False
@@ -496,7 +497,7 @@ class Parsers:
         
         return response_headers
 
-    async def _prepare_http(app):
+    async def _prepare_http_old(app):
         if app.is_prepared(): return True
         buff, headers, idx, valid = memarray(), None, -1, False
 
@@ -572,6 +573,42 @@ class Parsers:
             kwargs["follow_redirects"] = True
             return await app.create_connection(*args, **kwargs)
 
+        return True
+
+    async def _prepare_http(app):
+        if app.is_prepared(): return True
+        if not app.protocol: raise ServerDisconnected()
+
+        await MinParsers.client.aparse(app)
+
+        if app.decode_resp:
+            if (encoding := app.response_headers.pop("content-encoding", None)):
+                if (decoder := getattr(app, "%s_decoder" % encoding, None)):
+                    app.decoder = decoder
+                else:
+                    app.decoder = None
+            else:
+                app.decoder = None
+
+        if app.auto_set_cookies:
+            if (Cookies := app.response_headers.get("set-cookie")):
+                splitter = "="
+                if not app.kwargs.get("cookies"):
+                    app.kwargs["cookies"] = {}
+
+                for cookie in Cookies:
+                    key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
+
+                    app.kwargs["cookies"][key] = val
+
+        if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.response_headers.get("location", None)):
+            if location.startswith("/"):
+                location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
+            if URL(location).host != app.host: app.protocol = None
+            args, kwargs = app.join_to_current_params(location)
+            kwargs["follow_redirects"] = True
+            return await app.create_connection(*args, **kwargs)
+        
         return True
 
     def raw_cookies(app):

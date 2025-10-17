@@ -81,7 +81,6 @@ class Handler(OOP_RouteDef):
         app.__main_handler__ = NotImplemented
         app.__default_handler__ = NotImplemented
         app.__default_parser__ = app.parse_default
-        app.__min_parser__ = MinParser()
 
     async def log_request(app, r):
         r.__perf_counter__ = perf_counter()
@@ -124,7 +123,7 @@ class Handler(OOP_RouteDef):
 
     async def parse_default(app, r, *args, **kwargs):
         buff = bytearray()
-        while not app.__min_parser__.network_config.http.one_point_one.dcrlf in buff:
+        while not MinParsers.server.network_config.http.one_point_one.dcrlf in buff:
             if len(buff) >= app.__server_config__["__http_request_max_buff_size__"]:
                 raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
             if (chunk := await r):
@@ -132,7 +131,7 @@ class Handler(OOP_RouteDef):
             else:
                 raise Abort("Bad Request", 400)
 
-        if (body := app.__min_parser__.parse(r, buff)):
+        if (body := MinParsers.server.parse(r, buff)):
             r.prepend(body)
 
         return r
