@@ -305,12 +305,9 @@ class Server(Routes):
         return app.min_parser.parse(r, r.__miscellaneous__)
 
     async def __main_handler__(app, r):
-        sock = None
         body = await app.r_parser(r)
         app.protocol_count += 1
         r.identifier = app.protocol_count
-        
-        raise io.Abort(io.anydumps(io.ddict(state = r.state(), transport = dir(r.transport))), 200, {"Content-type": "application/json"})
 
         if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
             server_hostname = server_hostname[:idx]
@@ -325,9 +322,6 @@ class Server(Routes):
 
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
-
-        if not sock and srv.server_config.enforce_https:
-            raise io.Abort("Permanent Redirect", 308, io.ddict(location = "https://%s:%s%s" % (server_hostname, io.Scope.args.get("port", 443), r.tail)))
 
         try:
             app.protocols[r.identifier] = r
