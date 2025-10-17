@@ -304,6 +304,8 @@ class Server(Routes):
     async def __main_handler__(app, r):
         sock = None
         body = await app.r_parser(r)
+        app.protocol_count += 1
+        r.identifier = app.protocol_count
 
         if sock:
             server_hostname = sock.context.server_hostname
@@ -320,8 +322,6 @@ class Server(Routes):
             raise io.Eof(await route(r))
 
         sock = r.transport.get_extra_info("ssl_object")
-        app.protocol_count += 1
-        r.identifier = app.protocol_count
         r.__perf_counter__ = io.perf_counter()
 
         r.headers["ip_host"] = str(r.ip_host)
