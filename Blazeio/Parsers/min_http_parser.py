@@ -34,7 +34,7 @@ class MinParser(HTTP):
                 r.headers[key] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
 
     def header_parser(app, r: BlazeioProtocol, header: bytes):
-        r.headers = {}
+        r.headers = ddict()
         while header:
             if (idx := header.find(app.network_config.http.one_point_one.crlf)) == -1:
                 app.header_make(r, header)
@@ -93,7 +93,7 @@ class MinParserClient(HTTP):
                 r.response_headers[key] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
 
     def header_parser(app, r: BlazeioProtocol, header: bytes):
-        r.response_headers = {}
+        r.response_headers = ddict()
         while header:
             if (idx := header.find(app.network_config.http.one_point_one.crlf)) == -1:
                 app.header_make(r, header)
@@ -148,7 +148,6 @@ class MinParserClient(HTTP):
             r.protocol.prepend(body)
         
         return r
-
 
 MinParsers = ddict(server = MinParser(), client = MinParserClient())
 
