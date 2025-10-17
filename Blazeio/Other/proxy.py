@@ -71,7 +71,7 @@ class Dbstuff:
                     async with app.updaters_coordination.sync:
                         app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
                         
-                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps(app.hosts, indent=1)[:102400])
+                        await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps({key: val.get("port") for key, val in app.hosts.items()}, indent=1)[:102400])
 
             await io.sleep(app.updaters_coordination.interval)
 
@@ -221,16 +221,13 @@ class Sutils:
             certfile, keyfile, logs = "/etc/letsencrypt/live/%s/fullchain.pem" % host, "/etc/letsencrypt/live/%s/privkey.pem" % host, ""
 
             if not io.path.exists(certfile) or not io.path.exists(keyfile):
-                cmd = "certbot certonly --standalone --domain %s" % host
-
-                proc = await app.run_subprocess_sync(cmd)
+                proc = await app.run_subprocess_sync("certbot certonly --standalone --domain %s" % host)
 
                 logs = "".join([proc.stdout.decode(), proc.stderr.decode()])
 
                 if not io.path.exists(certfile) or not io.path.exists(keyfile): raise io.Err("certficate not found")
 
-            certfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(certfile))
-            keyfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(keyfile))
+            certfile_cp, keyfile_cp = io.path.join(Path_manager.cert_dir, host + io.path.basename(certfile)), io.path.join(Path_manager.cert_dir, host + io.path.basename(keyfile))
     
             if not io.path.exists(certfile_cp) or not io.path.exists(keyfile_cp):
                 for parent, new in ((certfile, certfile_cp), (keyfile, keyfile_cp)):
@@ -250,11 +247,7 @@ class Routes:
             host["certfile"], host["keyfile"], host["server_config"]["certbot_logs"] = await app.from_certbot(hostname, int(host.get("port")))
 
         app.hosts.update(json)
-
         await app.update_file_db()
-
-        await io.plog.cyan("remote_webhook", "added: %s" % io.anydumps(json, indent=0))
-
         await io.Deliver.json(json)
 
     async def _discover(app, r: io.BlazeioProtocol):
@@ -392,6 +385,7 @@ class WebhookClient:
             "certfile": certfile,
             "keyfile": keyfile,
             "server_address": "%s://%s:%d" % ("https" if ssl else "http", host,  int(state.get("Blazeio.Other.proxy.port"))),
+            "perf_counter": io.perf_counter,
             "server_config": {
                 "multiplexed": multiplexed,
                 "enforce_https": enforce_https
