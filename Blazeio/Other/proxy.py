@@ -237,10 +237,6 @@ class Sutils:
                     await io.asave(new, await io.aread(parent))
 
             return (certfile_cp, keyfile_cp, logs)
-    
-    def certbot_srv(app, r: io.BlazeioProtocol, server_hostname: str):
-        if 1:#"https://www.letsencrypt.org" in r.headers.get("User-agent"):
-            return app.hosts.get("lets_encrypt")
 
 class Routes:
     def __init__(app): ...
@@ -320,12 +316,9 @@ class Server(Routes):
 
             if not (route := app.web.declared_routes.get(r.path)):
                 raise io.Abort("Not Found", 404)
-
             raise io.Eof(await route.get("func")(r))
-        
-        await io.plog.yellow(io.anydumps(r.headers))
 
-        if not (srv := (app.hosts.get(server_hostname) or app.wildcard_srv(server_hostname) or app.certbot_srv(r, server_hostname))):
+        if not (srv := (app.hosts.get(server_hostname) or app.wildcard_srv(server_hostname))):
             raise io.Abort("Server could not be found", 503)
 
         try:
@@ -343,7 +336,7 @@ class Server(Routes):
 
 class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "proxy_port", "web", "privileged_ips", "updaters_coordination", "ssutils_coordination", "min_parser", "max_protocol_header_buff_size")
-    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float((60**2)*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}, "lets_encrypt": io.ddict(hostname = "127.0.0.1", port = 81, server_config = io.ddict(multiplexed = False, enforce_https = False))}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0", max_protocol_header_buff_size: (int, io.Utype) = None):
+    def __init__(app, blazeio_proxy_hosts: (str, io.Utype) = "blazeio_proxy_hosts.txt", timeout: (int, io.Utype) = float((60**2)*10), log: (bool, io.Utype) = False, track_metrics: (bool, io.Utype) = True, proxy_port: (bool, int, io.Utype) = None, protocols: (dict, io.Utype) = io.ddict(), protocol_count: (int, io.Utype) = 0, tasks: (list, io.Utype) = [], protocol_update_event: (io.SharpEvent, io.Utype) = io.SharpEvent(), host_update_cond: (io.ioCondition, io.Utype) = io.ioCondition(), hosts: (dict, io.Utype) = io.Dotify({scope.server_name: {}}), ssl: (bool, io.Utype) = False, keepalive: (bool, io.Utype) = True, web: (io.App, io.Utype) = None, privileged_ips: (str, io.Utype) = "0.0.0.0", max_protocol_header_buff_size: (int, io.Utype) = None):
         io.set_from_args(app, locals(), io.Utype)
         io.Super(app).__init__()
         app.privileged_ips = tuple(["127.0.0.1", *app.privileged_ips.split(",")])
