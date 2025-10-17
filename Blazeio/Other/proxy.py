@@ -171,9 +171,7 @@ class Transporter:
 
     async def puller(app, r, resp):
         try:
-            while (chunk := await r):
-                await io.plog.yellow(chunk)
-                await resp.push(chunk)
+            while (chunk := await r): await resp.push(chunk)
         except (io.CancelledError, RuntimeError):
             r.close()
 
@@ -185,7 +183,6 @@ class Transporter:
 
             async for chunk in resp:
                 if chunk:
-                    await io.plog.yellow(chunk)
                     await r.writer(chunk)
 
             if not task.done(): task.cancel()
@@ -326,7 +323,7 @@ class Server(Routes):
 
             raise io.Eof(await route.get("func")(r))
 
-        if not (srv := (app.hosts.get(server_hostname) or app.wildcard_srv(server_hostname) or app.certbot_srv(r, server_hostname))) or not (remote := srv.get("remote")):
+        if not (srv := (app.hosts.get(server_hostname) or app.wildcard_srv(server_hostname) or app.certbot_srv(r, server_hostname))):
             raise io.Abort("Server could not be found", 503)
 
         try:
