@@ -36,7 +36,9 @@ class Client:
 
         analytics = io.ddict(requests = [])
 
-        conn = io.Session(app.url, prepare_http = False, send_headers = False, connect_only = True)
+        conn = await io.Session(app.url, prepare_http = False, send_headers = False, connect_only = True)
+
+        r = conn
 
         while int(app.remaining_time()):
             if not app.runner_notified:
@@ -44,8 +46,12 @@ class Client:
                 app.serializer.notify_all()
 
             analytics.requests.append(request := io.ddict(latency = io.perf_timing(), ttfb = io.perf_timing(), prepare = io.perf_timing(), request_info = io.ddict(), duration = io.perf_timing()))
-
-            r = await conn.prepare((app.url % "/tests/io/get") if app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) else app.url, app.m.upper(), prepare_http = False) # Convert the objects into a http/1.1 request and send it without preparing the response — No I/O involved here.
+            
+            if not app.is_local:
+                await conn.prepare(app.url, app.m, prepare_http = False)
+            else:
+                await r.writer(b'%b /tests/io/get HTTP/1.1\r\nHost: %b\r\n\r\n' % (app.m.encode(), r.host.encode()))
+                r.status_code = 0
 
             request.prepare = request.prepare.get()
 
@@ -91,8 +97,8 @@ class Runner(Client, Utils):
         async with app.serializer:
             for i in range(app.c):
                 app.conns.append(io.getLoop.create_task(app.client(i)))
-            io.getLoop.create_task(app.log_timing())
             await app.serializer.wait()
+            io.getLoop.create_task(app.log_timing())
 
         app.perf_counter = io.perf_counter()
 
@@ -122,7 +128,7 @@ class Runner(Client, Utils):
         raise KeyboardInterrupt()
 
 class Main(Server, Runner):
-    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified")
+    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified", "is_local")
     serializer = io.ioCondition()
     sync_serializer = io.ioCondition()
     request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
@@ -130,6 +136,7 @@ class Main(Server, Runner):
 
     def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, perf_counter: (None, io.Unone) = None):
         io.set_from_args(app, locals(), (io.Utype, io.Unone))
+        app.is_local = app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port))
         io.Super(app).__init__()
 
 if __name__ == "__main__":
