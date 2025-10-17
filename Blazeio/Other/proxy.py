@@ -281,9 +281,6 @@ class Protocolmanagers:
                 if not (r := app.protocols.get(i)): continue
 
                 if app.log: await app.logger(r, i)
-                
-                if not hasattr(r, "__perf_counter__"):
-                    r.__perf_counter__ = io.perf_counter()
 
                 if (elapsed := float(io.perf_counter() - r.__perf_counter__)) >= app.timeout:
                     r.cancel(str(io.Protocoltimeout()))
@@ -305,9 +302,11 @@ class Server(Routes):
         return app.min_parser.parse(r, r.__miscellaneous__)
 
     async def __main_handler__(app, r):
-        body = await app.r_parser(r)
         app.protocol_count += 1
         r.identifier = app.protocol_count
+        r.__perf_counter__ = io.perf_counter()
+
+        body = await app.r_parser(r)
 
         if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
             server_hostname = server_hostname[:idx]
