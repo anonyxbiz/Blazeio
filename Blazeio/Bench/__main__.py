@@ -10,10 +10,10 @@ class Utils:
     
     def total_duration(app):
         return sum([sum([request.duration for request in i.requests if isinstance(request.duration, (int, float))]) for i in app.analytics])/len(app.analytics)
-        
+
     def remaining_time(app):
         if not app.analytics: return app.d
-        return (app.d - app.total_duration())
+        return (app.d - (io.perf_counter() - app.perf_counter))
 
     def session_active(app):
         return int(app.remaining_time())
@@ -26,7 +26,7 @@ class Utils:
             while not app.done():
                 await io.plog.yellow("<line_%d>" % lineno, "detail: Bench Running", "conns: %d" % len(app.conns), "remaining_time: %s" % app.remaining_time(), func = app.log_timing)
 
-                await io.sleep(0.01)
+                await io.sleep(0.05)
 
 class Server:
     def __init__(app):
@@ -109,6 +109,8 @@ class Runner(Client, Utils):
                 app.conns.append(io.getLoop.create_task(app.client(i)))
             await app.serializer.wait()
             io.getLoop.create_task(app.log_timing())
+        
+        app.perf_counter = io.perf_counter()
 
         async with io.perf_timing() as timer:
             await io.gather(*app.conns)
@@ -139,13 +141,13 @@ class Runner(Client, Utils):
         raise KeyboardInterrupt()
 
 class Main(Server, Runner):
-    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified", "is_local", "analytics")
+    __slots__ = ("c", "d", "payload_size", "url", "m", "payload", "serialize_connections", "conns", "writes", "runner_notified", "is_local", "analytics", "perf_counter")
     serializer = io.ioCondition()
     sync_serializer = io.ioCondition()
     request_metrics = ("prepare", "prepare_http", "ttfb_io", "ttfb", "body_io", "latency")
     metric_types = ("elapsed", "rps")
 
-    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, analytics: (list, io.Unone) = []):
+    def __init__(app, url: (str, io.Utype) = ("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port)) + "%s", c: (int, io.Utype) = 100, d: (int, io.Utype) = 10, m: (str, io.Utype) = "get", payload_size: (int, io.Utype) = 1024, writes: (int, io.Utype) = 1, conns: (list, io.Unone) = [], serialize_connections: (bool, io.Utype) = True, analytics: (list, io.Unone) = [], perf_counter: (int, io.Unone) = io.perf_counter()):
         io.set_from_args(app, locals(), (io.Utype, io.Unone))
         app.is_local = app.url.startswith("http://%s:%d" % (web.ServerConfig.host, web.ServerConfig.port))
         io.Super(app).__init__()
