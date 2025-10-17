@@ -340,7 +340,6 @@ class Server(Routes):
         finally:
             app.protocols.pop(r.identifier, None)
             app.update_protocol_event()
-            r.close()
 
 class Proxy(Taskmanager, Dbstuff, Sslproxy, Transporter, MuxTransporter, Sutils, Protocolmanagers, Server):
     __slots__ = ("hosts", "tasks", "protocols", "protocol_count", "host_update_cond", "protocol_update_event", "timeout", "blazeio_proxy_hosts", "log", "track_metrics", "ssl", "ssl_configs", "cert_dir", "ssl_contexts", "__conn__", "__serialize__", "keepalive", "proxy_port", "web", "privileged_ips", "updaters_coordination", "ssutils_coordination", "min_parser", "max_protocol_header_buff_size")
