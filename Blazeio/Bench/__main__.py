@@ -107,9 +107,13 @@ class Runner(Client, Utils):
         async with app.sync_serializer: ...
 
         await io.plog.cyan(io.anydumps(io.ddict(
-            Total_requests = (Total_requests := sum([len(i.requests) for i in analytics])),
             Concurrency_level = app.c,
             **analytics[0].requests[0].request_info,
+            Total_requests = (Total_requests := sum([len(i.requests) for i in analytics])),
+            duration = (duration := sum([sum([request.duration for request in i.requests]) for i in analytics])/len(analytics)),
+            transferred_mbs = (transferred_mbs := sum([sum([request.transferred_bytes for request in i.requests]) for i in analytics])/(1024**2)),
+            transfer_rate = (transferred_mbs/duration),
+            Requests_per_second = (Total_requests/duration),
             Averages = io.ddict(**
                 {
                     metric: {
@@ -117,10 +121,7 @@ class Runner(Client, Utils):
                         for metric_type in app.metric_types
                     }
                     for metric in app.request_metrics
-                },
-                duration = (duration := sum([sum([request.duration for request in i.requests]) for i in analytics])/len(analytics)),
-                transferred_mbs = (transferred_mbs := sum([sum([request.transferred_bytes for request in i.requests]) for i in analytics])/(1024**2)),
-                transfer_rate = (transferred_mbs/duration)
+                }
             ),
         )), func = app.runner)
 
