@@ -295,6 +295,7 @@ class Server(Routes):
             if len(r.__miscellaneous__) >= app.max_protocol_header_buff_size:
                 raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
             if (chunk := await r):
+                await io.plog.yellow(chunk)
                 r.__miscellaneous__.extend(chunk)
             else:
                 raise io.Abort("Bad Request", 400)
