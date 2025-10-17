@@ -171,18 +171,23 @@ class Transporter:
 
     async def puller(app, r, resp):
         try:
-            while (chunk := await r): await resp.push(chunk)
+            await io.plog.yellow(r.__miscellaneous__)
+            await resp.push(r.__miscellaneous__)
+
+            while (chunk := await r):
+                await io.plog.yellow(chunk)
+                await resp.push(chunk)
+
         except (io.CancelledError, RuntimeError):
             r.close()
 
     async def transporter(app, r, srv: io.ddict):
         async with io.BlazeioClient(srv.hostname, srv.port, ssl = None) as resp:
-            await resp.push(r.__miscellaneous__)
-
             task = io.create_task(app.puller(r, resp))
 
             async for chunk in resp:
                 if chunk:
+                    await io.plog.b_yellow(chunk)
                     await r.writer(chunk)
 
             if not task.done(): task.cancel()
