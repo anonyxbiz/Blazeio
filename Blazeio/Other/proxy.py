@@ -310,7 +310,7 @@ class Server(Routes):
         app.protocol_count += 1
         r.identifier = app.protocol_count
         
-        raise io.Abort(io.anydumps(io.ddict(state = r.state(), transport = r.transport.__name__)), 200, {"Content-type": "application/json"})
+        raise io.Abort(io.anydumps(io.ddict(state = r.state(), transport = dir(r.transport))), 200, {"Content-type": "application/json"})
 
         if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
             server_hostname = server_hostname[:idx]
