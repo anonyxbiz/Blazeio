@@ -297,7 +297,7 @@ class Server(Routes):
             if (chunk := await r):
                 r.__miscellaneous__.extend(chunk)
             else:
-                raise raise io.Abort("Bad Request", 400)
+                raise io.Abort("Bad Request", 400)
 
         return app.min_parser.parse(r, r.__miscellaneous__)
 
