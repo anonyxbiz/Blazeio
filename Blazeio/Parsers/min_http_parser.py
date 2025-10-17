@@ -26,7 +26,7 @@ class MinParser(HTTP):
 
     def header_make(app, r: BlazeioProtocol, header: bytes):
         if (idx := header.find(app.network_config.http.one_point_one.headers.delimiter)) != -1:
-            if (key := header[:idx].decode().lower()) in r.headers:
+            if (key := header[:idx].decode().capitalize()) in r.headers:
                 if not isinstance(r.headers, list):
                     r.headers[key] = list(r.headers)
                 r.headers[key].append(header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode())
