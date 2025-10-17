@@ -294,7 +294,10 @@ class Server(Routes):
         while not app.min_parser.network_config.http.one_point_one.dcrlf in r.__miscellaneous__:
             if len(r.__miscellaneous__) >= app.max_protocol_header_buff_size:
                 raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
-            if (chunk := await r): r.__miscellaneous__.extend(chunk)
+            if (chunk := await r):
+                r.__miscellaneous__.extend(chunk)
+            else:
+                raise raise io.Abort("Bad Request", 400)
 
         return app.min_parser.parse(r, r.__miscellaneous__)
 
