@@ -394,7 +394,8 @@ class WebhookClient:
 
         if not ow and state.get("hosts"):
             srv = state["hosts"].get(host, {})
-            host_data_ref = io.ddict(host_data)
+            srv_ref = io.ddict({key: val for key, val in srv.items() if key in ("hostname", "port", "from_certbot", "remote", "certfile", "keyfile", "server_address", "server_config")})
+            host_data_ref = io.ddict({key: val for key, val in host_data.items() if key in ("hostname", "port", "from_certbot", "remote", "certfile", "keyfile", "server_address", "server_config")})
 
             if from_certbot and srv:
                 for i in ("certfile", "keyfile"):
@@ -403,7 +404,7 @@ class WebhookClient:
                 if (certbot_logs := srv["server_config"].get("certbot_logs")) is not None:
                     host_data_ref["server_config"]["certbot_logs"] = certbot_logs
 
-            if io.anydumps(srv) == io.anydumps(host_data_ref): return host_data
+            if io.anydumps(srv_ref) == io.anydumps(host_data_ref): return host_data
 
         async with io.getSession.post("%s://127.0.0.1:%d/remote/webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": state.get("server_name")}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
             if not ow: await io.plog.cyan("Proxy.add_to_proxy", await session.text())
