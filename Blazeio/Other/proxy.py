@@ -70,7 +70,7 @@ class Dbstuff:
                     app.updaters_coordination.previous_size = size
                     async with app.updaters_coordination.sync:
                         app.hosts.update(io.Dotify(io.loads(await io.aread(app.blazeio_proxy_hosts))))
-                        
+
                         await io.plog.cyan("loaded hosts from: %s" % app.blazeio_proxy_hosts, io.anydumps({key: val.get("port") for key, val in app.hosts.items()}, indent=1)[:102400])
 
             await io.sleep(app.updaters_coordination.interval)
