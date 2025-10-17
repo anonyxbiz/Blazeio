@@ -314,7 +314,7 @@ class Server(Routes):
         if app.is_from_home(r, server_hostname):
             if body: r.prepend(body)
 
-            if not (route := app.web.declared_routes.get(r.headers.get("route", r.path))):
+            if not (route := app.web.declared_routes.get(r.path)):
                 raise io.Abort("Not Found", 404)
 
             raise io.Eof(await route.get("func")(r))
@@ -412,7 +412,7 @@ class WebhookClient:
 
             if io.anydumps(srv) == io.anydumps(host_data_ref): return host_data
 
-        async with io.getSession.post("%s://127.0.0.1:%d/remote_webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": state.get("server_name"), "route": "/remote_webhook"}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
+        async with io.getSession.post("%s://127.0.0.1:%d/remote/webhook" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), {"host": state.get("server_name")}, json = {host: host_data}, ssl = ssl, add_host = False) as session:
             if not ow: await io.plog.cyan("Proxy.add_to_proxy", await session.text())
 
         return host_data
@@ -425,7 +425,7 @@ class WebhookClient:
             state = app.get_state()
 
             ssl = io.ssl_context if state.get("Blazeio.Other.proxy.ssl") else None
-            async with io.getSession("%s://127.0.0.1:%d/discover" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), "get", headers = {"host": state.get("server_name"), "route": "/discover"}, ssl = ssl, add_host = False) as session:
+            async with io.getSession("%s://127.0.0.1:%d/discover" % ("https" if ssl else "http", int(state.get("Blazeio.Other.proxy.port"))), "get", headers = {"host": state.get("server_name")}, ssl = ssl, add_host = False) as session:
                 app.availablity = await session.data()
 
         except (OSError, io.Errdetail):
