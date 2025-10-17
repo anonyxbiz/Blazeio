@@ -127,7 +127,8 @@ class Handler(OOP_RouteDef):
         while not app.__min_parser__.network_config.http.one_point_one.dcrlf in buff:
             if len(buff) >= app.__server_config__["__http_request_max_buff_size__"]:
                 raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
-            buff.extend(await r)
+            if (chunk := await r):
+                buff.extend(chunk)
 
         if (body := app.__min_parser__.parse(r, buff)):
             r.prepend(body)
