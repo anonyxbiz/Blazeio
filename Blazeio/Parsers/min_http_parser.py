@@ -3,14 +3,14 @@ __all__ = ("MinParser", "MinParserClient", "MinParsers")
 from ..Dependencies import *
 from ..Dependencies.alts import *
 
-class MinParser:
+class HTTP:
     __slots__ = ()
     network_config = ddict(
         http = ddict(
             one_point_one = ddict(
                 crlf = b"\r\n",
                 dcrlf = b"\r\n\r\n",
-                start = b"HTTP/1.1",
+                protocol = b"HTTP/1.1",
                 initial_delimiter = b' ',
                 methods = (b"GET", b"HEAD", b"POST", b"PUT", b"DELETE", b"CONNECT", b"OPTIONS", b"TRACE", b"PATCH"),
                 headers = ddict(
@@ -20,6 +20,8 @@ class MinParser:
         )
     )
 
+class MinParser(HTTP):
+    __slots__ = ()
     def __init__(app): ...
 
     def header_make(app, r: BlazeioProtocol, header: bytes):
@@ -72,23 +74,8 @@ class MinParser:
         app.set_method(r, header)
         return body
 
-class MinParserClient:
+class MinParserClient(HTTP):
     __slots__ = ("max_buff_size",)
-    network_config = ddict(
-        http = ddict(
-            one_point_one = ddict(
-                crlf = b"\r\n",
-                dcrlf = b"\r\n\r\n",
-                start = b"HTTP/1.1",
-                initial_delimiter = b' ',
-                methods = (b"GET", b"HEAD", b"POST", b"PUT", b"DELETE", b"CONNECT", b"OPTIONS", b"TRACE", b"PATCH"),
-                headers = ddict(
-                    delimiter = b': ',
-                )
-            )
-        )
-    )
-
     def __init__(app, max_buff_size: int = 102400): set_from_args(app, locals(), int)
 
     def header_make(app, r: BlazeioProtocol, header: bytes):
@@ -148,6 +135,9 @@ class MinParserClient:
 
             if (chunk := await r.protocol):
                 buff.extend(chunk)
+
+        if (idx := buff.find(app.network_config.http.one_point_one.protocol)) == -1:
+            raise ClientGotInTrouble("Bad Request: %s" % str(buff))
 
         if (body := app.parse(r, buff)):
             r.protocol.prepend(body)
