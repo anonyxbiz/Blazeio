@@ -281,7 +281,10 @@ class Protocolmanagers:
                 if not (r := app.protocols.get(i)): continue
 
                 if app.log: await app.logger(r, i)
-    
+                
+                if not hasattr(r, "__perf_counter__"):
+                    r.__perf_counter__ = io.perf_counter()
+
                 if (elapsed := float(io.perf_counter() - r.__perf_counter__)) >= app.timeout:
                     r.cancel(str(io.Protocoltimeout()))
                     app.protocols.pop(r.identifier)
@@ -306,25 +309,19 @@ class Server(Routes):
         body = await app.r_parser(r)
         app.protocol_count += 1
         r.identifier = app.protocol_count
-        sock = r.transport.get_extra_info("ssl_object")
-        r.__perf_counter__ = io.perf_counter()
+        
+        raise io.Abort(io.anydumps(r.state()))
 
-        r.headers["ip_host"] = str(r.ip_host)
-        r.headers["ip_port"] = str(r.ip_port)
-
-        if sock:
-            server_hostname = sock.context.server_hostname
-        else:
-            if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
-                server_hostname = server_hostname[:idx]
+        if (idx := (server_hostname := r.headers.get("Host", "")).rfind(":")) != -1:
+            server_hostname = server_hostname[:idx]
 
         if app.is_from_home(r, server_hostname):
             if body: r.prepend(body)
 
-            if not (route := getattr(app, r.headers.get("route", r.path.replace("/", "_")), None)):
+            if not route := app.web.declared_routes.get(r.headers.get("route", r.path)):
                 raise io.Abort("Not Found", 404)
 
-            raise io.Eof(await route(r))
+            raise io.Eof(await route.get("func")(r))
 
         if not (srv := app.hosts.get(server_hostname, app.wildcard_srv(server_hostname))) or not (remote := srv.get("remote")):
             raise io.Abort("Server could not be found", 503)
