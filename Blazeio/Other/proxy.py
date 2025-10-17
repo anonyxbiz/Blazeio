@@ -385,7 +385,7 @@ class WebhookClient:
             "certfile": certfile,
             "keyfile": keyfile,
             "server_address": "%s://%s:%d" % ("https" if ssl else "http", host,  int(state.get("Blazeio.Other.proxy.port"))),
-            "perf_counter": io.perf_counter,
+            "perf_counter": io.perf_counter(),
             "server_config": {
                 "multiplexed": multiplexed,
                 "enforce_https": enforce_https
@@ -436,7 +436,6 @@ class Runner:
         app.args = io.ddict()
         io.set_from_args(app, locals(), io.Utype, app.args)
         io.INBOUND_CHUNK_SIZE, io.OUTBOUND_CHUNK_SIZE = app.args.INBOUND_CHUNK_SIZE, app.args.OUTBOUND_CHUNK_SIZE
-
         scope.access_key = app.args.access_key
 
     def __enter__(app):
