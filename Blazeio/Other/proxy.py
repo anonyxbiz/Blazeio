@@ -329,7 +329,6 @@ class Server(Routes):
                 await app.mux_transporter(r, srv)
             else:
                 await app.transporter(r, srv)
-            r.close()
         except OSError:
             raise io.Abort("Service Unavailable", 500)
         finally:
