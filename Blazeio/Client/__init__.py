@@ -488,7 +488,9 @@ class __SessionPool__:
 
     async def ensure_connected(app, url, session):
         await session.__aenter__(create_connection = False)
-        await session.prepare(url, "HEAD", {})
+        await session.protocol.writer(b'HEAD / HTTP/1.1\r\nHost: %b\r\n\r\n' % session.host.encode())
+        await session.protocol.ensure_reading()
+        session.prepare.__stream__.clear()
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
