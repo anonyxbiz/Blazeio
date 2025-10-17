@@ -244,7 +244,7 @@ class Sutils:
             return (certfile_cp, keyfile_cp, logs)
     
     def certbot_srv(app, r: io.BlazeioProtocol, server_hostname: str):
-        if "https://www.letsencrypt.org" in r.headers.get("User-agent"):
+        if 1:#"https://www.letsencrypt.org" in r.headers.get("User-agent"):
             return app.hosts.get("lets_encrypt")
 
 class Routes:
@@ -327,6 +327,8 @@ class Server(Routes):
                 raise io.Abort("Not Found", 404)
 
             raise io.Eof(await route.get("func")(r))
+        
+        await io.plog.yellow(io.anydumps(r.headers))
 
         if not (srv := (app.hosts.get(server_hostname) or app.wildcard_srv(server_hostname) or app.certbot_srv(r, server_hostname))):
             raise io.Abort("Server could not be found", 503)
