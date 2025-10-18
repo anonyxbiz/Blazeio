@@ -156,6 +156,8 @@ class MinParserClient(HTTP):
         if app.network_config.http.one_point_one.dcrlf in buff:
             if (body := app.parse(r, buff)):
                 r.protocol.prepend(body)
+        else:
+            await plog.yellow(buff)
         
         return r
 
