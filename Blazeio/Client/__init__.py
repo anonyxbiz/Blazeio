@@ -489,7 +489,6 @@ class __SessionPool__:
     async def ensure_connected(app, url, session):
         await session.__aenter__(create_connection = False)
         await session.prepare(url, "HEAD", {})
-        await session.prepare_http()
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
@@ -514,7 +513,7 @@ class __SessionPool__:
             instance.session.protocol = None
         
         if app.should_ensure_connected:
-            if method not in Session.NON_BODIED_HTTP_METHODS:
+            if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
                 await app.ensure_connected(url, instance.session)
 
         return instance.session
