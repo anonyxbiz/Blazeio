@@ -137,8 +137,6 @@ class MinParserClient(HTTP):
         buff = bytearray()
         valid = False
 
-        if not r.protocol or r.protocol.transport.is_closing(): raise ServerDisconnected()
-
         while True:
             if (chunk := await r.protocol):
                 buff.extend(chunk)

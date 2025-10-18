@@ -599,7 +599,7 @@ class Deprecated:
 
         await app.protocol.push(ioConf.gen_payload(method, headers, app.path))
 
-class Parsers(Deprecated):
+class Parsers:
     __slots__ = ()
     handle_chunked_endsig =  b"0\r\n\r\n"
     handle_chunked_sepr1 = b"\r\n"
@@ -682,7 +682,7 @@ class Parsers(Deprecated):
         return (args, kwargs)
 
     async def prepare_http(app):
-        await app._prepare_http_old()
+        await app._prepare_http()
 
         if app.status_code == 0:
             app.protocol = None
