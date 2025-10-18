@@ -449,6 +449,8 @@ class __SessionPool__:
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
+        await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
+
         async with instance.context:
             instance.acquires -= 1
             instance.available.set()
@@ -494,8 +496,6 @@ class __SessionPool__:
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
-        
-        await plog.yellow(host, port, path)
 
         if not (instances := app.sessions.get(key := (host, port))):
             app.sessions[key] = (instances := [])
@@ -510,17 +510,13 @@ class __SessionPool__:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
-        await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
-
-        async with instance.context:
-            await instance.context.wait()
-
         if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing():
-            ...
+            async with instance.context:
+                await instance.context.wait()
         else:
             instance.session.protocol = None
 
-        if 0 and app.should_ensure_connected:
+        if app.should_ensure_connected:
             if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
                 await app.ensure_connected(url, instance.session)
 
