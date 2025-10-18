@@ -151,7 +151,9 @@ class MinParserClient(HTTP):
             
             if app.network_config.http.one_point_one.dcrlf in buff: break
 
-            if len(buff) >= app.max_buff_size: raise ClientGotInTrouble("headers exceeded the max_buff_size")
+            if len(buff) >= app.max_buff_size:
+                await plog.yellow(buff)
+                raise ClientGotInTrouble("headers exceeded the max_buff_size")
         
         if app.network_config.http.one_point_one.dcrlf in buff:
             if (body := app.parse(r, buff)):
