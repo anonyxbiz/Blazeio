@@ -489,6 +489,7 @@ class __SessionPool__:
     async def ensure_connected(app, url, session):
         await session.__aenter__(create_connection = False)
         await session.prepare(url, "HEAD", {})
+        await session.prepare_http()
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
