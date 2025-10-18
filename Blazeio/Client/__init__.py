@@ -499,15 +499,13 @@ class __SessionPool__:
                 if (not app.max_contexts) or (len(instances) < app.max_contexts):
                     instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
 
-                    if app.log:
-                        await plog.b_red(dumps(ddict({host: ddict(detail= "New connection created", host = host, port = port, connections = len(instances)), "connections": sum(len(session) for i, session in app.sessions.items())})))
+                    await plog.b_red(dumps(ddict({host: ddict(detail= "New connection created", host = host, port = port, connections = len(instances)), "connections": sum(len(session) for i, session in app.sessions.items())})))
                 else:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
         if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing():
-            async with instance.context:
-                await instance.context.wait()
+            ...
         else:
             instance.session.protocol = None
 
