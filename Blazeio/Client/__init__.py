@@ -507,19 +507,21 @@ class __SessionPool__:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
+        async with instance.context:
+            await instance.context.wait()
+
         if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing():
-            async with instance.context:
-                await instance.context.wait()
+            ...
         else:
             instance.session.protocol = None
         
+        instance.session.protocol = None
+        
         await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
 
-        if app.should_ensure_connected:
+        if 0 and app.should_ensure_connected:
             if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
                 await app.ensure_connected(url, instance.session)
-
-        # await app.ensure_connected(url, instance.session)
 
         return instance.session
 
