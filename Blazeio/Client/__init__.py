@@ -516,7 +516,8 @@ class __SessionPool__:
             instance.session.protocol = None
         
         instance.session.protocol = None
-        
+        instance.session.on_exit_callback = (app.release, instance)
+
         await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
 
         if 0 and app.should_ensure_connected:
