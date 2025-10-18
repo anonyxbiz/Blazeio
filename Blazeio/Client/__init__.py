@@ -449,11 +449,10 @@ class __SessionPool__:
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
-        async with instance.context:
-            instance.acquires -= 1
-            instance.available.set()
-            instance.perf_counter = perf_counter()
-            instance.context.notify(1)
+        instance.acquires -= 1
+        instance.available.set()
+        instance.perf_counter = perf_counter()
+        instance.context.notify(1)
 
     def clean_instance(app, instance):
         if (len(app.sessions.get(instance.key)) < app.max_instances) or (not instance.available.is_set()) or (not app.max_contexts and instance.acquires > 1):
