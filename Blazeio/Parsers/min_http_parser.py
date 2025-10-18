@@ -28,7 +28,7 @@ class MinParser(HTTP):
         if (idx := header.find(app.network_config.http.one_point_one.headers.delimiter)) != -1:
             if (key := header[:idx].decode().capitalize()) in r.headers:
                 if not isinstance(r.headers, list):
-                    r.headers[key] = list(r.headers)
+                    r.headers[key] = list(r.headers[key])
                 r.headers[key].append(header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode())
             else:
                 r.headers[key] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
@@ -87,7 +87,7 @@ class MinParserClient(HTTP):
         if (idx := header.find(app.network_config.http.one_point_one.headers.delimiter)) != -1:
             if (key := header[:idx].decode().lower()) in r.response_headers:
                 if not isinstance(r.response_headers, list):
-                    r.response_headers[key] = list(r.response_headers)
+                    r.response_headers[key] = list(r.response_headers[key])
                 r.response_headers[key].append(header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode())
             else:
                 r.response_headers[key] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
