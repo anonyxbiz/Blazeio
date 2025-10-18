@@ -494,6 +494,9 @@ class __SessionPool__:
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
+        
+        await plog.yellow(host, port, path)
+
         if not (instances := app.sessions.get(key := (host, port))):
             app.sessions[key] = (instances := [])
             instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
