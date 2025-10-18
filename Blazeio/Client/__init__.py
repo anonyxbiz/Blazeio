@@ -482,7 +482,6 @@ class __SessionPool__:
         for instance in instances:
             if instance.available.is_set():
                 if (not app.max_contexts) and instance.context.waiter_count >= 1: continue
-                instance.acquires += 1
                 instance.available.clear()
                 return instance
 
@@ -511,6 +510,8 @@ class __SessionPool__:
                 await instance.context.wait()
         else:
             instance.session.protocol = None
+
+        instance.acquires += 1
         
         await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
 
