@@ -514,7 +514,7 @@ class __SessionPool__:
             instance.session.protocol = None
         
         if app.should_ensure_connected:
-            if float(perf_counter() - instance.perf_counter):
+            if method not in Session.NON_BODIED_HTTP_METHODS:
                 await app.ensure_connected(url, instance.session)
 
         return instance.session
