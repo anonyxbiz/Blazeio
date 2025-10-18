@@ -449,7 +449,7 @@ class __SessionPool__:
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
-        await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
+        await plog.grey(anydumps({key: str(val) for key, val in instance.items()}))
 
         async with instance.context:
             instance.acquires -= 1
@@ -526,6 +526,7 @@ class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
     def __init__(app, *args, max_conns = 0, max_contexts = 0, connection_made_callback = None, pool_memory = None, **kwargs):
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
+        app.session = None
         app.pool, app.args, app.kwargs = app.get_pool(**kwargs), args, kwargs
 
     def get_pool(app, **kwargs):
@@ -548,12 +549,10 @@ class SessionPool:
 
         await app.session.__aenter__(create_connection = False)
 
-        app.session = await app.session.prepare(*app.args, **app.kwargs)
+        return await app.session.prepare(*app.args, **app.kwargs)
 
-        return app.session
- 
-    async def __aexit__(app, *args, **kwargs):
-        return await app.session.__aexit__(*args, **kwargs)
+    async def __aexit__(app, *args):
+        return await app.session.__aexit__(*args)
 
     def __await__(app):
         _app = yield from app.__aenter__().__await__()
