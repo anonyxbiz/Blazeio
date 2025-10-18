@@ -512,7 +512,7 @@ class __SessionPool__:
         else:
             instance.session.protocol = None
         
-        await plog.yellow(anydumps(instance))
+        await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
 
         if app.should_ensure_connected:
             if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
