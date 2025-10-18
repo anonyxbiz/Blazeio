@@ -449,8 +449,6 @@ class __SessionPool__:
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
-        await plog.grey(anydumps({key: str(val) for key, val in instance.items()}))
-
         async with instance.context:
             instance.acquires -= 1
             instance.available.set()
@@ -505,7 +503,6 @@ class __SessionPool__:
                 if (not app.max_contexts) or (len(instances) < app.max_contexts):
                     instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
 
-                    await plog.b_red(dumps(ddict({host: ddict(detail= "New connection created", host = host, port = port, connections = len(instances)), "connections": sum(len(session) for i, session in app.sessions.items())})))
                 else:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
