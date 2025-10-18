@@ -482,6 +482,7 @@ class __SessionPool__:
         for instance in instances:
             if instance.available.is_set():
                 if (not app.max_contexts) and instance.context.waiter_count >= 1: continue
+                instance.acquires += 1
                 instance.available.clear()
                 return instance
 
@@ -505,17 +506,18 @@ class __SessionPool__:
                     instance = instances[waiters.index(min(waiters))]
 
         if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing():
-            ...
+            async with instance.context:
+                await instance.context.wait()
         else:
             instance.session.protocol = None
-
-        instance.acquires += 1
         
         await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
 
         if app.should_ensure_connected:
             if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
-                await app.ensure_connected(url, instance.session)
+                ...#await app.ensure_connected(url, instance.session)
+    
+        await app.ensure_connected(url, instance.session)
 
         return instance.session
 
