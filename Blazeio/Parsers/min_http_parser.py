@@ -142,7 +142,7 @@ class MinParserClient(HTTP):
                 buff.extend(chunk)
 
             if len(buff) > 4 and (idx := buff.find(app.network_config.http.one_point_one.protocol)) == -1:
-                buff = buff[idx:]
+                buff = buff[-4:]
 
         if (body := app.parse(r, buff)):
             r.protocol.prepend(body)
