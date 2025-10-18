@@ -137,6 +137,8 @@ class MinParserClient(HTTP):
         buff = bytearray()
         valid = False
 
+        if not r.protocol: raise ServerDisconnected()
+
         while True:
             if (chunk := await r.protocol):
                 buff.extend(chunk)
@@ -152,15 +154,12 @@ class MinParserClient(HTTP):
             if app.network_config.http.one_point_one.dcrlf in buff: break
 
             if len(buff) >= app.max_buff_size:
-                await plog.yellow(buff)
                 raise ClientGotInTrouble("headers exceeded the max_buff_size")
-        
+
         if app.network_config.http.one_point_one.dcrlf in buff:
             if (body := app.parse(r, buff)):
                 r.protocol.prepend(body)
-        else:
-            await plog.yellow(buff)
-        
+
         return r
 
 MinParsers = ddict(server = MinParser(), client = MinParserClient())
