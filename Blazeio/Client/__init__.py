@@ -449,10 +449,11 @@ class __SessionPool__:
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
-        instance.acquires -= 1
-        instance.available.set()
-        instance.perf_counter = perf_counter()
-        instance.context.notify(1)
+        async with instance.context:
+            instance.acquires -= 1
+            instance.available.set()
+            instance.perf_counter = perf_counter()
+            instance.context.notify(1)
 
     def clean_instance(app, instance):
         if (len(app.sessions.get(instance.key)) < app.max_instances) or (not instance.available.is_set()) or (not app.max_contexts and instance.acquires > 1):
@@ -471,7 +472,7 @@ class __SessionPool__:
         instance.context = ioCondition()
         instance.perf_counter = perf_counter()
         instance.timeout = float(app.timeout)
-        instance.session = Session(*args, **kwargs)
+        instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
         instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
 
@@ -506,6 +507,8 @@ class __SessionPool__:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
+        await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
+
         async with instance.context:
             await instance.context.wait()
 
@@ -514,18 +517,14 @@ class __SessionPool__:
         else:
             instance.session.protocol = None
 
-        instance.session.protocol = None
-
-        await plog.yellow(anydumps({key: str(val) for key, val in instance.items()}))
-
         if 0 and app.should_ensure_connected:
             if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
                 await app.ensure_connected(url, instance.session)
 
-        return instance
+        return instance.session
 
 class SessionPool:
-    __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts", "instance")
+    __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
     def __init__(app, *args, max_conns = 0, max_contexts = 0, connection_made_callback = None, pool_memory = None, **kwargs):
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
         app.pool, app.args, app.kwargs = app.get_pool(**kwargs), args, kwargs
@@ -544,8 +543,7 @@ class SessionPool:
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
     async def __aenter__(app):
-        app.instance = await app.pool.get(*app.args, **app.kwargs)
-        app.session = app.instance.session
+        app.session = await app.pool.get(*app.args, **app.kwargs)
 
         if app.connection_made_callback: app.connection_made_callback()
 
@@ -556,11 +554,6 @@ class SessionPool:
         return app.session
  
     async def __aexit__(app, *args, **kwargs):
-        app.instance.acquires -= 1
-        app.instance.available.set()
-        app.instance.perf_counter = perf_counter()
-        app.instance.context.notify(1)
-
         return await app.session.__aexit__(*args, **kwargs)
 
     def __await__(app):
