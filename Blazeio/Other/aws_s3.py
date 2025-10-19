@@ -1,5 +1,7 @@
 # Blazeio.Other.aws_s3
 import Blazeio as io
+from hmac import new as hmac_new
+from hashlib import sha1 as hashlib_sha1, sha256
 
 class S3:
     __slots__ = ("bucket", "region", "aws_key", "aws_secret", "cond")
@@ -7,7 +9,7 @@ class S3:
         app.bucket, app.region, app.aws_key, app.aws_secret, app.cond = bucket, region, aws_key, aws_secret, io.ioCondition()
 
     def sign(app, key, msg):
-        return io.Scope.hmac_new(key, msg.encode('utf-8'), io.Scope.sha256).digest()
+        return hmac_new(key, msg.encode('utf-8'), sha256).digest()
 
     def get_signature_key(app, key, date, region, service):
         k_date = app.sign(('AWS4' + key).encode('utf-8'), date)
@@ -38,7 +40,7 @@ class S3:
 
         headers.update({
             "x-amz-content-sha256": payload_hash,
-            "Authorization": "%s Credential=%s/%s, SignedHeaders=%s, Signature=%s" % (algorithm, aws_key, credential_scope, signed_headers, io.Scope.hmac_new(app.get_signature_key(aws_secret, date_stamp, region, service), ("%s\n%s\n%s\n%s" % (algorithm, amz_date, credential_scope, io.Scope.sha256(canonical_request.encode()).hexdigest())).encode('utf-8'), io.Scope.sha256).hexdigest()),
+            "Authorization": "%s Credential=%s/%s, SignedHeaders=%s, Signature=%s" % (algorithm, aws_key, credential_scope, signed_headers, hmac_new(app.get_signature_key(aws_secret, date_stamp, region, service), ("%s\n%s\n%s\n%s" % (algorithm, amz_date, credential_scope, sha256(canonical_request.encode()).hexdigest())).encode('utf-8'), sha256).hexdigest()),
             "x-amz-date": amz_date
         })
 
