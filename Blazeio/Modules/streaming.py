@@ -35,6 +35,13 @@ class ClientContext:
     def is_prot(app, r):
         return "Blazeio" in r.__class__.__name__
 
+class Ctypes:
+    text: str = "text/plain; charset=utf-8"
+    json: str = "application/json; charset=utf-8"
+    eventstream: str = "text/event-stream"
+
+    def __init__(app): ...
+
 class Prepare:
     def __init__(app): ...
 
