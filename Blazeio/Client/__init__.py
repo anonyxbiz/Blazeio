@@ -502,7 +502,6 @@ class __SessionPool__:
             if not (instance := app.get_instance(instances)):
                 if (not app.max_contexts) or (len(instances) < app.max_contexts):
                     instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
-
                 else:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
@@ -518,6 +517,30 @@ class __SessionPool__:
                 await app.ensure_connected(url, instance.session)
 
         return instance.session
+
+class Sessionproxy:
+    __slots__ = ("instance",)
+    def __init__(app, instance):
+        object.__setattr__(app, "instance", instance)
+
+    def __setattr__(app, key, value):
+        return app.instance.session.__setattr__(key, value)
+
+    def __setitem__(app, key, value):
+        return app.instance.session.__setitem__(key, value)
+
+    def __getitem__(app, key, *args): return getattr(app.instance.session, key, *args)
+
+    def __getattr__(app, key, *args):
+        return app.__getitem__(key, *args)
+
+    async def __aenter__(app):
+        return app
+
+    async def __aexit__(app, *args):
+        return await app.session.__aexit__(*args)
+
+    def __aiter__(app, *args, **kwargs): return app.instance.session.__aiter__(*args, **kwargs)
 
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
@@ -546,7 +569,9 @@ class SessionPool:
 
         await app.session.__aenter__(create_connection = False)
 
-        return await app.session.prepare(*app.args, **app.kwargs)
+        app.session = await app.session.prepare(*app.args, **app.kwargs)
+
+        return Sessionproxy(app)
 
     async def __aexit__(app, *args):
         return await app.session.__aexit__(*args)
@@ -628,7 +653,7 @@ class get_Session:
     __slots__ = ("session_pool",)
     dynamic_methods = ddict(fetch = _FetchAPI)
     def __init__(app, keepalive = False):
-        app.session_pool = createSessionPool(0, 0)
+        app.session_pool = createSessionPool(0, 10)
 
     def pool(app):
         task = current_task()
