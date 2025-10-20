@@ -35,7 +35,11 @@ utils = io.ddict(sync = io.ioCondition())
 
 class Fetchresponse(io.ddict):
     def json(app):
-        return io.loads(app.body)
+        if app.body:
+            try:
+                return io.loads(app.body)
+            except io.JSONDecodeError:
+                ...
 
 class _FetchAPI:
     __slots__ = ("instance",)
