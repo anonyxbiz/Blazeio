@@ -97,7 +97,11 @@ class __ioConf__:
 
     def get_event_loop(app):
         if app.loop: return app.loop
-        app.loop = get_event_loop()
+        try:
+            app.loop = get_event_loop()
+        except RuntimeError:
+            app.loop = new_event_loop()
+
         set_event_loop(app.loop)
         globals()["loop"] = app.loop
         return app.loop
