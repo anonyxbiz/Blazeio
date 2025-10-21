@@ -144,11 +144,12 @@ class MinParserClient(HTTP):
             if not valid:
                 if len(buff) < 4: continue
                 if app.network_config.http.one_point_one.protocol in buff:
+                    buff = buff[buff.find(app.network_config.http.one_point_one.protocol):]
                     valid = True
                 else:
                     buff = buff[len(buff)-4:]
                     continue
-            
+
             if app.network_config.http.one_point_one.dcrlf in buff: break
 
             if len(buff) >= app.max_buff_size:

@@ -95,6 +95,8 @@ class BlazeioClient(BlazeioClientProtocol):
 
         _ = await app.loop.create_connection(lambda: app, host, port, *app.args, **app.kwargs)
 
+        await app.__evt__.wait_clear()
+
         if app.proxy and not app.proxy.connected:
             await app.proxy
 
@@ -486,12 +488,6 @@ class __SessionPool__:
                 instance.available.clear()
                 return instance
 
-    async def ensure_connected(app, url, session):
-        try:
-            await wait_for(session.prepare(url, "HEAD", {}), timeout=3)
-        except TimeoutError:
-            ...
-
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
 
@@ -506,15 +502,14 @@ class __SessionPool__:
                     waiters = [i.context.waiter_count for i in instances]
                     instance = instances[waiters.index(min(waiters))]
 
-        if (not instance.session.protocol) or not instance.session.protocol.transport.is_closing():
-            async with instance.context:
-                await instance.context.wait()
-        else:
-            instance.session.protocol = None
+        async with instance.context:
+            await instance.context.wait()
 
-        if app.should_ensure_connected:
-            if float(perf_counter() - instance.perf_counter) >= 10.0 and method not in Session.NON_BODIED_HTTP_METHODS:
-                await app.ensure_connected(url, instance.session)
+            if instance.session.protocol and (perf_counter() - instance.perf_counter) >= 3:
+                if instance.session.protocol.transport:
+                    instance.session.protocol.transport.close()
+
+                instance.session.protocol = None
 
         return instance.session
 
@@ -574,7 +569,9 @@ class SessionPool:
         return Sessionproxy(app)
 
     async def __aexit__(app, *args):
-        return await app.session.__aexit__(*args)
+        if app.session:
+            return await app.session.__aexit__(*args)
+        return False
 
     def __await__(app):
         _app = yield from app.__aenter__().__await__()
