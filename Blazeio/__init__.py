@@ -45,38 +45,43 @@ class SrvConfig:
 
 ioConf.ServerConfig = SrvConfig()
 
-class OOP_RouteDef:
-    def __init__(app): ...
+class OOP_Route_Def:
+    def __init__(app):
+        ...
 
-    def attach(app, class_):
+    def attacher(app, class_):
         for method in dir(class_):
-            with Ehandler(ignore = [ValueError]):
+            with Ehandler(ignore = Eof):
                 method = getattr(class_, method)
                 if not isinstance(method, (Callable,)):
-                    raise ValueError()
+                    raise Eof()
 
                 if (name := str(method.__name__)) == "__main_handler__":
                     app.__main_handler__ = method
                     app.create_task(plog.info("Added %s => %s." % (name, name), func = app.attach, dnewline = False, newline = False))
-                    raise ValueError()
+                    raise Eof()
 
                 if not name.startswith("_") or name.startswith("__"):
                     if not name.endswith("_middleware"):
-                        raise ValueError()
+                        raise Eof()
 
                 if not "r" in (params := dict((signature := sig(method)).parameters)):
-                    raise ValueError()
+                    raise Eof()
 
                 if not name.endswith("_middleware"):
                     route_name = name.replace("_", "/")
 
                 app.add_route(method, route_name = name)
 
-    def instantiate(app, to_instantiate: Callable):
-        app.attach(to_instantiate)
-        return to_instantiate
+    def attach(app, fn, *args, **kwargs):
+        if hasattr(fn, "__class__") and str(fn.__class__) == "<class 'type'>":
+            app.attacher(fn(), *args, **kwargs)
+        else:
+            app.attacher(fn, *args, **kwargs)
 
-class Handler(OOP_RouteDef):
+        return fn
+
+class Handler(OOP_Route_Def):
     def __init__(app):
         app.__main_handler__ = NotImplemented
         app.__default_handler__ = NotImplemented
@@ -574,32 +579,8 @@ class Callbacks:
             else:
                 await to_thread(fn, *args, **kwargs)
 
-class Class_attacher:
-    __slots__ = ("web",)
-    def __init__(app, web):
-        app.web = web
-
-    @property
-    def __name__(app):
-        return "Class_attacher"
-
-    def __call__(app, fn, *args, **kwargs):
-        app.web.attach(fn())
-        return fn
-
-class Class_attacher_module:
-    __slots__ = ("web",)
-    attach_key = "attach"
-    def __init__(app, web):
-        app.web = web
-
-    def __getattr__(app, key, *args):
-        if key != app.attach_key: raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
-        return Class_attacher(app.web)
-
 class Protocol_methods(Serverctx):
-    def __init__(app):
-        app.attachers = ddict(_class = Class_attacher_module(app))
+    def __init__(app): ...
 
     def __getattr__(app, name):
         if name == "route":

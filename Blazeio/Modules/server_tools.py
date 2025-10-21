@@ -129,4 +129,22 @@ class Simpleserve:
     async def __aiter__(app):
         async for chunk in app.pull(): yield chunk
 
+class StaticServer:
+    __slots__ = ("root", "root_dir", "chunk_size", "page_dir", "home_page")
+    ext_delimiter: str = "."
+    html_ext: str = ".html"
+    def __init__(app, root: str, root_dir: str, chunk_size: int, page_dir: str = "page", home_page: str = "index.html"):
+        app.root, app.root_dir, app.chunk_size, app.page_dir, app.home_page = root, root_dir, chunk_size, page_dir, home_page
+
+    async def handle_all_middleware(app, r: BlazeioProtocol):
+        if r.path[:len(app.root)] != app.root: return
+
+        if not path.exists(file_path := path.join(app.root_dir, route) if app.ext_delimiter in (route := r.path[1:] or path.join(app.page_dir, app.home_page)) else path.join(app.root_dir, app.page_dir, route + app.html_ext)):
+            raise Abort("Not found", 404)
+
+        async with Simpleserve(r, file_path, app.chunk_size) as f:
+            await r.prepare(f.headers, f.status)
+            async for chunk in f:
+                await r.write(chunk)
+
 if __name__ == "__main__": ...
