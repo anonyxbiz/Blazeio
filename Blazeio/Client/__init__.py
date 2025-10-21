@@ -653,7 +653,7 @@ class get_Session:
     __slots__ = ("session_pool",)
     dynamic_methods = ddict(fetch = _FetchAPI)
     def __init__(app, keepalive = False):
-        app.session_pool = createSessionPool(0, 10)
+        app.session_pool = createSessionPool(0, 0)
 
     def pool(app):
         task = current_task()
