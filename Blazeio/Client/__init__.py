@@ -445,7 +445,7 @@ Session.request = __Request__
 
 class __SessionPool__:
     __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3600, max_instances: int = 100, should_ensure_connected: bool = True):
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100, should_ensure_connected: bool = True):
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
@@ -454,10 +454,15 @@ class __SessionPool__:
             instance.available.set()
             instance.perf_counter = perf_counter()
             instance.context.notify(1)
+    
+    def is_timed_out(app, instance):
+        return (perf_counter() - instance.perf_counter) >= app.timeout
 
     def clean_instance(app, instance):
-        if (len(app.sessions.get(instance.key)) < app.max_instances) or (not instance.available.is_set()) or (not app.max_contexts and instance.acquires > 1):
-            instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
+        if instance.available.is_set() and instance.acquires < 1 and app.is_timed_out(instance):
+            ...
+        else:
+            instance.clean_cb = ReMonitor.add_callback(app.timeout, app.clean_instance, instance)
             return
 
         app.sessions.get(instance.key).remove(instance)
@@ -475,7 +480,7 @@ class __SessionPool__:
         
         instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
-        instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
+        instance.clean_cb = ReMonitor.add_callback(app.timeout, app.clean_instance, instance)
 
         return instance
 
@@ -504,7 +509,7 @@ class __SessionPool__:
         async with instance.context:
             await instance.context.wait()
 
-            if instance.session.protocol and (perf_counter() - instance.perf_counter) >= 5:
+            if instance.session.protocol and app.is_timed_out(instance):
                 if instance.session.protocol.transport:
                     instance.session.protocol.transport.close()
 
