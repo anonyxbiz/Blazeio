@@ -19,12 +19,9 @@ class Simpleserve:
         return app.prepare_metadata()
 
     def validate_cache(app):
-        if app.r.headers.get("If-none-match") == app.etag:
+        if app.r.headers.get("If-none-match") == app.etag or (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
             raise Abort("", 304, app.headers)
 
-        elif (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort("", 304, app.headers)
-    
     def validate_method(app):
         if app.r.method == "GET": ...
         elif app.r.method == "HEAD": ...

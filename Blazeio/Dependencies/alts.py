@@ -131,8 +131,6 @@ class ioCondition:
     async def __aexit__(app, exc_type = None, exc_value = None, tb = None):
         if app.locked() or not app._lock_event.is_set():
             app.release()
-
-        # await sleep(0)
         return False
 
     async def __aenter__(app):

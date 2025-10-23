@@ -47,7 +47,8 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
 
     def cancel(app):
         app.__wait_closed__.set()
-        if hasattr(app, "transport"): app.transport.close()
+        if app.transport:
+            app.transport.close()
 
     def pull(app):
         return app.__aiter__()

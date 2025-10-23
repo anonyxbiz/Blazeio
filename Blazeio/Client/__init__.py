@@ -470,13 +470,14 @@ class __SessionPool__:
         instance.session.transport.close()
 
     def create_instance(app, key, *args, **kwargs):
-        instance = ddict()
-        instance.acquires = 0
-        instance.key = key
-        instance.available = SharpEvent()
-        instance.context = ioCondition()
-        instance.perf_counter = perf_counter()
-        instance.timeout = float(app.timeout)
+        instance = ddict(
+            acquires = 0,
+            key = key,
+            available = SharpEvent(),
+            context = ioCondition(),
+            perf_counter = perf_counter()
+        )
+        
         instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
         instance.clean_cb = ReMonitor.add_callback(30, app.clean_instance, instance)
@@ -508,7 +509,7 @@ class __SessionPool__:
         async with instance.context:
             await instance.context.wait()
 
-            if instance.session.protocol and (perf_counter() - instance.perf_counter) >= 3:
+            if instance.session.protocol and (perf_counter() - instance.perf_counter) >= 5:
                 if instance.session.protocol.transport:
                     instance.session.protocol.transport.close()
 

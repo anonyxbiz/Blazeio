@@ -9,16 +9,15 @@ class Notify:
         app.notifications = io.deque()
         io.Taskscope.getNotify = app
 
-    def __iadd__(app, notification: str):
+    def __iadd__(app, message: str):
         while len(app.notifications) >= app.max_len:
             app.notifications.popleft()
-
-        app.notifications.append("[%s] -> %s" % (io.timef.now(), str(notification)))
+        app.notifications.append(io.ddict(dt = io.dt.now(io.UTC), message = message))
         app.update_event.set()
         return app
     
-    def append(app, notification: str):
-        return app.__iadd__(notification)
+    def append(app, message: str):
+        return app.__iadd__(message)
 
     async def __aenter__(app):
         return app

@@ -31,7 +31,7 @@ from traceback import extract_tb, format_exc
 from ssl import create_default_context, Purpose, PROTOCOL_TLS_SERVER, OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_TLSv1, OP_NO_TLSv1_1, OP_NO_COMPRESSION, CERT_NONE, SSLError, TLSVersion
 
 from contextlib import asynccontextmanager
-from base64 import b64encode, b64decode
+from base64 import b64encode, b64decode, urlsafe_b64encode, urlsafe_b64decode
 
 from string import ascii_lowercase as string_ascii_lowercase, ascii_uppercase as string_ascii_uppercase
 
