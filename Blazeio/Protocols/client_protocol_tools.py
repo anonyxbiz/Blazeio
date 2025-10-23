@@ -462,143 +462,6 @@ class StaticStuff:
     def __init__(app):
         ...
 
-class Deprecated:
-    prepare_http_sepr1 = b"\r\n"
-    prepare_http_sepr2 = b": "
-    prepare_http_header_end = b"\r\n\r\n"
-    http_redirect_status_range = (300,301,302,304,305,306,307,308,309)
-    http_startswith = b"HTTP"
-
-    def __init__(app):
-        ...
-
-    async def _prepare_http_old(app):
-        if app.is_prepared(): return True
-        buff, headers, idx, valid = memarray(), None, -1, False
-
-        if not app.protocol: raise ServerDisconnected()
-
-        async for chunk in app.protocol.pull():
-            buff.extend(chunk)
-            if not valid:
-                if len(buff) < 4: continue
-                if (ido := buff.find(app.http_startswith)) != -1:
-                    buff = memarray(buff[ido:])
-                    valid = True
-                else:
-                    buff = memarray(buff[len(buff)-4:])
-                    continue
-
-            if (idx := buff.find(app.prepare_http_header_end)) == -1: continue
-
-            headers, buff = buff[:idx], memarray(buff[idx + len(app.prepare_http_header_end):])
-            break
-
-        if buff: app.protocol.prepend(buff)
-
-        if idx == -1: return
-
-        if (idx := headers.find(app.prepare_http_sepr1)) != -1:
-            prot_headers = headers[:idx]
-
-            prot_headers_splits = prot_headers.decode().split(" ")
-
-            prot, app.status_code, app.reason_phrase = prot_headers_splits[0], int(prot_headers_splits[1]), " ".join(prot_headers_splits[2:])
-
-            headers = headers[idx + len(app.prepare_http_sepr1):]
-        else:
-            raise ClientGotInTrouble("Unknown Server Protocol")
-
-        app.response_headers = app.gen_headers(headers)
-
-        app.received_len, app.content_length, app.content_type = 0, int(app.response_headers.get('content-length', 0)), app.response_headers.get("content-type", "")
-
-        if app.response_headers.get("transfer-encoding"):
-            app.handler = app.handle_chunked
-        elif app.response_headers.get("content-length"):
-            app.handler = app.handle_raw
-        else:
-            app.handler = app.protocol.pull
-
-        if app.decode_resp:
-            if (encoding := app.response_headers.pop("content-encoding", None)):
-                if (decoder := getattr(app, "%s_decoder" % encoding, None)):
-                    app.decoder = decoder
-                else:
-                    app.decoder = None
-            else:
-                app.decoder = None
-
-        if app.auto_set_cookies:
-            if (Cookies := app.response_headers.get("set-cookie")):
-                splitter = "="
-                if not app.kwargs.get("cookies"):
-                    app.kwargs["cookies"] = {}
-
-                for cookie in Cookies:
-                    key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
-
-                    app.kwargs["cookies"][key] = val
-
-        if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.response_headers.get("location", None)):
-            if location.startswith("/"):
-                location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
-            if URL(location).host != app.host: app.protocol = None
-            args, kwargs = app.join_to_current_params(location)
-            kwargs["follow_redirects"] = True
-            return await app.create_connection(*args, **kwargs)
-
-        return True
-
-    def gen_headers(app, headers):
-        response_headers = Dot_Dict({})
-        while headers:
-            if (idx := headers.find(app.prepare_http_sepr1)) != -1: header, headers = headers[:idx], headers[idx + len(app.prepare_http_sepr1):]
-            else: header, headers = headers, b""
-
-            if (idx := header.find(app.prepare_http_sepr2)) == -1: continue
-
-            key, value = header[:idx].decode().lower(), header[idx + len(app.prepare_http_sepr2):].decode()
-
-            if key in response_headers:
-                if not isinstance(response_headers[key], list):
-                    response_headers[key] = [response_headers[key]]
-
-                response_headers[key].append(value)
-                continue
-
-            response_headers[key] = value
-        
-        return response_headers
-
-    async def prepare_connect(app, method, headers):
-        buff, idx = memarray(), -1
-
-        async for chunk in app.protocol.pull():
-            buff.extend(chunk)
-
-            if (idx := buff.rfind(app.prepare_http_sepr1)) != -1: break
-
-        if (auth_header := "Proxy-Authorization") in headers: headers.pop(auth_header)
-
-        if app.proxy_port != 443 and app.port == 443:
-            retry_count = 0
-            max_retry_count = 2
-
-            while retry_count < max_retry_count:
-                try: app.protocol.transport = await app.loop.start_tls(app.protocol.transport, app.protocol, ssl_context, server_hostname = app.host)
-                except ConnectionResetError: break
-                except Exception as e:
-                    await traceback_logger(e)
-
-                    retry_count += 1
-                    if retry_count >= max_retry_count: await log.warning("Ssl Handshake Failed multiple times...: %s" % str(e))
-                    continue
-
-                break
-
-        await app.protocol.push(ioConf.gen_payload(method, headers, app.path))
-
 class Parsers:
     __slots__ = ()
     handle_chunked_endsig =  b"0\r\n\r\n"
@@ -798,8 +661,8 @@ class Pulltools(Parsers, Decoders):
 
         return method
 
-    async def pull(app, *args, http=True, **kwargs):
-        if http and not app.is_prepared(): await app.prepare_http()
+    async def pull(app):
+        if not app.is_prepared(): await app.prepare_http()
 
         if app.method in app.no_response_body_methods: return
 
@@ -807,14 +670,14 @@ class Pulltools(Parsers, Decoders):
 
         try:
             if not app.decoder:
-                async for chunk in app.handler(*args, **kwargs):
+                async for chunk in app.handler():
                     yield chunk
             else:
                 async for chunk in app.decoder(): yield chunk
-
-        except GeneratorExit as e:
-            return
-        except StopIteration as e:
+        except CancelledError:
+            if app.protocol and app.protocol.transport and not app.protocol.transport.is_closing(): app.protocol.transport.close()
+            raise
+        except (GeneratorExit, StopIteration):
             return
 
     async def aread(app, decode=False):

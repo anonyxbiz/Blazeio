@@ -104,15 +104,15 @@ class MinParserClient(HTTP):
     def set_method(app, r: BlazeioProtocol, header: bytes):
         if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
 
-        prot, header = header[:idx].decode("utf-8"), header[idx + 1:]
+        prot, header = header[:idx].decode(), header[idx + 1:]
 
         if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
 
-        r.status_code, header = int(header[:idx].decode("utf-8")), header[idx + 1:]
+        r.status_code, header = int(header[:idx].decode()), header[idx + 1:]
 
         if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
 
-        r.reason_phrase, header = header[:idx].decode("utf-8"), header[idx + 1:]
+        r.reason_phrase, header = header[:idx].decode(), header[idx + 1:]
 
         app.header_parser(r, header)
 
@@ -124,6 +124,9 @@ class MinParserClient(HTTP):
             r.handler = r.handle_raw
         else:
             r.handler = r.protocol.pull
+        
+        if r.method == "HEAD" or r.status_code == 304:
+            r.received_len = r.content_length
 
         return r
 
@@ -132,7 +135,7 @@ class MinParserClient(HTTP):
         header, body = buff[:idx], buff[idx + len(app.network_config.http.one_point_one.dcrlf):]
         app.set_method(r, header)
         return body
-    
+
     async def aparse(app, r: BlazeioProtocol):
         valid, buff = 0, bytearray()
         while True:

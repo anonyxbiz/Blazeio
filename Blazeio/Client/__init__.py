@@ -184,11 +184,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err,))
 
-        if app.protocol and app.protocol.transport and app.is_prepared() and app.content_length:
-            if app.received_len < app.content_length:
-                if not app.protocol.transport.is_closing():
-                    app.protocol.transport.close()
-
         if app.on_exit_callback:
             func = app.on_exit_callback[0]
             if len(app.on_exit_callback) > 1:
