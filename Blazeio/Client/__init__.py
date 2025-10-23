@@ -183,6 +183,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err,))
+        if app.is_prepared() and app.response_headers.get("connection") == "close":
+            app.protocol.transport.close()
 
         if app.on_exit_callback:
             func = app.on_exit_callback[0]
@@ -445,7 +447,7 @@ Session.request = __Request__
 
 class __SessionPool__:
     __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3, max_instances: int = 100, should_ensure_connected: bool = True):
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100, should_ensure_connected: bool = True):
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
