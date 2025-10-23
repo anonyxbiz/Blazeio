@@ -633,7 +633,12 @@ class get_Session:
 
     def pool(app):
         if not (pool := InternalScope.get("__get_Session_pool__")):
-            InternalScope.__get_Session_pool__ = (pool := createSessionPool(InternalScope.get("socket_limits") or 0, InternalScope.get("socket_limits") or 0))
+            if (socket_limits := InternalScope.get("socket_limits")):
+                socket_limits = int(socket_limits/27)
+            else:
+                socket_limits = 0
+
+            InternalScope.__get_Session_pool__ = (pool := createSessionPool(socket_limits, socket_limits))
 
         return pool
 
