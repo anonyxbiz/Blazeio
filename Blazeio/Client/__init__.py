@@ -516,7 +516,7 @@ class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
     def __init__(app, *args, max_conns = 0, max_contexts = 0, connection_made_callback = None, pool_memory = None, **kwargs):
         app.max_conns, app.max_contexts, app.connection_made_callback, app.pool_memory = max_conns, max_contexts, connection_made_callback, pool_memory
-        app.session = None
+        app.session, app.pool = None, None
         app.pool, app.args, app.kwargs = app.get_pool(**kwargs), args, kwargs
 
     def get_pool(app, **kwargs):
@@ -529,7 +529,8 @@ class SessionPool:
         return pool
 
     def __getattr__(app, key):
-        if (val := getattr(Session, key, None)): return val
+        if app.pool and (val := getattr(app.pool, key, None)): return val
+        elif (val := getattr(Session, key, None)): return val
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
     async def __aenter__(app):
