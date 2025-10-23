@@ -134,20 +134,16 @@ class MinParserClient(HTTP):
         return body
     
     async def aparse(app, r: BlazeioProtocol):
-        buff = bytearray()
-        valid = False
-
+        valid, buff = 0, bytearray()
         while True:
             if (chunk := await r.protocol):
                 buff.extend(chunk)
 
             if not valid:
-                if len(buff) < 4: continue
-                if app.network_config.http.one_point_one.protocol in buff:
-                    buff = buff[buff.find(app.network_config.http.one_point_one.protocol):]
-                    valid = True
+                if (idx := buff.find(app.network_config.http.one_point_one.protocol)) != -1:
+                    valid, buff = 1, buff[idx:]
                 else:
-                    buff = buff[len(buff)-4:]
+                    buff = buff[len(buff)-len(app.network_config.http.one_point_one.protocol):]
                     continue
 
             if app.network_config.http.one_point_one.dcrlf in buff: break
@@ -155,9 +151,8 @@ class MinParserClient(HTTP):
             if len(buff) >= app.max_buff_size:
                 raise ClientGotInTrouble("headers exceeded the max_buff_size")
 
-        if app.network_config.http.one_point_one.dcrlf in buff:
-            if (body := app.parse(r, buff)):
-                r.protocol.prepend(body)
+        if (body := app.parse(r, buff)):
+            r.protocol.prepend(body)
 
         return r
 
