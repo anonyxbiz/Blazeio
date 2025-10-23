@@ -466,6 +466,8 @@ class __SessionPool__:
             return
 
         app.sessions.get(instance.key).remove(instance)
+        if not app.sessions.get(instance.key): app.sessions.pop(instance.key)
+
         instance.available.clear()
         instance.session.transport.close()
 
