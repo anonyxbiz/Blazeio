@@ -536,8 +536,10 @@ class SessionPool:
         return pool
 
     def __getattr__(app, key):
-        if app.pool and (val := getattr(app.pool, key, None)): return val
+        if app.pool: return getattr(app.pool, key, None)
+
         elif (val := getattr(Session, key, None)): return val
+
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
     async def __aenter__(app):
