@@ -511,30 +511,6 @@ class __SessionPool__:
 
         return instance.session
 
-class Sessionproxy:
-    __slots__ = ("instance",)
-    def __init__(app, instance):
-        object.__setattr__(app, "instance", instance)
-
-    def __setattr__(app, key, value):
-        return app.instance.session.__setattr__(key, value)
-
-    def __setitem__(app, key, value):
-        return app.instance.session.__setitem__(key, value)
-
-    def __getitem__(app, key, *args): return getattr(app.instance.session, key, *args)
-
-    def __getattr__(app, key, *args):
-        return app.__getitem__(key, *args)
-
-    async def __aenter__(app):
-        return app
-
-    async def __aexit__(app, *args):
-        return await app.session.__aexit__(*args)
-
-    def __aiter__(app, *args, **kwargs): return app.instance.session.__aiter__(*args, **kwargs)
-
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
     def __init__(app, *args, max_conns = 0, max_contexts = 0, connection_made_callback = None, pool_memory = None, **kwargs):
@@ -562,9 +538,7 @@ class SessionPool:
 
         await app.session.__aenter__(create_connection = False)
 
-        app.session = await app.session.prepare(*app.args, **app.kwargs)
-
-        return Sessionproxy(app)
+        return await app.session.prepare(*app.args, **app.kwargs)
 
     async def __aexit__(app, *args):
         if app.session:
