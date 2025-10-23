@@ -124,9 +124,6 @@ class MinParserClient(HTTP):
             r.handler = r.handle_raw
         else:
             r.handler = r.protocol.pull
-        
-        if r.method == "HEAD" or r.status_code == 304:
-            r.received_len = r.content_length
 
         return r
 
