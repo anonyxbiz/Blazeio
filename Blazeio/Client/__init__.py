@@ -511,7 +511,7 @@ class __SessionPool__:
         async with instance.context:
             await instance.context.wait()
 
-            if instance.session.protocol and instance.session.protocol.transport and (app.is_timed_out(instance) or instance.session.protocol.transport.is_closing()):
+            if instance.session.protocol and instance.session.protocol.transport and (app.is_timed_out(instance) or instance.session.protocol.transport.is_closing()) or instance.requests >= 100:
                 if instance.session.protocol.transport:
                     instance.session.protocol.transport.close()
 
