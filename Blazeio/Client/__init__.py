@@ -446,8 +446,9 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected")
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected", "sync")
     def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100, should_ensure_connected: bool = True):
+        app.sync = ioCondition()
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
@@ -500,17 +501,18 @@ class __SessionPool__:
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
-
-        if not (instances := app.sessions.get(key := (host, port))):
-            app.sessions[key] = (instances := [])
-            instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
-        else:
-            if not (instance := app.get_instance(instances)):
-                if (not app.max_contexts) or (len(instances) < app.max_contexts):
-                    instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
-                else:
-                    waiters = [i.context.waiter_count for i in instances]
-                    instance = instances[waiters.index(min(waiters))]
+        
+        async with app.sync:
+            if not (instances := app.sessions.get(key := (host, port))):
+                app.sessions[key] = (instances := [])
+                instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
+            else:
+                if not (instance := app.get_instance(instances)):
+                    if (not app.max_contexts) or (len(instances) < app.max_contexts):
+                        instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
+                    else:
+                        waiters = [i.context.waiter_count for i in instances]
+                        instance = instances[waiters.index(min(waiters))]
 
         async with instance.context:
             await instance.context.wait()
