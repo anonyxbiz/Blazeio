@@ -664,7 +664,7 @@ class Pulltools(Parsers, Decoders):
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.method in app.no_response_body_methods: return
+        if app.method in app.no_response_body_methods or app.status_code == 304: return
 
         if not app.handler: app.handler = app.protocol.pull
 
