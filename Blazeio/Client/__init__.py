@@ -519,6 +519,7 @@ class __SessionPool__:
                 if instance.session.protocol.transport:
                     instance.session.protocol.transport.close()
 
+                instance.requests = 0
                 instance.session.protocol = None
 
         return instance.session
