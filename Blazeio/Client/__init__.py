@@ -95,8 +95,6 @@ class BlazeioClient(BlazeioClientProtocol):
 
         _ = await app.loop.create_connection(lambda: app, host, port, *app.args, **app.kwargs)
 
-        await app.__evt__.wait_clear()
-
         if app.proxy and not app.proxy.connected:
             await app.proxy
 

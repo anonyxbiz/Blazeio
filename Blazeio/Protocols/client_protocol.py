@@ -41,7 +41,6 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
     def connection_made(app, transport):
         transport.pause_reading()
         app.transport = transport
-        app.__evt__.set()
 
     def state(app):
         return {key: str(value)[:500] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
