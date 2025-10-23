@@ -626,20 +626,19 @@ class _FetchAPI:
         return fetch_api
 
 class get_Session:
-    __slots__ = ("session_pool",)
+    __slots__ = ()
     dynamic_methods = ddict(fetch = _FetchAPI)
-    def __init__(app, keepalive = False):
-        app.session_pool = createSessionPool(0, 0)
+    def __init__(app):
+        ...
 
     def pool(app):
-        task = current_task()
-        if not hasattr(task, "__Blazeio_pool__"):
-            task.__Blazeio_pool__ = createSessionPool(0, 0)
-        return task.__Blazeio_pool__
+        if not (pool := InternalScope.get("__get_Session_pool__")):
+            InternalScope.__get_Session_pool__ = (pool := createSessionPool(InternalScope.get("socket_limits") or 0, InternalScope.get("socket_limits") or 0))
+
+        return pool
 
     def set_pool(app, pool):
-        task = current_task()
-        task.__Blazeio_pool__ = pool
+        InternalScope.__get_Session_pool__ = pool
         return pool
 
     def __getattr__(app, key):

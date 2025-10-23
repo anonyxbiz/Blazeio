@@ -50,9 +50,13 @@ try:
     from xmltodict import parse as xml_parse
 except ImportError:
     xml_parse = None
+    
+try:
+    from resource import getrlimit, RLIMIT_NOFILE
+except:
+    getrlimit, RLIMIT_NOFILE = None, None
 
 debug_mode = environ.get("BlazeioDev", None)
-
 main_process = psutilProcess(pid := getpid())
 
 class __ioConf__:
@@ -664,3 +668,9 @@ class __Loop__:
         return getattr(get_event_loop(), *args)
 
 getLoop = __Loop__()
+
+if getrlimit and RLIMIT_NOFILE:
+    try:
+        InternalScope.socket_limits = getrlimit(RLIMIT_NOFILE)[-1]
+    except:
+        ...
