@@ -143,7 +143,7 @@ class MinParserClient(HTTP):
                 if (idx := buff.find(app.network_config.http.one_point_one.protocol)) != -1:
                     valid, buff = 1, buff[idx:]
                 else:
-                    buff = buff[len(buff)-len(app.network_config.http.one_point_one.protocol):]
+                    buff = buff[-len(app.network_config.http.one_point_one.protocol):]
                     continue
 
             if app.network_config.http.one_point_one.dcrlf in buff: break

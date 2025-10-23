@@ -445,7 +445,7 @@ Session.request = __Request__
 
 class __SessionPool__:
     __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100, should_ensure_connected: bool = True):
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 3, max_instances: int = 100, should_ensure_connected: bool = True):
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
 
     async def release(app, session=None, instance=None):
@@ -511,7 +511,7 @@ class __SessionPool__:
         async with instance.context:
             await instance.context.wait()
 
-            if instance.session.protocol and app.is_timed_out(instance):
+            if instance.session.protocol and instance.session.protocol.transport and app.is_timed_out(instance) or instance.session.protocol.transport.is_closing():
                 if instance.session.protocol.transport:
                     instance.session.protocol.transport.close()
 
