@@ -373,7 +373,7 @@ class Default_logger:
         if name in app.colors:
             async def dynamic_method(*args, **kwargs):
                 return await app.__log__(app.colors.__getattr__(name), *args, **kwargs)
-
+            dynamic_method.__name__ = name
             setattr(app, name, dynamic_method)
             return dynamic_method
 

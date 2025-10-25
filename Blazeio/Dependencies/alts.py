@@ -491,6 +491,8 @@ class __plog__:
             lineno = int(name[idb + len(app.line_sepr[1]):ide])
             line = app.to_line(lineno)
             name = name[ide + 1:]
+        elif (plog_lineno_callback := Taskscope.get("plog_lineno_callback")):
+            line = app.to_line(lineno := plog_lineno_callback(logger_))
         else:
             line = ""
 
@@ -499,7 +501,7 @@ class __plog__:
         else:
             txt = frmt
 
-        if lineno is not None and (plog_lineno_incr := Taskscope.get("plog_lineno_incr", None)):
+        if lineno is not None and (plog_lineno_incr := Taskscope.get("plog_lineno_incr", 3)):
             await app.clear_mv(lineno, lineno + int(plog_lineno_incr))
 
         return await logger_(line + txt)
