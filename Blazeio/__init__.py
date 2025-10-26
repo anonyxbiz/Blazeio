@@ -510,6 +510,7 @@ class Server:
     
             if (ssl_data := kwargs.get("ssl", None)) and isinstance(ssl_data, dict):
                 kwargs["ssl"] = app.setup_ssl(app.ServerConfig.host, app.ServerConfig.port, ssl_data)
+                kwargs["ssl_shutdown_timeout"] = 0
 
             await app.configure_server_handler()
 
