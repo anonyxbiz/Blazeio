@@ -647,7 +647,7 @@ class get_Session:
     def pool(app):
         if not (pool := InternalScope.get("__get_Session_pool__")):
             if (socket_limits := InternalScope.get("socket_limits")):
-                socket_limits = int(socket_limits/27)
+                socket_limits = int(socket_limits/2)
             else:
                 socket_limits = 0
 
