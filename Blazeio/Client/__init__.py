@@ -454,7 +454,6 @@ class __SessionPool__:
     async def release(app, session=None, instance=None):
         async with instance.context:
             instance.acquires -= 1
-            instance.requests += 1
             instance.available.set()
             instance.perf_counter = perf_counter()
             instance.context.notify(1)
