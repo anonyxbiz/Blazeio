@@ -27,7 +27,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         app.__chunk_size__ = kwargs.get("__chunk_size__", ioConf.OUTBOUND_CHUNK_SIZE)
         app.__timeout__ = kwargs.get("__timeout__", kwargs.get("timeout"))
         app.__is_at_eof__ = False
-        app.cancel_on_disconnect = False
+        app.cancel_on_disconnect = True
         app.__perf_counter__ = perf_counter()
         app.__stream__ = deque()
         app.__buff__ = bytearray(app.__chunk_size__)
