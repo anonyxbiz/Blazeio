@@ -129,12 +129,9 @@ class Handler(OOP_Route_Def):
     async def parse_default(app, r, *args, **kwargs):
         buff = bytearray()
         while not MinParsers.server.network_config.http.one_point_one.dcrlf in buff:
+            buff.extend(await r)
             if len(buff) >= app.__server_config__["__http_request_max_buff_size__"]:
                 raise Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
-            if (chunk := await r):
-                buff.extend(chunk)
-            else:
-                raise Abort("Bad Request", 400)
 
         if (body := MinParsers.server.parse(r, buff)):
             r.prepend(body)
