@@ -67,6 +67,7 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
             raise ClientDisconnected()
 
 class Httpkeepalive:
+    __slots__ = ("web", "after_middleware", "__default_handler__", "timeout", "_max", "keepalive_headers")
     def __init__(app, web: (None, Utype,), after_middleware: (None, Utype) = None, __default_handler__: (None, Utype) = None, timeout: (int, Utype) = 60*60*5, _max: (int, Utype) = 1000**2):
         set_from_args(app, locals(), Utype)
         if not app.after_middleware:
