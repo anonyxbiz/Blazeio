@@ -300,7 +300,7 @@ class Server(Routes):
         r.__perf_counter__ = io.perf_counter()
 
         body = await app.r_parser(r)
-        body = (body[:(idx := body.find(app.min_parser.network_config.http.one_point_one.crlf))] + b'%bip_host: "%b"%bip_port: %d' % (app.min_parser.network_config.http.one_point_one.crlf, r.ip_host.encode(), app.min_parser.network_config.http.one_point_one.crlf, ) + body[idx:])
+        body = (body[:(idx := body.find(app.min_parser.network_config.http.one_point_one.crlf))] + b'%bip_host: "%b"%bip_port: %d' % (app.min_parser.network_config.http.one_point_one.crlf, r.ip_host.encode(), app.min_parser.network_config.http.one_point_one.crlf, r.ip_port) + body[idx:])
         
         await io.plog.yellow(body)
 
