@@ -28,7 +28,8 @@ class Server:
 
         # Buffer chunks until end of headers
         while not app.http_line in buff:
-            buff.extend(await r)
+            if (chunk := await r):
+                buff.extend(chunk)
 
         app.parser(r, buff)
 
