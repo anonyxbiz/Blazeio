@@ -291,10 +291,8 @@ class Server(Routes):
                 r.__miscellaneous__.extend(chunk)
             else:
                 raise io.Abort("Bad Request", 400)
-        
-        r.__miscellaneous__ = (r.__miscellaneous__[:(idx := r.__miscellaneous__.find(app.min_parser.network_config.http.one_point_one.crlf))] + b'%bip_host: "%b"%bip_port: %d' % (app.min_parser.network_config.http.one_point_one.crlf, r.ip_host.encode(), app.min_parser.network_config.http.one_point_one.crlf, r.ip_port) + r.__miscellaneous__[idx:])
 
-        await io.plog.yellow(r.__miscellaneous__)
+        r.__miscellaneous__ = (r.__miscellaneous__[:(idx := r.__miscellaneous__.find(app.min_parser.network_config.http.one_point_one.crlf))] + b'%bip_host: "%b"%bip_port: %d' % (app.min_parser.network_config.http.one_point_one.crlf, r.ip_host.encode(), app.min_parser.network_config.http.one_point_one.crlf, r.ip_port) + r.__miscellaneous__[idx:])
 
         return app.min_parser.parse(r, r.__miscellaneous__)
 
