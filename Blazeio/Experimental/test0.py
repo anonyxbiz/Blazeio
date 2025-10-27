@@ -27,9 +27,8 @@ class Server:
         buff = bytearray()
 
         # Buffer chunks until end of headers
-        async for chunk in r:
-            buff.extend(chunk)
-            if app.http_line in buff: break
+        while not app.http_line in buff:
+            buff.extend(await r)
 
         app.parser(r, buff)
 
