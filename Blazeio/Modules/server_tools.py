@@ -47,19 +47,23 @@ class Simpleserve:
         app.last_modified_str = strftime("%a, %d %b %Y %H:%M:%S GMT", gmtime(app.last_modified))
 
         app.content_type = guess_type(app.file)[0]
-        
+
         if not app.content_type:
             app.content_type = "application/octet-stream"
             app.attachment = 1
 
-        if app.attachment:
+        if app.content_type == "text/html":
+            app.content_type += "; charset=utf-8"
+
+        elif app.attachment:
             app.content_disposition = 'attachment; filename="%s"' % app.filename
         else:
             app.content_disposition = 'inline; filename="%s"' % app.filename
 
         for i in app.headers_demux:
             if app.headers_demux[i] not in app.exclude_headers and i in app.__slots__:
-                app.headers[app.headers_demux[i]] = getattr(app, i)
+                if (val := getattr(app, i, None)):
+                    app.headers[app.headers_demux[i]] = val
 
         if app.cache_control:
             if not (i := "Cache-control") in app.exclude_headers:
