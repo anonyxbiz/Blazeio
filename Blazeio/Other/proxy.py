@@ -150,7 +150,7 @@ class MuxTransporter:
             r.close()
 
     async def mux_transporter(app, r, srv: io.ddict):
-        async with io.Session(srv.hostname, port = srv.port, use_protocol = await app.conn(srv), add_host = False, connect_only = True, decode_resp = False) as resp:
+        async with io.Session(srv.hostname, port = srv.port, use_protocol = await app.conn(srv), connect_only = True) as resp:
             await resp.writer(r.__miscellaneous__)
 
             task = io.create_task(app.mux_puller(r, resp))
