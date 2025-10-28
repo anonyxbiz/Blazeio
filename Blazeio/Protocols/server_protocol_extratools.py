@@ -52,7 +52,8 @@ class ServerProtocolEssentials:
         app.__timeout__ = None
         app.__stream__.clear()
         app.__evt__.clear()
-        app.__overflow_evt__.clear()
+        if app.__overflow_evt__:
+            app.__overflow_evt__.clear()
         app.__initialize__()
         return app
 

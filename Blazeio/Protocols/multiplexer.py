@@ -328,7 +328,7 @@ class BlazeioMultiplexer:
                 await app._chunk_received(chunk)
 
 class Stream:
-    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task")
+    __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task", "__overflow_evt__")
 
     _chunk_size_base_ = 1024*10
     def __init__(app, _id: (bytes, bytearray), protocol):
@@ -338,6 +338,7 @@ class Stream:
         app.id = _id
         app.parent_task = io.current_task()
         app.__stream_closed__ = False
+        app.__overflow_evt__ = None
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
@@ -358,6 +359,9 @@ class Stream:
         app.__busy_stream__ = io.ioCondition(evloop = io.loop)
         app.__busy_stream__.lock()
         app.callback_manager = io.loop.create_task(app.manage_callbacks())
+    
+    def __initialize__(app):
+        ...
 
     def calculate_chunk_size(app):
         return app._chunk_size_base_
@@ -463,6 +467,9 @@ class Stream:
                         await app.__close__()
                         return
 
+    def __aiter__(app):
+        return app.__pull__()
+
     async def __to_chunks__(app, data: memoryview):
         while len(data) > app.chunk_size:
             chunk, data = data[:app.chunk_size], data[app.chunk_size:]
@@ -536,14 +543,20 @@ class Stream:
             app.protocol.protocol.stream_closed(app)
 
 class Blazeio_Stream_Server(Stream, io.BlazeioPayloadUtils, io.ExtraToolset):
+    non_bodied_methods = ("GET", "HEAD", "OPTIONS", "DELETE")
+    no_response_body_methods = ("HEAD",)
     def __init__(app, *args):
-        Stream.__init__(app, *args)
+        super().__init__(*args)
         io.ServerProtocolEssentials.defaults(app)
         app.request, app.writer, app.pull = app.__pull__, app.__writer__, None
 
 class Blazeio_Stream_Client(Stream,):
+    __slots__ = ('__is_at_eof__', 'transport', '__buff__', '__stream__', '__buff__memory__', '__chunk_size__', '__evt__', '__is_buffer_over_high_watermark__', '__overflow_evt__', '__perf_counter__', '__timeout__', 'cancel_on_disconnect', '__wait_closed__', 'push', 'write')
+    non_bodied_methods = ("GET", "HEAD", "OPTIONS", "DELETE")
+    no_response_body_methods = ("HEAD",)
+
     def __init__(app, *args):
-        Stream.__init__(app, *args)
+        super().__init__(*args)
         app.__timeout__ = None
         app.cancel_on_disconnect = True
         app.push, app.write = app.writer, app.writer

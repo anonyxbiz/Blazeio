@@ -138,33 +138,28 @@ class MuxTransporter:
         if not (conn := app.is_conn(srv)):
             async with app.__conn__:
                 if not (conn := app.is_conn(srv)):
-                    srv.conn = (conn := await io.Session(srv.remote, client_protocol = Protocols.client, connect_only = 1))
+                    srv.conn = (conn := await io.Session(srv.hostname, port = srv.port, client_protocol = Protocols.client, connect_only = 1))
     
         return await srv.conn.create_stream()
 
     async def mux_puller(app, r, resp):
         try:
-            while (chunk := await r): await resp.writer(chunk)
-            await resp.__eof__()
-        except:
-            return
+            while (chunk := await r):
+                await resp.writer(chunk)
+        except (io.CancelledError, RuntimeError):
+            r.close()
 
     async def mux_transporter(app, r, srv: io.ddict):
-        task = None
-        async with io.Session(srv.remote, use_protocol = await app.conn(srv), add_host = False, connect_only = True, decode_resp = False) as resp:
-            await resp.writer(io.ioConf.gen_payload(r.method, r.headers, r.tail, str(resp.port)))
+        async with io.Session(srv.hostname, port = srv.port, use_protocol = await app.conn(srv), add_host = False, connect_only = True, decode_resp = False) as resp:
+            await resp.writer(r.__miscellaneous__)
 
-            if r.method not in r.non_bodied_methods:
-                task = io.create_task(app.mux_puller(r, resp))
-            else:
-                async with resp.protocol: ...
+            task = io.create_task(app.mux_puller(r, resp))
 
             async for chunk in resp.__pull__():
                 if chunk:
                     await r.writer(chunk)
 
-        if task:
-            async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError): await task
+            await task
 
 class Transporter:
     def __init__(app): ...
