@@ -148,6 +148,7 @@ class MuxTransporter:
                 await resp.writer(chunk)
         except (io.CancelledError, RuntimeError):
             r.close()
+            await resp.__close__()
 
     async def mux_transporter(app, r, srv: io.ddict):
         async with io.Session(srv.hostname, port = srv.port, use_protocol = await app.conn(srv), connect_only = True) as resp:
