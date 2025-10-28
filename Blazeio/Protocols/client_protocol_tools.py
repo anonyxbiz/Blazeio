@@ -553,38 +553,42 @@ class Parsers:
             return await app.prepare_http()
 
     async def handle_chunked(app):
-        end, buff = False, memarray()
-        read, size, idx = 0, False, -1
+        if not app.chunked_encoder:
+            app.chunked_encoder = ddict()
+            app.chunked_encoder.end, app.chunked_encoder.buff = False, memarray()
+            app.chunked_encoder.read, app.chunked_encoder.size, app.chunked_encoder.idx = 0, False, -1
+
+        if app.chunked_encoder.end: return
 
         async for chunk in app.protocol.pull():
-            if size == False:
-                buff.extend(chunk)
-                if (idx := buff.find(app.handle_chunked_sepr1)) == -1: continue
+            if app.chunked_encoder.size == False:
+                app.chunked_encoder.buff.extend(chunk)
+                if (idx := app.chunked_encoder.buff.find(app.handle_chunked_sepr1)) == -1: continue
 
-                if not (s := buff[:idx]): continue
+                if not (s := app.chunked_encoder.buff[:idx]): continue
 
-                size, buff = int(s, 16), memarray(buff[idx + len(app.handle_chunked_sepr1):])
+                app.chunked_encoder.size, app.chunked_encoder.buff = int(s, 16), memarray(app.chunked_encoder.buff[idx + len(app.handle_chunked_sepr1):])
 
-                if size == 0: end = True
+                if app.chunked_encoder.size == 0: app.chunked_encoder.end = True
 
-                if len(buff) >= size:
-                    chunk, buff = buff, memarray(buff[len(buff):])
+                if len(app.chunked_encoder.buff) >= app.chunked_encoder.size:
+                    chunk, app.chunked_encoder.buff = app.chunked_encoder.buff, memarray(app.chunked_encoder.buff[len(app.chunked_encoder.buff):])
                 else:
-                    chunk, buff = buff[:size], memarray(buff[len(buff):])
+                    chunk, app.chunked_encoder.buff = app.chunked_encoder.buff[:app.chunked_encoder.size], memarray(app.chunked_encoder.buff[len(app.chunked_encoder.buff):])
 
-            read += len(chunk)
+            app.chunked_encoder.read += len(chunk)
 
-            if read > size:
-                chunk_size = len(chunk) - (read - size)
+            if app.chunked_encoder.read > app.chunked_encoder.size:
+                chunk_size = len(chunk) - (app.chunked_encoder.read - app.chunked_encoder.size)
 
                 chunk, __buff__ = chunk[:chunk_size], chunk[chunk_size + 2:]
                 app.protocol.prepend(__buff__)
 
-                read, size = 0, False
+                app.chunked_encoder.read, app.chunked_encoder.size = 0, False
 
             if chunk: yield chunk
 
-            if end: break
+            if app.chunked_encoder.end: break
 
     async def handle_raw(app, *args, **kwargs):
         if not app.content_length: return

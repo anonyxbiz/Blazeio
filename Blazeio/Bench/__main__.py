@@ -2,7 +2,7 @@
 import Blazeio as io
 import Blazeio.Other.class_parser as class_parser
 
-io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
+io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*4, 1024*4
 
 web = io.App("0.0.0.0", 6000, name = "web")
 
