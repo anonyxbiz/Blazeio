@@ -3,14 +3,15 @@ import Blazeio as io
 from Blazeio.Other.crypto import Ciphen
 
 class Tdb:
-    __slots__ = ("file", "db", "loaded", "cond", "cipher", "tasks")
-    def __init__(app, file: str, cipher_key: str, db: dict = {}):
+    __slots__ = ("file", "db", "loaded", "cond", "cipher", "tasks", "load_db")
+    def __init__(app, file: str, cipher_key: str, db: dict = {}, load_db: bool = True):
         object.__setattr__(app, "file", file)
         object.__setattr__(app, "tasks", [])
         object.__setattr__(app, "db", io.Dotify(db))
         object.__setattr__(app, "loaded", io.SharpEvent())
         object.__setattr__(app, "cond", io.ioCondition())
         object.__setattr__(app, "cipher", Ciphen(cipher_key))
+        object.__setattr__(app, "load_db", load_db)
         app.tasks.append(io.getLoop.create_task(app.daemon()))
 
     def __getattr__(app, key):
@@ -31,7 +32,7 @@ class Tdb:
 
     async def daemon(app):
         async with io.Ehandler(exit_on_err = 1, ignore = io.CancelledError):
-            if io.path.exists(app.file):
+            if app.load_db and io.path.exists(app.file):
                 json_data = await io.aread(app.file)
                 try:
                     json_data = io.loads(app.cipher.decrypt(json_data))
