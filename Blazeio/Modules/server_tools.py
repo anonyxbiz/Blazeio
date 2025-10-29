@@ -52,10 +52,7 @@ class Simpleserve:
             app.content_type = "application/octet-stream"
             app.attachment = 1
 
-        if app.content_type == "text/html":
-            app.content_type += "; charset=utf-8"
-
-        elif app.attachment:
+        if app.attachment:
             app.content_disposition = 'attachment; filename="%s"' % app.filename
         else:
             app.content_disposition = 'inline; filename="%s"' % app.filename
@@ -83,11 +80,10 @@ class Simpleserve:
             app.status = 206
         else:
             app.start, app.end, app.range_ = 0, app.file_size, range_
-
-            if not app.headers_demux.content_length in app.exclude_headers:
-                app.headers[app.headers_demux.content_length] = str(app.file_size)
-
             app.status = 200
+        
+        if not app.headers_demux.content_length in app.exclude_headers:
+            app.headers[app.headers_demux.content_length] = str(app.end - app.start)
 
         if app.validate_cache(): return True
         
