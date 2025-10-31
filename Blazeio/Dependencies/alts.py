@@ -451,7 +451,8 @@ class __plog__:
 
     __serializer = ioCondition()
 
-    def __init__(app): pass
+    def __init__(app):
+        ...
 
     def __getattr__(app, name):
         if name in logger.colors._dict:

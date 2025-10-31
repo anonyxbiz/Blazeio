@@ -93,12 +93,20 @@ class BlazeioClient(BlazeioClientProtocol):
         else:
             host, port = app.host, app.port
 
-        _ = await app.loop.create_connection(lambda: app, host, port, *app.args, **app.kwargs)
+        transport, protocol = await app.loop.create_connection(lambda: app, host, port, *app.args, **app.kwargs)
+        
+        sock = protocol.transport.get_extra_info("socket")
+
+        sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 30)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 10)
+        sock.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 3)
 
         if app.proxy and not app.proxy.connected:
             await app.proxy
 
-        return _
+        return (transport, protocol)
 
 class SessionMethodSetter(type):
     HTTP_METHODS = {
@@ -446,9 +454,9 @@ class __Request__(metaclass=DynamicRequestResponse):
 Session.request = __Request__
 
 class __SessionPool__:
-    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "should_ensure_connected")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 60, max_instances: int = 100, should_ensure_connected: bool = True):
-        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.should_ensure_connected = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, should_ensure_connected
+    __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "keepalive_interval")
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100):
+        app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.keepalive_interval = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, keepalive_interval
 
     async def release(app, session=None, instance=None):
         async with instance.context:
@@ -456,7 +464,7 @@ class __SessionPool__:
             instance.available.set()
             instance.perf_counter = perf_counter()
             instance.context.notify(1)
-    
+
     def is_timed_out(app, instance):
         return (perf_counter() - instance.perf_counter) >= app.timeout
 
@@ -464,7 +472,7 @@ class __SessionPool__:
         if instance.available.is_set() and instance.acquires < 1 and app.is_timed_out(instance):
             ...
         else:
-            instance.clean_cb = ReMonitor.add_callback(app.timeout, app.clean_instance, instance)
+            instance.clean_cb = ReMonitor.add_callback(app.keepalive_interval, app.clean_instance, instance)
             return
 
         app.sessions.get(instance.key).remove(instance)
@@ -484,7 +492,7 @@ class __SessionPool__:
         
         instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
         instance.session.close_on_exit = False
-        instance.clean_cb = ReMonitor.add_callback(app.timeout, app.clean_instance, instance)
+        instance.clean_cb = ReMonitor.add_callback(app.keepalive_interval, app.clean_instance, instance)
 
         return instance
 
@@ -512,6 +520,8 @@ class __SessionPool__:
 
         async with instance.context:
             await instance.context.wait()
+            if instance.session.protocol and app.is_timed_out(instance):
+                instance.session.protocol = None
 
         return instance.session
 
