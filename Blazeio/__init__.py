@@ -616,7 +616,6 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
         app.exit_event = SharpEvent(evloop = app.loop)
         app.ServerConfig = SrvConfig()
         app.ServerConfig.args, app.ServerConfig.kwargs = args, kwargs
-
         if len(args) >= 2:
             app.ServerConfig.__dict__["host"], app.ServerConfig.__dict__["port"] = args[:2]
 
@@ -629,7 +628,10 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
 
         ReMonitor.add_server(app)
         Super(app).__init__()
-    
+
+        if kwargs.get("with_keepalive"):
+            app.with_keepalive()
+
     def gen_server_name(app, name: str, id_split: str = " - "):
         try:
             server_id = int(name[name.rfind(id_split) + len(id_split):])

@@ -41,6 +41,6 @@ class Parser(ArgumentParser):
         if not app.__parsed_args__:
             app.__parsed_args__ = app.parse_args().__dict__
 
-        return app.__parsed_args__
+        return io.ddict(app.__parsed_args__)
 
 if __name__ == "__main__": ...
