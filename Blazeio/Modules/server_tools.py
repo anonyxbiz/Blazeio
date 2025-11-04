@@ -4,13 +4,13 @@ from .request import *
 from .streaming import *
 
 class Simpleserve:
-    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers', 'inline', 'attachment', 'fd')
+    __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers', 'inline', 'attachment')
     compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
 
     headers_demux = ddict(content_type = "Content-Type", content_length = "Content-Length", content_disposition = "Content-Disposition", last_modified_str = "Last-Modified", etag = "Etag")
-    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, fd: any = None, **kwargs):
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, **kwargs):
         if r and file:
-            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers, app.inline, app.attachment, app.fd = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers, inline, attachment, fd
+            app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers, app.inline, app.attachment = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers, inline, attachment
             if not path.exists(app.file): raise NotFoundErr("Not Found", 404)
 
     def initialize(app, *args, **kwargs):
@@ -106,27 +106,27 @@ class Simpleserve:
         async for chunk in app.pull(): await app.r.write(chunk)
 
     async def pull(app):
-        if app.start: app.fd.seek(app.start)
-        while (chunk := await app.fd.read(app.CHUNK_SIZE)):
-            yield chunk
-
-            if app.start >= app.end: break
-            app.start += len(chunk)
-            app.fd.seek(app.start)
+        async with async_open(app.file, "rb") as fd:
+            if app.start: fd.seek(app.start)
+            while (chunk := await fd.read(app.CHUNK_SIZE)):
+                yield chunk
+    
+                if app.start >= app.end: break
+                app.start += len(chunk)
+                fd.seek(app.start)
 
     async def aread(app, size: int):
-        if app.start: app.fd.seek(app.start)
-        chunk = await app.fd.read(size)
-        app.start += len(chunk)
-        return chunk
+        async with async_open(app.file, "rb") as fd:
+            if app.start: fd.seek(app.start)
+            chunk = await fd.read(size)
+            app.start += len(chunk)
+            return chunk
 
     async def __aenter__(app):
         await app.prepare_metadata()
-        if not app.fd: app.fd = await async_open(app.file, "rb").__aenter__()
         return app
 
     async def __aexit__(app, ext_t, ext_v, tb):
-        if app.fd is not None: await app.fd.__aexit__(ext_t, ext_v, tb)
         return False
 
     async def __aiter__(app):
