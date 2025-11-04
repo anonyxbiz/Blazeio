@@ -10,8 +10,16 @@ web = io.App("0.0.0.0", 8001)
 io.ioConf.INBOUND_CHUNK_SIZE = 4096
 
 @web.add_route
-async def __main_handler__(r):
-    await r
+async def __main_handler__(r: io.BlazeioProtocol):
+    # Buffer request headers
+    buff = bytearray()
+    while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in buff:
+        if len(buff) >= 102400:
+            raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
+        if (chunk := await r):
+            buff.extend(chunk)
+        else:
+            raise io.Abort("Bad Request", 400)
 
     await r.writer(
         b'HTTP/1.1 200 OK\r\n'
