@@ -74,7 +74,6 @@ class Depreciated:
 
     cache = {}
     max_cache_len = 10
-    alphas = (*string_ascii_lowercase, *string_ascii_uppercase)
 
     def __init__(app):
         ...
@@ -91,12 +90,14 @@ class Depreciated:
             app.cache[func_name] = {}
 
         for k, v in app.URL_DECODE_MAP.items():
-            if v not in value or v in app.alphas: continue
+            if v not in value or len(v) <= 1: continue
             value = value.replace(v, k)
 
         if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
 
         app.cache[func_name][rawvalue] = value
+        
+        print(value)
 
         return value
 
