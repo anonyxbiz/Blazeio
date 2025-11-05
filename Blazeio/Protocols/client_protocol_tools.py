@@ -283,6 +283,7 @@ class Urllib:
         if params:
             query = "?"
             for k, v in params.items():
+                v = Request.url_encode_sync(v)
                 if query == "?": x = ""
                 else: x = "&"
                 query += "%s%s=%s" % (x, k, v)

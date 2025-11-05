@@ -80,6 +80,7 @@ class Depreciated:
 
     @classmethod
     def url_encode_sync(app, rawvalue: str, func_name: str = "url_encode_sync"):
+        return rawvalue
         if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
 
         value = rawvalue
@@ -101,6 +102,7 @@ class Depreciated:
 
     @classmethod
     def url_decode_sync(app, rawvalue: str, func_name: str = "url_decode_sync"):
+        return rawvalue
         if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
 
         value = rawvalue
