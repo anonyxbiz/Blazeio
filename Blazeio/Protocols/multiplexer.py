@@ -321,11 +321,12 @@ class BlazeioMultiplexer:
                 if app.protocol.transport.is_closing(): raise app.protocol.__stream_closed_exception__()
 
     async def mux(app):
-        async with io.Ehandler(exit_on_err = True, ignore = (io.CancelledError, app.protocol.__stream_closed_exception__)):
-            app.clear_state()
-            async for chunk in app.__pull__():
-                if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
-                await app._chunk_received(chunk)
+        for i in range(10):
+            async with io.Ehandler(exit_on_err = False, ignore = (io.CancelledError, app.protocol.__stream_closed_exception__)):
+                app.clear_state()
+                async for chunk in app.__pull__():
+                    if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
+                    await app._chunk_received(chunk)
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task", "__overflow_evt__")
