@@ -84,6 +84,8 @@ class Depreciated:
         for k, v in app.URL_DECODE_MAP.items():
             if v not in value or v in app.alphas: continue
             value = value.replace(v, k)
+
+        print(value)
         return value
 
     @classmethod
