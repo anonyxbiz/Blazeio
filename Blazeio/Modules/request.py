@@ -96,6 +96,8 @@ class Depreciated:
         if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
 
         app.cache[func_name][rawvalue] = value
+        
+        print(value)
 
         return value
 
