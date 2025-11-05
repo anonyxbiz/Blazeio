@@ -82,7 +82,7 @@ class Depreciated:
     def url_encode_sync(app, rawvalue: str, func_name: str = "url_encode_sync"):
         value = rawvalue
         for k, v in app.URL_DECODE_MAP.items():
-            if v not in value or v in app.alphas: continue
+            if v not in value or v in app.alphas or len(v) <= 1: continue
             value = value.replace(v, k)
 
         print(value)
