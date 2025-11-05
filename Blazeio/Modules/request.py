@@ -80,44 +80,18 @@ class Depreciated:
 
     @classmethod
     def url_encode_sync(app, rawvalue: str, func_name: str = "url_encode_sync"):
-        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
-
         value = rawvalue
-
-        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
-
-        if not func_name in app.cache:
-            app.cache[func_name] = {}
-
         for k, v in app.URL_DECODE_MAP.items():
             if v not in value or v in app.alphas: continue
             value = value.replace(v, k)
-
-        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
-
-        app.cache[func_name][rawvalue] = value
-
         return value
 
     @classmethod
     def url_decode_sync(app, rawvalue: str, func_name: str = "url_decode_sync"):
-        if func_name in app.cache and rawvalue in app.cache[func_name]: return app.cache[func_name][rawvalue]
-
         value = rawvalue
-
-        if len(app.cache) >= app.max_cache_len: app.cache.remove(app.cache.keys()[0])
-
-        if not func_name in app.cache:
-            app.cache[func_name] = {}
-
         for k, v in app.URL_DECODE_MAP.items():
             if k not in value: continue
             value = value.replace(k, v)
-
-        if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
-
-        app.cache[func_name][rawvalue] = value
-
         return value
 
     @classmethod
