@@ -479,7 +479,8 @@ class __SessionPool__:
         if not app.sessions.get(instance.key): app.sessions.pop(instance.key)
 
         instance.available.clear()
-        instance.session.transport.close()
+        if instance.session.transport:
+            instance.session.transport.close()
 
     def create_instance(app, key, *args, **kwargs):
         instance = ddict(

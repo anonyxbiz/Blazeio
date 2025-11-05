@@ -326,4 +326,15 @@ def ensure_dumpable(json: dict, serialize: tuple = ()):
 
     return new
 
+class AsyncSyncCompatibility:
+    __slots__ = ()
+    def __init__(app):
+        ...
+
+    def __await__(app):
+        yield
+        return
+
+AsyncSyncCompatibilityInstance = AsyncSyncCompatibility()
+
 if __name__ == "__main__": ...

@@ -180,4 +180,22 @@ class Protocols:
         async for chunk in client.pull():
             await server.write(chunk)
 
+class StreamJson:
+    __slots__ = ("r", "data")
+    def __init__(app, r: BlazeioProtocol, data: list):
+        app.r, app.data = r, data
+
+    async def __aiter__(app):
+        await app.r.write(b'[\n')
+        try:
+            w = 0
+            for i in app.data:
+                if w:
+                    await app.r.write(b',\n')
+                yield i
+                if not w:
+                    w = 1
+        finally:
+            await app.r.write(b'\n]')
+
 if __name__ == "__main__": ...

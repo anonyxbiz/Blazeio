@@ -17,10 +17,22 @@ class Simpleserve:
         if args or kwargs: app.__init__(*args, **kwargs)
 
         return app.prepare_metadata()
+    
+    def is_modified(app):
+        if not (if_modified_since := app.r.headers.get("If-modified-since")): return NotImplemented
+
+        if strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") == strptime(app.last_modified_str, "%a, %d %b %Y %H:%M:%S GMT"):
+            raise Abort("", 304, app.headers)
+    
+    def is_match(app):
+        if not (etag := app.r.headers.get("If-none-match")): return
+
+        if etag == app.etag:
+            raise Abort("", 304, app.headers)
 
     def validate_cache(app):
-        if app.r.headers.get("If-none-match") == app.etag or (if_modified_since := app.r.headers.get("If-modified-since")) and strptime(if_modified_since, "%a, %d %b %Y %H:%M:%S GMT") >= gmtime(app.last_modified):
-            raise Abort("", 304, app.headers)
+        if app.is_modified() is NotImplemented:
+            app.is_match()
 
     def validate_method(app):
         if app.r.method == "GET": ...
@@ -31,7 +43,10 @@ class Simpleserve:
         yield from app.prepare_metadata().__await__()
         return app
 
-    async def prepare_metadata(app):
+    def __aiter__(app):
+        return app.pull()
+
+    def prepare_metadata(app):
         if not hasattr(app, "file_size"):
             app.file_size = path.getsize(app.file)
 
@@ -39,6 +54,7 @@ class Simpleserve:
             app.filename = path.basename(app.file)
 
         app.file_stats = stat(app.file)
+
         app.last_modified = app.file_stats.st_mtime
 
         if not hasattr(app, "etag"):
@@ -88,6 +104,7 @@ class Simpleserve:
         if app.validate_cache(): return True
         
         app.validate_method()
+        return AsyncSyncCompatibilityInstance
 
     @classmethod
     async def push(cls, *args, **kwargs):
@@ -123,19 +140,17 @@ class Simpleserve:
             return chunk
 
     async def __aenter__(app):
-        await app.prepare_metadata()
+        app.prepare_metadata()
         return app
 
     async def __aexit__(app, ext_t, ext_v, tb):
         return False
 
-    async def __aiter__(app):
-        async for chunk in app.pull(): yield chunk
-
 class StaticServer:
     __slots__ = ("root", "root_dir", "chunk_size", "page_dir", "home_page")
     ext_delimiter: str = "."
     html_ext: str = ".html"
+    pop_chunked_headers = ("Content-Length", "Content-Range")
     def __init__(app, root: str, root_dir: str, chunk_size: int, page_dir: str = "page", home_page: str = "index.html"):
         app.root, app.root_dir, app.chunk_size, app.page_dir, app.home_page = root, root_dir, chunk_size, page_dir, home_page
 

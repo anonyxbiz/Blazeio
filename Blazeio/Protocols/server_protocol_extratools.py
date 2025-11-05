@@ -132,6 +132,25 @@ class Rutils(ContentDecoders):
         ServerProtocolEssentials.reset(app)
         return app
 
+    @classmethod
+    def extract_cookie(cls, cookie, key_value_sepr: str = "="):
+        if (idy := cookie.find(key_value_sepr)) != -1:
+            return (cookie[:idy].strip(), cookie[idy + len(key_value_sepr):])
+
+    @classmethod
+    def cookies(cls, app, sepr: str = ";"):
+        cookies = ddict()
+        if (Cookie := app.headers.get("Cookie")):
+            while (idx := Cookie.find(sepr)) != -1:
+                cookie, Cookie = Cookie[:idx], Cookie[idx+len(sepr):]
+                if (cookie := app.extract_cookie(cookie)):
+                    cookies[cookie[0]] = cookie[1]
+
+            if (cookie := app.extract_cookie(Cookie)):
+                cookies[cookie[0]] = cookie[1]
+
+        return cookies
+
 class ExtraToolset:
     __slots__ = ()
     prepare_http_sepr1 = b"\r\n"
@@ -167,10 +186,6 @@ class ExtraToolset:
             func = getattr(app.utils, *_args)
             if not args:
                 args = (app,)
-            elif args[0] is app:
-                ...
-            else:
-                ...#args = (app, *args)
             return func(*args, **kwargs)
 
         return method
@@ -257,7 +272,7 @@ class ExtraToolset:
 
             if end: break
 
-    async def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False, domain = False):
+    def set_cookie(app, name: str, value: str, expires: str = "Tue, 07 Jan 2030 01:48:07 GMT", secure = True, http_only = False, domain = False):
         if secure: secure = "Secure; "
         else: secure = ""
 
@@ -271,6 +286,8 @@ class ExtraToolset:
             app.__prepared_headers__ = bytearray()
 
         app.__prepared_headers__ += bytearray("Set-Cookie: %s=%s; Expires=%s; %s%s%sPath=/\r\n" % (name, value, expires, domain, http_only, secure), "utf-8")
+
+        return AsyncSyncCompatibilityInstance
 
     async def handle_raw(app, *args, **kwargs):
         if app.headers is None: await app.reprepare()
