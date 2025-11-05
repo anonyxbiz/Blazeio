@@ -64,16 +64,16 @@ class HTTPParser:
 
 class Depreciated:
     URL_DECODE_MAP = URL_DECODE_MAP
+    alphas = set([*string_ascii_lowercase, string_ascii_uppercase, *[str(i) for i in range(9)]])
     url_encoding_map = {
         " ": "%20",
         "!": "%21",
     }
-
     URL_DECODE_MAP_ITEMS = URL_DECODE_MAP.items()
     URL_ENCODE_MAP_ITEMS = url_encoding_map.items()
-
     cache = {}
     max_cache_len = 10
+
 
     def __init__(app):
         ...
@@ -90,14 +90,12 @@ class Depreciated:
             app.cache[func_name] = {}
 
         for k, v in app.URL_DECODE_MAP.items():
-            if v not in value or len(v) <= 1: continue
+            if v not in value or v in app.alphas: continue
             value = value.replace(v, k)
 
         if len(app.cache[func_name]) >= app.max_cache_len: app.cache[func_name].remove(app.cache[func_name].keys()[0])
 
         app.cache[func_name][rawvalue] = value
-        
-        print(value)
 
         return value
 
