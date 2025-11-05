@@ -256,9 +256,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             method = method.upper()
 
         if not host and not port:
-            if params:
-                params = {i: app.url_encode_sync(str(params[i])) for i in params}
-
             app.host, app.port, app.path = ioConf.url_to_host(url, params)
 
         normalized_headers = DictView(stdheaders)

@@ -117,7 +117,7 @@ class Depreciated:
                     ...
                 elif (idx := value.find(o)) != -1:
                     value, params = value[:idx], value[idx + 1:]
-                temp[key] = value
+                temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
 
             if idx == -1 or idx_end != -1: break
 
