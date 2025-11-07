@@ -11,7 +11,7 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.9.4.3"
+version = "2.9.4.4"
 
 exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util")
 
@@ -24,7 +24,7 @@ for ext in exts:
         for module in exts:
             ext_modules.append(Extension(
                 module,
-                sources=[path.join(data_path, "Blazeio", "Extensions", module + ".c")],
+                sources=["/".join(["Blazeio", "Extensions", module + ".c"])],
                 extra_compile_args=['-O3'],
             ))
 
