@@ -337,4 +337,14 @@ class AsyncSyncCompatibility:
 
 AsyncSyncCompatibilityInstance = AsyncSyncCompatibility()
 
+class AsyncSyncCompatibilityWithResult:
+    __slots__ = ("result",)
+    def __init__(app, result):
+        class compatible(type(result)):
+            __slots__ = ()
+            def __await__(cls):
+                yield
+                return cls
+        app.result = compatible(result)
+
 if __name__ == "__main__": ...

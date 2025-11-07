@@ -124,16 +124,11 @@ class Depreciated:
 
 class Request(Depreciated):
     alphas = set([*string_ascii_lowercase, string_ascii_uppercase, *[str(i) for i in range(9)]])
-
-    form_signal3, form_header_eof, form_data_spec, form_filename = b'\r\n\r\n', (b'Content-Disposition: form-data; name="file"; filename=', ), (b'form-data; name=', b'\r\n\r\n', b'\r\n------'), (b'filename=', b'\r\n')
-
-    __server_config__ = dict(ioConf.default_http_server_config)
-
     def __init__(app):
         ...
 
     @classmethod
-    async def get_cookie(app, r, val: str = ""):
+    def get_cookie(app, r, val: str = ""):
         if not Context.is_prot(r):
             val, r = r, Context.r_sync()
 
@@ -148,7 +143,7 @@ class Request(Depreciated):
 
             if (idx := cookie.find(cookie_end)) != -1: cookie = cookie[:idx]
 
-        return cookie
+        return AsyncSyncCompatibilityWithResult(cookie).result
 
     @classmethod
     def get_cookie_sync(app, r, val: str = ""):
@@ -199,16 +194,16 @@ class Request(Depreciated):
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod
-    async def url_decode(app, *args, value: str):
-        return app.url_decode_sync(value)
+    def url_decode(app, *args, **kwargs):
+        return AsyncSyncCompatibilityWithResult(app.url_decode_sync(*args, **kwargs)).result
 
     @classmethod
-    async def url_encode(app, *args, value: str):
-        return app.url_encode_sync(value)
+    def url_encode(app, *args, **kwargs):
+        return AsyncSyncCompatibilityWithResult(app.url_encode_sync(*args, **kwargs)).result
 
     @classmethod
-    async def get_params(app, *args, **kwargs):
-        return app.get_params_sync(*args, **kwargs)
+    def get_params(app, *args, **kwargs):
+        return AsyncSyncCompatibilityWithResult(app.get_params_sync(*args, **kwargs)).result
 
     @classmethod
     def params(app, r = None, *args):
@@ -359,7 +354,6 @@ for i in (Request.url_decode_sync, Request.url_encode_sync, Request.get_params_s
     if (func := getattr(ioConf, i.__name__)):
         setattr(Request, "_python_impl_%s" % i.__name__, i)
         setattr(Request, i.__name__, func)
-        setattr(Request, (async_method := i.__name__[:-5]), lambda *a, **k: Request.wrapper(func, *a, **k))
 
     else:
         setattr(ioConf, i.__name__, i)
