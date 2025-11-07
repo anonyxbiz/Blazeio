@@ -3,7 +3,7 @@ from datetime import datetime as dt
 from os import environ, getcwd, path, system, environ
 from platform import system as platform_system
 
-data_path = path.abspath(path.dirname(__file__))
+data_path = path.dirname(__file__)
 
 with open("%s/requirements.txt" % data_path) as f:
     requirements = f.read().splitlines()
@@ -11,7 +11,7 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.9.4.2"
+version = "2.9.4.3"
 
 exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util")
 
