@@ -102,7 +102,7 @@ class Chrome(webdriver.Chrome):
             if io.debug_mode:
                 kwargs = io.ddict(options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
             else:
-                kwargs = io.ddict(service=Service(ChromeDriverManager().install()), options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
+                kwargs = io.ddict(options=await io.to_thread(app.get_driver_options), desired_capabilities=caps)
     
             await io.to_thread(super().__init__, *app.__driver_args__, **app.__driver_kwargs__, **kwargs)
     

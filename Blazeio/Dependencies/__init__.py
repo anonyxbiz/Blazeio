@@ -25,7 +25,7 @@ from os import path as os_path, mkdir, remove
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
 from threading import Thread, Lock as T_lock, Event as Tevent, main_thread
-from html import escape
+from html import escape, unescape
 
 from traceback import extract_tb, format_exc
 from ssl import create_default_context, Purpose, PROTOCOL_TLS_SERVER, OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_TLSv1, OP_NO_TLSv1_1, OP_NO_COMPRESSION, CERT_NONE, SSLError, TLSVersion
