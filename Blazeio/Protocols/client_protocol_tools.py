@@ -822,7 +822,11 @@ class Pulltools(Parsers, Decoders):
         if app.pull == app.protocol.pull: return
         async for chunk in app.pull(): ...
 
-    def __aiter__(app): return app.pull()
+    def __aiter__(app):
+        if app.is_prepared() and app.headers.get("content-range"):
+            return app.adl()
+        else:
+            return app.pull()
 
     async def pipe_to(app, pipe):
         async for chunk in app:
