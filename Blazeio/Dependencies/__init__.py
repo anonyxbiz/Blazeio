@@ -238,7 +238,11 @@ class __Scope__:
     def __call__(app, fn):
         app[fn.__name__] = fn
         return fn
-    
+
+    def instantiate(app, fn):
+        fn()
+        return app.__call__(fn)
+
     def __iter__(app):
         for key in app.added_keys:
             yield (key, app.get(key))
