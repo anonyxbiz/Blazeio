@@ -4,6 +4,7 @@ from os import mkdir, access as os_access, R_OK as os_R_OK, W_OK as os_W_OK, X_O
 from pathlib import Path
 from ssl import TLSVersion
 from Blazeio.Protocols.multiplexer import Protocols
+from Blazeio.Protocols.udp_protocol import udp_protocol
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import PIPE, run as subprocess_run
 from shutil import rmtree
@@ -185,6 +186,19 @@ class Transporter:
 
             await task
 
+    async def udp_transporter(app, r, srv: io.ddict):
+        async with udp_protocol.BlazeioUdpClient(srv.hostname, srv.port) as resp:
+            await resp.push(r.__miscellaneous__)
+            task = io.create_task(app.puller(r, resp))
+
+            async for chunk in resp:
+                if chunk:
+                    await r.writer(chunk)
+
+            if not task.done(): task.cancel()
+
+            await task
+
 class Sutils:
     def __init__(app):
         app.ssutils_coordination = io.ddict(sync = io.ioCondition())
@@ -317,6 +331,8 @@ class Server(Routes):
             app.update_protocol_event()
             if srv.server_config.multiplexed:
                 await app.mux_transporter(r, srv)
+            elif srv.server_config.get("udp"):
+                await app.udp_transporter(r, srv)
             else:
                 await app.transporter(r, srv)
         except OSError:
@@ -386,6 +402,7 @@ class WebhookClient:
             "perf_counter": io.perf_counter(),
             "server_config": {
                 "multiplexed": multiplexed,
+                "udp": kw.get("udp"),
                 "enforce_https": enforce_https
             }
         }

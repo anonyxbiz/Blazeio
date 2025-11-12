@@ -108,6 +108,9 @@ class BlazeioClient(BlazeioClientProtocol):
 
         return (transport, protocol)
 
+    async def start_tls(app, context: any = None):
+        app.transport = await app.loop.start_tls(app.transport, app, context or get_ssl_context(), server_hostname = app.host)
+
 class SessionMethodSetter(type):
     HTTP_METHODS = {
         "GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE", "CONNECT"
