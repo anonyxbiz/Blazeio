@@ -331,8 +331,6 @@ class Server(Routes):
             app.update_protocol_event()
             if srv.server_config.multiplexed:
                 await app.mux_transporter(r, srv)
-            elif srv.server_config.get("udp"):
-                await app.udp_transporter(r, srv)
             else:
                 await app.transporter(r, srv)
         except OSError:
