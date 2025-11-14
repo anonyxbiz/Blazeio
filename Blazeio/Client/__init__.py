@@ -572,6 +572,15 @@ class SessionPool:
         _app = yield from app.__aenter__().__await__()
         return _app
 
+    def close(app):
+        for key in app.pool.sessions:
+            if not (session := app.pool.sessions.get(key)): continue
+            for instance in list(session):
+                app.pool.sessions.get(instance.key).remove(instance)
+                instance.available.clear()
+                if instance.session.transport:
+                    instance.session.transport.close()
+
 class PooledSession:
     __slots__ = ("_super",)
     HTTP_METHODS = (
