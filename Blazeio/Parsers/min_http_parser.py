@@ -19,6 +19,9 @@ class HTTP:
             )
         )
     )
+    status_codes = ddict(
+        redirection = (300, 301, 302, 303, 307, 308)
+    )
 
 class MinParser(HTTP):
     __slots__ = ()
@@ -156,6 +159,6 @@ class MinParserClient(HTTP):
 
         return r
 
-MinParsers = ddict(server = MinParser(), client = MinParserClient())
+MinParsers = ddict(server = MinParser(), client = MinParserClient(), http = HTTP)
 
 if __name__ == "__main__": ...

@@ -470,42 +470,6 @@ class Parsers:
 
     def is_prepared(app): return True if app.status_code and app.handler else False
 
-    async def _prepare_http(app):
-        if app.is_prepared(): return True
-        if not app.protocol: raise ServerDisconnected()
-
-        await MinParsers.client.aparse(app)
-
-        if app.decode_resp:
-            if (encoding := app.response_headers.pop("content-encoding", None)):
-                if (decoder := getattr(app, "%s_decoder" % encoding, None)):
-                    app.decoder = decoder
-                else:
-                    app.decoder = None
-            else:
-                app.decoder = None
-
-        if app.auto_set_cookies:
-            if (Cookies := app.response_headers.get("set-cookie")):
-                splitter = "="
-                if not app.kwargs.get("cookies"):
-                    app.kwargs["cookies"] = {}
-
-                for cookie in Cookies:
-                    key, val = (parts := cookie[:cookie.find(";")].split(splitter))[0], splitter.join(parts[1:])
-
-                    app.kwargs["cookies"][key] = val
-
-        if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.response_headers.get("location", None)):
-            if location.startswith("/"):
-                location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
-            if URL(location).host != app.host: app.protocol = None
-            args, kwargs = app.join_to_current_params(location)
-            kwargs["follow_redirects"] = True
-            return await app.create_connection(*args, **kwargs)
-        
-        return True
-
     def raw_cookies(app):
         cookies = ""
         if (Cookies := app.response_headers.get("set-cookie")):
@@ -543,6 +507,46 @@ class Parsers:
         args = (*args, *app.args[len(args):]) if len(app.args) > len(args) else args
         kwargs = dict(**{i:app.kwargs[i] for i in app.kwargs if i not in kwargs}, **kwargs)
         return (args, kwargs)
+
+    def ok(app):
+        return app.status_code < 300
+
+    def redirection_url(app):
+        if app.status_code in MinParsers.http.status_codes.redirection and (location := app.response_headers.get("location", None)):
+            if location.startswith("/"):
+                location = "%s://%s%s" % ("https" if app.port == 443 else "http", app.host, location)
+
+            return location
+
+    async def _prepare_http(app):
+        if app.is_prepared(): return True
+        if not app.protocol: raise ServerDisconnected()
+
+        await MinParsers.client.aparse(app)
+
+        if app.decode_resp:
+            if (encoding := app.response_headers.pop("content-encoding", None)):
+                if (decoder := getattr(app, "%s_decoder" % encoding, None)):
+                    app.decoder = decoder
+                else:
+                    app.decoder = None
+            else:
+                app.decoder = None
+
+        if app.auto_set_cookies:
+            if (cookies := app.dict_cookies()):
+                if not app.kwargs.get("cookies"):
+                    app.kwargs["cookies"] = cookies
+                else:
+                    app.kwargs["cookies"].update(cookies)
+
+        if app.follow_redirects and (app.status_code >= 300 and app.status_code <= 310) and (location := app.redirection_url()):
+            if URL(location).host != app.host: app.protocol = None
+            args, kwargs = app.join_to_current_params(location)
+            kwargs["follow_redirects"] = True
+            return await app.create_connection(*args, **kwargs)
+        
+        return True
 
     async def prepare_http(app):
         await app._prepare_http()
@@ -664,9 +668,6 @@ class Pulltools(Parsers, Decoders):
             return func(app, *args, **kwargs)
 
         return method
-
-    def ok(app):
-        return app.status_code < 300
 
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()

@@ -38,7 +38,7 @@ from string import ascii_lowercase as string_ascii_lowercase, ascii_uppercase as
 from zlib import decompressobj, compressobj, MAX_WBITS as zlib_MAX_WBITS
 from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress, decompress as brotlicffi_decompress
 
-from psutil import Process as psutilProcess
+from psutil import Process as psutilProcess, cpu_count as psutilcpu_count
 
 try:
     from ujson import dumps as ujson_dumps, loads, JSONDecodeError
@@ -236,12 +236,8 @@ class __Scope__:
         return str(app.obj())
 
     def __call__(app, fn):
-        app[fn.__name__] = fn
+        app[fn.__name__ if hasattr(fn, "__name__") else fn.__class__.__name__] = fn
         return fn
-
-    def instantiate(app, fn):
-        fn()
-        return app.__call__(fn)
 
     def __iter__(app):
         for key in app.added_keys:
@@ -264,6 +260,10 @@ class __Scope__:
 
     def add(app, *args, **kwargs):
         return app.__call__(*args, **kwargs)
+
+    def instantiate(app, fn):
+        app.__call__(fn())
+        return fn
 
     def __id__(app):
         try:
