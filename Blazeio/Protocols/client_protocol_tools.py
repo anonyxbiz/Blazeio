@@ -665,6 +665,9 @@ class Pulltools(Parsers, Decoders):
 
         return method
 
+    def ok(app):
+        return app.status_code < 300
+
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()
 
