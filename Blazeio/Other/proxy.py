@@ -20,6 +20,11 @@ try:
 except ImportError:
     TCP_QUICKACK = None
 
+try:
+    from socket import TCP_FASTOPEN
+except ImportError:
+    TCP_FASTOPEN = None
+
 scope = io.ddict(server_set = io.SharpEvent(), privileged_domain = "blazeio.", server_name = "blazeio.other.proxy.localhost", parent_dir = "Blazeio_Other_Proxy", access_key = None)
 
 class Pathops:
@@ -490,6 +495,9 @@ class Runner:
 
         if TCP_QUICKACK:
             web.sock().setsockopt(IPPROTO_TCP, TCP_QUICKACK, 1)
+        
+        if TCP_FASTOPEN:
+            web.sock().setsockopt(IPPROTO_TCP, TCP_FASTOPEN, 5)
 
         web.sock().setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
         web.sock().setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
