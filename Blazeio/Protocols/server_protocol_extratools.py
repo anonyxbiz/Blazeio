@@ -86,7 +86,8 @@ class Rutils(ContentDecoders):
 
     @classmethod
     async def aread(cls, app = None, decode=False):
-        if not app: app = Context._r()
+        if not Context.is_prot(app):
+            decode, app = app, Context._r()
         if app.content_length: return await cls.read_exactly(app, app.content_length, decode)
 
         data = bytearray()
@@ -99,7 +100,8 @@ class Rutils(ContentDecoders):
     
     @classmethod
     async def read_exactly(cls, app = None, size: int = 0, decode=False):
-        if not app: app = Context._r()
+        if not Context.is_prot(app):
+            size, app = app, Context._r()
         data, point = memarray(size), 0
         async for chunk in app.pull():
             len_ = len(chunk)
