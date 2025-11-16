@@ -17,7 +17,10 @@ class Parser(ArgumentParser):
         app.__parsed_args__ = None
         super().__init__(*args, **kwargs)
         if class_ and type_:
-            app.add_defaults_to_parser(class_, type_)
+            if not isinstance(class_, tuple):
+                class_ = (class_,)
+            for obj in class_:
+                app.add_defaults_to_parser(obj, type_)
     
     def add_defaults_to_parser(app, obj, for_type):
         for arg_count, arg in enumerate(obj.__init__.__annotations__.keys()):
@@ -37,10 +40,13 @@ class Parser(ArgumentParser):
         app.args()
         return app.__parsed_args__.items()
 
-    def args(app):
+    def args(app, obj: (None, object) = None):
         if not app.__parsed_args__:
-            app.__parsed_args__ = app.parse_args().__dict__
+            app.__parsed_args__ = io.ddict(app.parse_args().__dict__)
 
-        return io.ddict(app.__parsed_args__)
+        if not obj:
+            return app.__parsed_args__
+        else:
+            return io.ddict({key: app.__parsed_args__.get(key) for key in obj.__init__.__annotations__.keys()})
 
 if __name__ == "__main__": ...
