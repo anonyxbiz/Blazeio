@@ -841,5 +841,15 @@ class Pulltools(Parsers, Decoders):
         async for chunk in app:
             if chunk: await pipe(chunk)
             yield int((app.received_len / app.content_length) * 100)
+    
+    async def read_into(app, view: memoryview):
+        point, maxsize = 0, len(view)
+        async for chunk in app:
+            if (len(chunk) + point) > maxsize:
+                _, chunk = app.protocol.prepend(chunk[(size := ((len(chunk) + point)-maxsize)):]), chunk[:size]
+            view[point: (point := point + len(chunk))] = memoryview(chunk)
+            if point >= maxsize: break
+
+        return point
 
 if __name__ == "__main__": ...
