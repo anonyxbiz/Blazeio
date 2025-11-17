@@ -189,13 +189,11 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 return app
             elif app.kwargs.get("connect_only"):
                 return app
-
+        
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else app
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err,))
-        if app.is_prepared() and app.response_headers.get("connection") == "close":
-            app.protocol.transport.close()
 
         if app.on_exit_callback:
             func = app.on_exit_callback[0]
@@ -235,7 +233,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             args, kwargs = app.args, app.kwargs
         else:
             app.args, app.kwargs = args, kwargs
-
+        
         return await app.create_connection(*args, **kwargs)
 
     def form_urlencode(app, form: dict):
@@ -458,7 +456,7 @@ Session.request = __Request__
 
 class __SessionPool__:
     __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "keepalive_interval")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100):
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 30, max_instances: int = 100):
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.keepalive_interval = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, keepalive_interval
 
     async def release(app, session=None, instance=None):
@@ -469,7 +467,7 @@ class __SessionPool__:
             instance.context.notify(1)
 
     def is_timed_out(app, instance):
-        return (perf_counter() - instance.perf_counter) >= app.timeout
+        return (perf_counter() - instance.perf_counter) >= instance.timeout
 
     def clean_instance(app, instance):
         if instance.available.is_set() and instance.acquires < 1 and app.is_timed_out(instance):
@@ -491,10 +489,13 @@ class __SessionPool__:
             key = key,
             available = SharpEvent(),
             context = ioCondition(),
-            perf_counter = perf_counter()
+            perf_counter = perf_counter(),
+            timeout = app.timeout
         )
+
+        instance.on_exit_callback = (app.release, instance)
         
-        instance.session = Session(*args, on_exit_callback = (app.release, instance), **kwargs)
+        instance.session = Session(*args, on_exit_callback = instance.on_exit_callback, **kwargs)
         instance.session.close_on_exit = False
         instance.clean_cb = ReMonitor.add_callback(app.keepalive_interval, app.clean_instance, instance)
 
@@ -507,6 +508,11 @@ class __SessionPool__:
                 instance.acquires += 1
                 instance.available.clear()
                 return instance
+    
+    def validate(app, instance):
+        if not instance.session.protocol or not (sslcontext := instance.session.protocol.transport.get_extra_info("sslcontext")): return
+
+        instance.timeout = 5
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
@@ -524,8 +530,10 @@ class __SessionPool__:
 
         async with instance.context:
             await instance.context.wait()
-            if instance.session.protocol and app.is_timed_out(instance):
-                instance.session.protocol = None
+            if instance.session.protocol:
+                app.validate(instance)
+                if app.is_timed_out(instance) or instance.session.protocol.transport.is_closing() or instance.session.protocol.__wait_closed__.is_set():
+                    instance.session.protocol = None
 
         return instance.session
 
@@ -557,11 +565,9 @@ class SessionPool:
 
         if app.connection_made_callback: app.connection_made_callback()
 
-        await app.session.__aenter__(create_connection = False)
+        await app.session.__aenter__(False)
 
         return await app.session.prepare(*app.args, **app.kwargs)
-
-        return Sessionproxy(app)
 
     async def __aexit__(app, *args):
         if app.session:

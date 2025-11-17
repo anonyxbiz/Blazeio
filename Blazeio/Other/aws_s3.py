@@ -17,10 +17,10 @@ class S3:
         k_service = app.sign(k_region, service)
         return app.sign(k_service, 'aws4_request')
     
-    def url(app, file_path: str):
+    def url(app, file_path: str, prot: str = "https"):
         if not file_path.startswith("/"):
             file_path = "/%s" % file_path
-        return "https://%s%s" % ("%s.s3.%s.amazonaws.com" % (app.bucket, app.region), file_path)
+        return "%s://%s%s" % (prot, "%s.s3.%s.amazonaws.com" % (app.bucket, app.region), file_path)
 
     def s3_headers(app, file_path: str, bucket: str, region: str, aws_key: str, aws_secret: str, headers: dict, service: str = "s3", method: str = "PUT", payload_hash: str = "UNSIGNED-PAYLOAD"):
         if not file_path.startswith("/"):
