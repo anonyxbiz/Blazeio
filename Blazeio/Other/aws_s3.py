@@ -46,8 +46,8 @@ class S3:
 
         return io.ddict(url=endpoint, method=method, headers=headers)
 
-    def authorize(app, filepath: str, headers: dict = {}):
-        return app.s3_headers(filepath, app.bucket, app.region, app.aws_key, app.aws_secret, headers or io.ddict(headers))
+    def authorize(app, filepath: str, headers: dict = {}, **kwargs):
+        return app.s3_headers(filepath, app.bucket, app.region, app.aws_key, app.aws_secret, headers or io.ddict(headers), **kwargs)
 
     async def aauthorize(app, *args, **kwargs):
         async with app.cond:

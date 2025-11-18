@@ -146,8 +146,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     known_ext_types = (BlazeioException, Eof, KeyboardInterrupt, CancelledError, RuntimeError, str)
 
     def __init__(app, *args, **kwargs):
-        for key in app.__slots__:
-            setattr(app, key, None)
+        for key in app.__slots__: setattr(app, key, None)
+        app.close_on_exit = kwargs.pop("close_on_exit", True)
 
         for key, set_key in app.__from_kwargs__:
             if key in kwargs:
@@ -184,7 +184,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if not app.loop:
             app.loop = get_event_loop()
 
-        if app.protocol:
+        if app.protocol and not create_connection:
             if isinstance(app.protocol, BlazeioClientProtocol):
                 return app
             elif app.kwargs.get("connect_only"):
@@ -193,6 +193,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else app
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
+        if app.protocol and (app.close_on_exit or isinstance(exc_value, CancelledError)):
+            if isinstance(app.protocol, BlazeioClientProtocol):
+                app.protocol.cancel()
+            else:
+                await app.protocol.__close__()
+                await app.protocol.__wait_closed__.wait()
+
         known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err,))
 
         if app.on_exit_callback:
@@ -210,23 +217,13 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if exc_value and isinstance(exc_value, BlazeioException): return False
 
         if not isinstance(exc_value, CancelledError):
-            if app.close_on_exit == False: return False
-
-        if (protocol := getattr(app, "protocol", None)):
-            if isinstance(protocol, BlazeioClientProtocol):
-                protocol.cancel()
-            else:
-                await protocol.__close__()
-                await protocol.__wait_closed__.wait()
+            if not app.close_on_exit: return False
 
         return False
 
     def conn(app, *args, **kwargs): return app.prepare(*args, **kwargs)
 
     async def prepare(app, *args, clean: bool = False, **kwargs):
-        if app.close_on_exit != False:
-            app.close_on_exit = False
-
         if app.protocol and app.has_sent_headers and not app.is_prepared() and not app.protocol.transport.is_closing(): return app
 
         if not args and not kwargs:
@@ -494,8 +491,7 @@ class __SessionPool__:
 
         instance.on_exit_callback = (app.release, instance)
         
-        instance.session = Session(*args, on_exit_callback = instance.on_exit_callback, **kwargs)
-        instance.session.close_on_exit = False
+        instance.session = Session(*args, on_exit_callback = instance.on_exit_callback, close_on_exit = False, **kwargs)
         instance.clean_cb = ReMonitor.add_callback(app.keepalive_interval, app.clean_instance, instance)
 
         return instance
@@ -555,7 +551,6 @@ class SessionPool:
 
     async def __aenter__(app):
         app.session = await app.pool.get(*app.args, **app.kwargs)
-
         if app.connection_made_callback: app.connection_made_callback()
 
         await app.session.__aenter__(False)
