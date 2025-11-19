@@ -529,8 +529,12 @@ class __SessionPool__:
 
     async def ensure_connected(app, session):
         if not (ssl_object := session.protocol.transport.get_extra_info("ssl_object")): return
-
-        await session.protocol.writer(b"HEAD / HTTP/1.1\r\nHost: %b\r\nConnection: Keep-Alive\r\n\r\n" % ssl_object.server_hostname.encode())
+        
+        try:
+            await session.protocol.writer(b"HEAD / HTTP/1.1\r\nHost: %b\r\nConnection: Keep-Alive\r\n\r\n" % ssl_object.server_hostname.encode())
+        except ServerDisconnected:
+            session.protocol.cancel()
+            return
 
         buff = viewarray(len(MinParsers.client.network_config.http.one_point_one.dcrlf))
         while not MinParsers.client.network_config.http.one_point_one.dcrlf in buff:
