@@ -5,7 +5,8 @@ from ..Modules.request import *
 from ..Protocols.client_protocol import *
 from socket import SOL_SOCKET, SO_KEEPALIVE, IPPROTO_TCP, TCP_KEEPIDLE, TCP_KEEPINTVL, inet_ntoa, inet_aton, inet_ntop, AF_INET6
 
-__memory__ = {}
+if not (__memory__ := InternalScope.get(i := "Blazeio.Client.__memory__")):
+    InternalScope[i] = (__memory__ := ddict())
 
 class Gen:
     __slots__ = ()
@@ -65,7 +66,7 @@ class Proxyconnector:
         app.tls_started = True
 
 class BlazeioClient(BlazeioClientProtocol):
-    __slots__ = ("host", "port", "args", "kwargs", "socks5proxy", "loop", "httpproxy", "proxy",)
+    __slots__ = ("host", "port", "args", "kwargs", "socks5proxy", "loop", "httpproxy", "proxy", "sock")
     def __init__(app, host: str, port: int, *args, socks5proxy: (dict, None) = None, httpproxy: (dict, None) = None, loop: any = None, proxy: (Proxyconnector, None) = None, **kwargs):
         super().__init__(**{i: kwargs.pop(i) for i in BlazeioClientProtocol.expected_kwargs if i in kwargs})
         app.host, app.port, app.args, app.kwargs, app.socks5proxy, app.httpproxy, app.loop, app.proxy = host, port, args, kwargs, socks5proxy, httpproxy, loop, proxy
@@ -95,13 +96,13 @@ class BlazeioClient(BlazeioClientProtocol):
 
         transport, protocol = await app.loop.create_connection(lambda: app, host, port, *app.args, **app.kwargs)
         
-        sock = protocol.transport.get_extra_info("socket")
+        app.sock = protocol.transport.get_extra_info("socket")
 
-        sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
-        sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
-        sock.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 30)
-        sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 10)
-        sock.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 3)
+        app.sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        app.sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        app.sock.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 30)
+        app.sock.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 10)
+        app.sock.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 3)
 
         if app.proxy and not app.proxy.connected:
             await app.proxy
@@ -251,7 +252,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             proxy = None
 
         if method:
-            method = method.upper()
+            app.method = (method := method.upper())
 
         if not host and not port:
             if params:
@@ -453,15 +454,14 @@ Session.request = __Request__
 
 class __SessionPool__:
     __slots__ = ("sessions", "loop", "max_conns", "max_contexts", "log", "timeout", "max_instances", "keepalive_interval")
-    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 5, max_instances: int = 100):
+    def __init__(app, evloop = None, max_conns = 0, max_contexts = 2, keepalive = False, keepalive_interval: int = 30, log: bool = False, timeout: int = 60, max_instances: int = 100):
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.keepalive_interval = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, keepalive_interval
 
     async def release(app, session=None, instance=None):
-        async with instance.context:
-            instance.acquires -= 1
-            instance.available.set()
-            instance.perf_counter = perf_counter()
-            instance.context.notify(1)
+        instance.acquires -= 1
+        instance.available.set()
+        instance.perf_counter = perf_counter()
+        instance.context.notify(1)
 
     def is_timed_out(app, instance):
         return (perf_counter() - instance.perf_counter) >= app.timeout
@@ -521,10 +521,24 @@ class __SessionPool__:
         async with instance.context:
             await instance.context.wait()
             if instance.session.protocol:
+                await app.ensure_connected(instance.session)
                 if app.is_timed_out(instance) or instance.session.protocol.transport.is_closing() or instance.session.protocol.__wait_closed__.is_set():
                     instance.session.protocol = None
 
         return instance.session
+
+    async def ensure_connected(app, session):
+        if not (ssl_object := session.protocol.transport.get_extra_info("ssl_object")): return
+
+        await session.protocol.writer(b"HEAD / HTTP/1.1\r\nHost: %b\r\nConnection: Keep-Alive\r\n\r\n" % ssl_object.server_hostname.encode())
+
+        buff = viewarray(len(MinParsers.client.network_config.http.one_point_one.dcrlf))
+        while not MinParsers.client.network_config.http.one_point_one.dcrlf in buff:
+            if (chunk := await session.protocol):
+                buff += chunk[-len(MinParsers.client.network_config.http.one_point_one.dcrlf):]
+            else:
+                session.protocol.cancel()
+                break
 
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
@@ -544,6 +558,8 @@ class SessionPool:
 
     def __getattr__(app, key):
         if app.pool: return getattr(app.pool, key, None)
+
+        elif app.session and (val := getattr(app.session, key, None)): return val
 
         elif (val := getattr(Session, key, None)): return val
 
@@ -651,13 +667,12 @@ class get_Session:
         ...
 
     def pool(app):
-        if not (pool := InternalScope.get("__get_Session_pool__")):
+        if not (pool := InternalScope.get(i := "Blazeio.Client.__get_Session_pool__")):
             if (socket_limits := InternalScope.get("socket_limits")):
                 socket_limits = int(socket_limits/2)
             else:
                 socket_limits = 0
-
-            InternalScope.__get_Session_pool__ = (pool := createSessionPool(socket_limits, socket_limits))
+            InternalScope[i] = (pool := createSessionPool(socket_limits, socket_limits))
 
         return pool
 
