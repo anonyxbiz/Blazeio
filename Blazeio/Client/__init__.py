@@ -539,14 +539,14 @@ class __SessionPool__:
         except ServerDisconnected:
             return session.protocol.cancel()
 
-        buff = viewarray(len(MinParsers.client.network_config.http.one_point_one.dcrlf))
+        buff = bytearray()
 
-        while not MinParsers.client.network_config.http.one_point_one.dcrlf in buff:
+        while buff.find(MinParsers.client.network_config.http.one_point_one.dcrlf) == -1:
             if (chunk := await session.protocol):
-                buff += chunk[-len(MinParsers.client.network_config.http.one_point_one.dcrlf):]
+                buff.extend(chunk)
+                buff = buff[-len(MinParsers.client.network_config.http.one_point_one.dcrlf):]
             else:
-                session.protocol.cancel()
-                break
+                return session.protocol.cancel()
 
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
