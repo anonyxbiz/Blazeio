@@ -478,8 +478,8 @@ class __SessionPool__:
         if not app.sessions.get(instance.key): app.sessions.pop(instance.key)
 
         instance.available.clear()
-        if instance.session.transport:
-            instance.session.transport.close()
+        if instance.session.protocol and instance.session.protocol.transport:
+            instance.session.protocol.cancel()
 
     def create_instance(app, key, *args, **kwargs):
         instance = ddict(
@@ -522,9 +522,12 @@ class __SessionPool__:
         async with instance.context:
             await instance.context.wait()
             if instance.session.protocol:
-                await app.ensure_connected(instance.session)
-                if app.is_timed_out(instance) or instance.session.protocol.transport.is_closing() or instance.session.protocol.__wait_closed__.is_set():
+                if not instance.session.protocol.transport:
                     instance.session.protocol = None
+                else:
+                    await app.ensure_connected(instance.session)
+                    if app.is_timed_out(instance) or instance.session.protocol.transport.is_closing() or instance.session.protocol.__wait_closed__.is_set():
+                        instance.session.protocol = None
 
         return instance.session
 
@@ -534,10 +537,10 @@ class __SessionPool__:
         try:
             await session.protocol.writer(b"HEAD / HTTP/1.1\r\nHost: %b\r\nConnection: Keep-Alive\r\n\r\n" % ssl_object.server_hostname.encode())
         except ServerDisconnected:
-            session.protocol.cancel()
-            return
+            return session.protocol.cancel()
 
         buff = viewarray(len(MinParsers.client.network_config.http.one_point_one.dcrlf))
+
         while not MinParsers.client.network_config.http.one_point_one.dcrlf in buff:
             if (chunk := await session.protocol):
                 buff += chunk[-len(MinParsers.client.network_config.http.one_point_one.dcrlf):]
