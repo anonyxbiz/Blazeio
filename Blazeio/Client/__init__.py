@@ -36,11 +36,11 @@ class Proxyconnector:
         if app.proxy_type == "socks5":
             method = app.socks5_connect
         elif app.proxy_type == "http":
-            raise ValueError("connector doesn't support %s proxy_type." % app.proxy_type)
+            method = app.http_connect
 
         _ = await method()
         app.connected = True
-        
+
         if app.proxy.get("start_tls"): await app.start_tls()
 
         return _
@@ -60,6 +60,18 @@ class Proxyconnector:
         await app.protocol.writer(connect)
         await app.protocol
         app.protocol.__stream__.clear()
+
+    async def http_connect(app):
+        payload = bytearray()
+        payload.extend(b'CONNECT %b:%d HTTP/1.1\r\n' % (app.proxy.get("host").encode(), int(app.proxy.get("port"))))
+        payload.extend(b'Proxy-Connection: Keep-Alive\r\n')
+        if (username := app.proxy.get("username")) and (password := app.proxy.get("password")):
+            payload.extend(b'Proxy-Authorization: Basic %b\r\n' % b64encode(str("%s:%s" % (username, password)).encode()))
+        payload.extend(b'\r\n')
+        await app.protocol.writer(payload)
+        await MinParsers.client.aparse(resp := ddict(protocol = app.protocol, handle_chunked = None, handle_raw = None))
+        if resp.status_code >= 400:
+            raise Err("Failed to establish proxy connection, status_code: %s, reason_phrase: %s" % (resp.status_code, resp.reason_phrase))
 
     async def start_tls(app, context: any = None):
         app.protocol.transport = await app.protocol.loop.start_tls(app.protocol.transport, app.protocol, context or get_ssl_context(), server_hostname = app.protocol.host)
@@ -237,7 +249,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, app.url_encode_sync(str(form[key]))) for key in form]).encode()
 
-    async def create_connection(app, url: (str, None) = None, method: (str, None) = "get", headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, proxy: (tuple,dict) = {}, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, multipart: (None, dict) = None, encoder: any = None, default_writer: any = None, eof_sent: bool = False, has_sent_headers: bool = False, decompressor: any = None, compressor: any = None, send_headers: bool = True, prepare_http: bool = True, chunked_encoder: bool = None, **kwargs):
+    async def create_connection(app, url: (str, None) = None, method: (str, None) = "get", headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, encoder: any = None, default_writer: any = None, eof_sent: bool = False, has_sent_headers: bool = False, decompressor: any = None, compressor: any = None, send_headers: bool = True, prepare_http: bool = True, chunked_encoder: bool = None, **kwargs):
         __locals__ = locals()
         for key in app.__slots__:
             if (val := __locals__.get(key, NotImplemented)) == NotImplemented: continue
@@ -265,11 +277,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         for i in app.__important_headers__:
             if i in normalized_headers and i not in stdheaders:
                 stdheaders[i] = normalized_headers.pop(i)
-
-        if multipart:
-            multipart = Multipart(**multipart)
-            stdheaders.update(multipart.headers)
-            content = multipart.pull()
 
         if "client_protocol" in kwargs:
             client_protocol = kwargs.pop("client_protocol")
@@ -376,35 +383,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if "Transfer-encoding" in normalized_headers: app.default_writer = app.write_chunked
             else:
                 app.default_writer = app.protocol.push
-
-    async def proxy_config(app, headers, proxy):
-        username, password = None, None
-        if isinstance(proxy, dict):
-            if not (proxy_host := proxy.get("host")) or not (proxy_port := proxy.get("port")):
-                raise Err("Proxy dict must have `host` and `port`.")
-
-            app.proxy_host, app.proxy_port = proxy_host, proxy_port
-
-            if (username := proxy.get("username")) and (password := proxy.get("password")):
-                ...
-
-        elif isinstance(proxy, tuple):
-            if (proxy_len := len(proxy)) not in (2,4):
-                raise Err("Proxy tuple must be either 2 or 4")
-
-            if proxy_len == 2:
-                app.proxy_host, app.proxy_port = proxy
-
-            elif proxy_len == 4:
-                app.proxy_host, app.proxy_port, username, password  = proxy
-        
-        app.proxy_port = int(app.proxy_port)
-
-        if username and password:
-            auth = b64encode(str("%s:%s" % (username, password)).encode()).decode()
-            headers["Proxy-Authorization"] = "Basic %s\r\n" % auth
-
-        return
 
     @classmethod
     @asynccontextmanager
@@ -534,7 +512,7 @@ class __SessionPool__:
 
     async def ensure_connected(app, session):
         if not (ssl_object := session.protocol.transport.get_extra_info("ssl_object")): return
-        
+
         try:
             await session.protocol.writer(b"HEAD / HTTP/1.1\r\nHost: %b\r\nConnection: Keep-Alive\r\n\r\n" % ssl_object.server_hostname.encode())
         except ServerDisconnected:

@@ -16,6 +16,16 @@ class HTTP:
                 headers = ddict(
                     delimiter = b': ',
                 )
+            ),
+            one = ddict(
+                crlf = b"\r\n",
+                dcrlf = b"\r\n\r\n",
+                protocol = b"HTTP/1.0",
+                initial_delimiter = b' ',
+                methods = (b"GET", b"HEAD", b"POST", b"PUT", b"DELETE", b"CONNECT", b"OPTIONS", b"TRACE", b"PATCH"),
+                headers = ddict(
+                    delimiter = b': ',
+                )
             )
         )
     )
@@ -107,15 +117,16 @@ class MinParserClient(HTTP):
     def set_method(app, r: BlazeioProtocol, header: bytes):
         if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
 
-        prot, header = header[:idx].decode(), header[idx + 1:]
+        protocol, header = header[:idx].decode(), header[idx + 1:]
 
-        if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
+        if (idx := header.find(app.network_config.http.one_point_one.crlf)) != -1:
+            protocol_details, header = header[:idx], header[idx:]
+        else:
+            protocol_details = header
 
-        r.status_code, header = int(header[:idx].decode()), header[idx + 1:]
+        if (idx := protocol_details.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
 
-        if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1: raise ClientGotInTrouble("Unknown Server Protocol")
-
-        r.reason_phrase, header = header[:idx].decode(), header[idx + 1:]
+        r.status_code, r.reason_phrase = int(protocol_details[:idx].decode()), protocol_details[idx+1:].decode()
 
         app.header_parser(r, header)
 
@@ -143,7 +154,7 @@ class MinParserClient(HTTP):
                 buff.extend(chunk)
 
             if not valid:
-                if (idx := buff.find(app.network_config.http.one_point_one.protocol)) != -1:
+                if (idx := buff.find(app.network_config.http.one_point_one.protocol)) != -1 or (idx := buff.find(app.network_config.http.one.protocol)) != -1:
                     valid, buff = 1, buff[idx:]
                 else:
                     buff = buff[-len(app.network_config.http.one_point_one.protocol):]
