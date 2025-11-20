@@ -458,10 +458,11 @@ class __SessionPool__:
         app.sessions, app.loop, app.max_conns, app.max_contexts, app.log, app.timeout, app.max_instances, app.keepalive_interval = {}, evloop or ioConf.loop, max_conns, max_contexts, log, timeout, max_instances, keepalive_interval
 
     async def release(app, session=None, instance=None):
-        instance.acquires -= 1
-        instance.available.set()
-        instance.perf_counter = perf_counter()
-        instance.context.notify(1)
+        async with instance.context:
+            instance.acquires -= 1
+            instance.available.set()
+            instance.perf_counter = perf_counter()
+            instance.context.notify(1)
 
     def is_timed_out(app, instance):
         return (perf_counter() - instance.perf_counter) >= app.timeout
