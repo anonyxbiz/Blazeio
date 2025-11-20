@@ -525,7 +525,8 @@ class __SessionPool__:
                 if not instance.session.protocol.transport:
                     instance.session.protocol = None
                 else:
-                    await app.ensure_connected(instance.session)
+                    if (perf_counter() - instance.perf_counter) >= 3:
+                        await app.ensure_connected(instance.session)
                     if app.is_timed_out(instance) or instance.session.protocol.transport.is_closing() or instance.session.protocol.__wait_closed__.is_set():
                         instance.session.protocol = None
 
