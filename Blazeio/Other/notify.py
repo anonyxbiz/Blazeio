@@ -9,11 +9,20 @@ class Notify:
     def __iadd__(app, message: any):
         while len(app.notifications) >= app.max_len:
             app.notifications.popleft()
-        if app.message_type == dict:
-            message = io.ddict(dt = io.dt.now(io.UTC), message = message)
-        app.notifications.append(message)
+        if message:
+            if app.message_type == dict:
+                message = io.ddict(dt = io.dt.now(io.UTC), message = message)
+            app.notifications.append(message)
         app.update_event.set()
         return app
+
+    def __await__(app):
+        _ = yield from app.update_event.wait_clear().__await__()
+        if app.exit_tuple:
+            exc_type, exc_value, traceback = app.exit_tuple
+            if exc_value: raise exc_value
+
+        return _
 
     def append(app, message: any):
         return app.__iadd__(message)
