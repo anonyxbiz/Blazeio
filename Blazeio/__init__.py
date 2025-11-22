@@ -542,6 +542,7 @@ class Server:
         async with app.server:
             await app.server.start_serving()
             app.is_server_running.set()
+            app.start_timestamp = dt.now().timestamp()
 
             await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, "System: %s" % os_name, "Cpu_count: %s" % psutilcpu_count(), "Server [%s] running on %s" % (app.server_name, app.ServerConfig.server_address), "Request Logging is %s.\n" % ("enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
@@ -616,6 +617,7 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
         app.exit_event = SharpEvent(evloop = app.loop)
         app.ServerConfig = SrvConfig()
         app.ServerConfig.args, app.ServerConfig.kwargs = args, kwargs
+        app.start_timestamp = None
         if len(args) >= 2:
             app.ServerConfig.__dict__["host"], app.ServerConfig.__dict__["port"] = args[:2]
 

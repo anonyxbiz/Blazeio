@@ -39,7 +39,7 @@ class Ctypes:
     text: str = "text/plain; charset=utf-8"
     json: str = "application/json; charset=utf-8"
     eventstream: str = "text/event-stream"
-
+    chunked: dict = {"Transfer-encoding": "chunked"}
     def __init__(app): ...
 
 class Prepare:
