@@ -1,4 +1,4 @@
-from ..Dependencies import *
+from ..Dependencies.alts import *
 from .reasons import *
 
 class Context:

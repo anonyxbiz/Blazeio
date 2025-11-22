@@ -1,7 +1,6 @@
 # Dependencies.__init___.py
 from ..Itools import *
 from ..Exceptions import *
-from ..Protocols import *
 from ..Versioning import __version__
 from asyncio import new_event_loop, set_event_loop, set_event_loop_policy, run as io_run, CancelledError, get_event_loop, current_task, all_tasks, to_thread, sleep, gather, create_subprocess_shell, Event, BufferedProtocol, wait_for, TimeoutError, subprocess, Queue as asyncQueue, run_coroutine_threadsafe, wrap_future, wait_for, ensure_future, Future as asyncio_Future, wait as asyncio_wait, FIRST_COMPLETED as asyncio_FIRST_COMPLETED, Condition, iscoroutinefunction, iscoroutine, InvalidStateError, DefaultEventLoopPolicy
 

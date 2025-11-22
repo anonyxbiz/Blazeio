@@ -12,17 +12,17 @@ class Err(BlazeioException):
         return str(app.message)
 
 class ClientDisconnected(BlazeioException):
-    __slots__ = ('message')
-    def __init__(app, message: (None, str) = "Client has disconnected."):
-        app.message = message
+    __slots__ = ('message', 'origin')
+    def __init__(app, message: (None, str) = None, origin: (None, str) = None):
+        app.message, app.origin = message or "Client has disconnected.", origin
 
     def __str__(app) -> str:
         return str(app.message)
 
 class ServerDisconnected(BlazeioException):
     __slots__ = ('message', 'origin')
-    def __init__(app, message: (None, str) = "Server has disconnected.", origin: (None, str) = None):
-        app.message, app.origin = message, origin
+    def __init__(app, message: (None, str) = None, origin: (None, str) = None):
+        app.message, app.origin = message or "Server has disconnected.", origin
 
     def __str__(app) -> str:
         return str(app.message)

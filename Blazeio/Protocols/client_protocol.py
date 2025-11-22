@@ -50,25 +50,10 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         if app.transport:
             app.transport.abort()
 
-    async def ensure_stream(app, max_retries: int = 5):
-        retries = -1
-        while (retries := retries+1) <= 5:
-            await app.ensure_reading()
-            if app.__stream__: return
-
-        raise ServerDisconnected(app.cancel(), "ensure_stream")
-
-    async def __aiter__(app):
-        while True:
-            await app.ensure_stream()
-            while app.__stream__:
-                yield app.__stream__.popleft()
-            else:
-                if app.transport.is_closing(): raise ServerDisconnected(app.cancel(), "__aiter__")
-
-    def __await__(app):
-        yield from app.ensure_stream().__await__()
-        return app.__stream__.popleft()
+    def abort_connection(app):
+        if app.cancel and app.cancel_on_disconnect:
+            app.cancel()
+        raise ServerDisconnected(origin = "abort_connection")
 
     def pull(app):
         return app.__aiter__()

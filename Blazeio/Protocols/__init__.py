@@ -1,4 +1,6 @@
 # Blazeio.Protocols
+from ..Dependencies import *
+
 __all__ = ('BlazeioProtocol',)
 
 class BlazeioProtocol:
@@ -47,8 +49,11 @@ class BlazeioProtocol:
             if not app.__stream__:
                 if not app.transport.is_reading():
                     app.transport.resume_reading()
-
                 await app.__evt__.wait_clear()
+
+            if app.transport.is_closing(): app.abort_connection()
+        else:
+            if app.transport.is_closing(): app.abort_connection()
 
     def __initialize__(app):
         ...

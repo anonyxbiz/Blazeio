@@ -1,4 +1,5 @@
 from ..Dependencies import *
+from ..Protocols import *
 from ..Dependencies import __version__
 from ..Dependencies import _getframe
 from ..Modules.streaming import Context, Abort

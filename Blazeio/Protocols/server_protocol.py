@@ -50,6 +50,11 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         app.cancel = (task := loop.create_task(app.transporter())).cancel
         task.__BlazeioProtocol__ = app
 
+    def abort_connection(app):
+        if app.cancel and app.cancel_on_disconnect:
+            app.cancel()
+        raise ClientDisconnected(origin = "abort_connection")
+
     def state(app):
         return {key: str(value)[:500] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
 
