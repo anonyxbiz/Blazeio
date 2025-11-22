@@ -1,6 +1,4 @@
 # Blazeio.Protocols
-from ..Dependencies import *
-
 __all__ = ('BlazeioProtocol',)
 
 class BlazeioProtocol:
