@@ -20,9 +20,9 @@ class ClientDisconnected(BlazeioException):
         return str(app.message)
 
 class ServerDisconnected(BlazeioException):
-    __slots__ = ('message')
-    def __init__(app, message: (None, str) = "Server has disconnected."):
-        app.message = message
+    __slots__ = ('message', 'origin')
+    def __init__(app, message: (None, str) = "Server has disconnected.", origin: (None, str) = None):
+        app.message, app.origin = message, origin
 
     def __str__(app) -> str:
         return str(app.message)

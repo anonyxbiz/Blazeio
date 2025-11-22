@@ -145,7 +145,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback", "chunked_encoder", "__aentered__", "__aexited__")
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback", "chunked_encoder", "__aentered__", "__aexited__", "server_disconnected")
     __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"), ("on_exit_callback", "on_exit_callback"))
 
     NON_BODIED_HTTP_METHODS = {
@@ -248,8 +248,17 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             args, kwargs = app.args, app.kwargs
         else:
             app.args, app.kwargs = args, kwargs
-        
-        return await app.create_connection(*args, **kwargs)
+
+        app.server_disconnected = False
+
+        while True:
+            try:
+                return await app.create_connection(*args, **kwargs)
+            except ServerDisconnected as ext:
+                if ext.origin == "writer" or app.server_disconnected:
+                    raise
+                else:
+                    app.server_disconnected = True
 
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, app.url_encode_sync(str(form[key]))) for key in form]).encode()
@@ -508,29 +517,10 @@ class __SessionPool__:
                 if not instance.session.protocol.transport:
                     instance.session.protocol = None
                 else:
-                    if (perf_counter() - instance.perf_counter) >= 3:
-                        await app.ensure_connected(instance.session)
                     if app.is_timed_out(instance) or instance.session.protocol.transport.is_closing() or instance.session.protocol.__wait_closed__.is_set():
                         instance.session.protocol = None
 
         return instance.session
-
-    async def ensure_connected(app, session):
-        if not (ssl_object := session.protocol.transport.get_extra_info("ssl_object")): return
-
-        try:
-            await session.protocol.writer(b"HEAD / HTTP/1.1\r\nHost: %b\r\nConnection: Keep-Alive\r\n\r\n" % ssl_object.server_hostname.encode())
-        except ServerDisconnected:
-            return session.protocol.cancel()
-
-        buff = bytearray()
-
-        while buff.find(MinParsers.client.network_config.http.one_point_one.dcrlf) == -1:
-            if (chunk := await session.protocol):
-                buff.extend(chunk)
-                buff = buff[-len(MinParsers.client.network_config.http.one_point_one.dcrlf):]
-            else:
-                return session.protocol.cancel()
 
 class SessionPool:
     __slots__ = ("pool", "args", "kwargs", "session", "max_conns", "connection_made_callback", "pool_memory", "max_contexts",)
