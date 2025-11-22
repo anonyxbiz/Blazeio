@@ -399,11 +399,13 @@ class Default_logger:
             else:
                 prec = ""
 
-            sys_stdout.write("%s%s%s" % (prec, color, log))
+            log = "%s%s%s" % (prec, color, log)
         else:
-            sys_stdout.write(raw)
+            log = raw
 
+        sys_stdout.write(log)
         sys_stdout.flush()
+        return log
 
     def dead(app):
         return app.should_stop
@@ -412,9 +414,8 @@ class Default_logger:
         if app.override_logger:
             return await app.override_logger(*args, **kwargs)
 
-        event = SharpEvent()
-        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event)), app.loop))
-        await event.wait()
+        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event := SharpEvent())), app.loop))
+        return await event.wait()
 
     async def raw(app, log, *args, **kwargs):
         return await app.__log__(*args, raw = log, **kwargs)
@@ -432,8 +433,7 @@ class Default_logger:
             await app.logs.get_one(pop=False)
             while app.logs.queue:
                 args, kwargs, event = app.logs.popleft()
-                app.__log_actual__(*args, **kwargs)
-                event.loop.call_soon(event.set)
+                event.loop.call_soon(event.set, app.__log_actual__(*args, **kwargs))
 
             if not app.logs.queue:
                 app.log_idle_event.set()

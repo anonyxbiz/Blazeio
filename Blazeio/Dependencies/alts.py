@@ -447,11 +447,10 @@ def read_safe_sync(_type = bytes, *a, **k):
 
 class __plog__:
     lines = {"<line_%d>" % i: "\033[%d;1H" % i for i in range(1,2)}
-
     line_sepr = ("<", "line_", ">")
-
     __serializer = ioCondition()
-
+    lineno = 0
+    track_lineno = False
     def __init__(app):
         ...
 
@@ -506,7 +505,12 @@ class __plog__:
         if lineno is not None and (plog_lineno_incr := Taskscope.get("plog_lineno_incr", 3)):
             await app.clear_mv(lineno, lineno + int(plog_lineno_incr))
 
-        return await logger_(line + txt)
+        log = line + txt
+
+        if app.track_lineno:
+            app.lineno += log.count("\n")
+
+        return await logger_(log)
 
     async def clear(app, a: int = 0, b: int = 20):
         for line in range(a, b):

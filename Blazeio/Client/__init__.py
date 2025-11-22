@@ -145,8 +145,7 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback", "chunked_encoder")
-
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback", "chunked_encoder", "__aentered__", "__aexited__")
     __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"), ("on_exit_callback", "on_exit_callback"))
 
     NON_BODIED_HTTP_METHODS = {
@@ -189,7 +188,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         if app.protocol.__stream__: app.protocol.__stream__.clear()
         if app.protocol.transport.is_closing(): app.protocol = None
 
-    async def __aenter__(app, create_connection = True):
+    async def __aenter__(app, create_connection: bool = True):
+        if app.__aentered__:
+            if not app.__aexited__: return app
+        else:
+            app.__aentered__, app.__aexited__ = True, False
+
         if (task := current_task()):
             if not hasattr(task, "__BlazeioClientProtocol__"):
                 task.__BlazeioClientProtocol__ = app
@@ -206,6 +210,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         return await app.create_connection(*app.args, **app.kwargs) if create_connection else app
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
+        app.__aentered__, app.__aexited__ = False, True
         if app.protocol and (app.close_on_exit or isinstance(exc_value, CancelledError)):
             if isinstance(app.protocol, BlazeioClientProtocol):
                 app.protocol.cancel()
@@ -555,9 +560,7 @@ class SessionPool:
     async def __aenter__(app):
         app.session = await app.pool.get(*app.args, **app.kwargs)
         if app.connection_made_callback: app.connection_made_callback()
-
         await app.session.__aenter__(False)
-
         return await app.session.prepare(*app.args, **app.kwargs)
 
     async def __aexit__(app, *args):
@@ -591,36 +594,15 @@ class PooledSession:
 
     def __getattr__(app, key):
         if key in app.HTTP_METHODS:
-            @asynccontextmanager
-            async def dynamic_method(*args, **kwargs):
-                async with app.method_setter(key, *args, **kwargs) as instance:
-                    yield instance
-        else:
-            dynamic_method = None
-
-        if dynamic_method:
+            def dynamic_method(*args, **kwargs):
+                return app(*(args[0], key, *args[1:]), **kwargs)
             return dynamic_method
-        else:
-            return getattr(app._super, key)
+
+        return getattr(app._super, key)
 
     def __call__(app, *args, **kwargs):
         app._super.pool = SessionPool(*args, max_conns = app._super.max_conns, max_contexts = app._super.max_contexts, pool_memory = app._super.pool_memory,  **kwargs)
         return app._super.pool
-
-    @asynccontextmanager
-    async def method_setter(app, method: str, *args, **kwargs):
-        exception = (None, None, None)
-        _yielded = 0
-        try:
-            instance = app(*(args[0], method, *args[1:]), **kwargs)
-            _yield = await instance.__aenter__()
-            _yielded = 1
-            yield _yield
-        except Exception as e:
-            exception = (type(e).__name__, e, e.__traceback__)
-        finally:
-            await instance.__aexit__(*exception)
-            if exception[1]: raise exception[1]
 
 class createSessionPool:
     __slots__ = ("pool", "pool_memory", "max_conns", "max_contexts", "Session", "SessionPool", "kwargs",)
@@ -631,6 +613,7 @@ class createSessionPool:
 
     def __getattr__(app, key):
         if app.pool and hasattr(app.pool, key): return getattr(app.pool, key)
+
         elif (val := app.kwargs.get(key)): return val
 
         raise Eof("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
