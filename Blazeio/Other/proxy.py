@@ -175,7 +175,7 @@ class Transporter:
         try:
             while (chunk := await r):
                 await resp.push(chunk)
-        except (io.CancelledError, RuntimeError):
+        except (io.CancelledError, io.ServerDisconnected, io.ClientDisconnected, RuntimeError):
             r.close()
 
     async def transporter(app, r, srv: io.ddict):

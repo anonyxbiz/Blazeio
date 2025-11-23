@@ -510,6 +510,9 @@ class Parsers:
 
     def ok(app):
         return app.status_code < 300
+    
+    def can_pull(app):
+        return app.method not in app.no_response_body_methods and app.status_code != 304
 
     def redirection_url(app):
         if app.status_code in MinParsers.http.status_codes.redirection and (location := app.response_headers.get("location", None)):
@@ -528,9 +531,6 @@ class Parsers:
             app.chunked_encoder = ddict()
             app.chunked_encoder.end, app.chunked_encoder.buff = False, memarray()
             app.chunked_encoder.read, app.chunked_encoder.size, app.chunked_encoder.idx = 0, False, -1
-        
-        if app.method in app.no_response_body_methods or app.status_code == 304:
-            app.handler = NotImplemented
 
         if app.decode_resp:
             if (encoding := app.response_headers.pop("content-encoding", None)):
@@ -675,7 +675,7 @@ class Pulltools(Parsers, Decoders):
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == NotImplemented: return
+        if not app.can_pull(): return
 
         if not app.handler: app.handler = app.protocol.pull
 
@@ -760,7 +760,7 @@ class Pulltools(Parsers, Decoders):
     async def adl(app):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.handler == NotImplemented: return
+        if not app.can_pull(): return
 
         if app.handler == app.handle_chunked:
             async for chunk in app.pull(): yield chunk
