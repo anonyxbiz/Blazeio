@@ -64,7 +64,7 @@ class BlazeioClientProtocol(BlazeioProtocol, BufferedProtocol):
         if not app.transport.is_closing():
             app.transport.write(data)
         else:
-            raise ServerDisconnected(app.cancel(), "writer")
+            app.abort_connection()
 
     def push(app, data): return app.writer(data)
 

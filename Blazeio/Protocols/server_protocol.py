@@ -69,7 +69,7 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
         if not app.transport.is_closing():
             app.transport.write(data)
         else:
-            raise ClientDisconnected()
+            app.abort_connection()
 
 class Httpkeepalive:
     __slots__ = ("web", "after_middleware", "__default_handler__", "timeout", "_max", "keepalive_headers")
