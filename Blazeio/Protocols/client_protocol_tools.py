@@ -524,6 +524,14 @@ class Parsers:
 
         await MinParsers.client.aparse(app)
 
+        if app.handler == app.handle_chunked:
+            app.chunked_encoder = ddict()
+            app.chunked_encoder.end, app.chunked_encoder.buff = False, memarray()
+            app.chunked_encoder.read, app.chunked_encoder.size, app.chunked_encoder.idx = 0, False, -1
+        
+        if app.method in app.no_response_body_methods or app.status_code == 304:
+            app.handler = NotImplemented
+
         if app.decode_resp:
             if (encoding := app.response_headers.pop("content-encoding", None)):
                 if (decoder := getattr(app, "%s_decoder" % encoding, None)):
@@ -544,7 +552,7 @@ class Parsers:
             if URL(location).host != app.host: app.protocol = None
             args, kwargs = app.join_to_current_params(location)
             kwargs["follow_redirects"] = True
-            return await app.create_connection(*args, **kwargs)
+            return await app._connector(*args, **kwargs)
         
         return True
 
@@ -557,11 +565,6 @@ class Parsers:
             return await app.prepare_http()
 
     async def handle_chunked(app):
-        if not app.chunked_encoder:
-            app.chunked_encoder = ddict()
-            app.chunked_encoder.end, app.chunked_encoder.buff = False, memarray()
-            app.chunked_encoder.read, app.chunked_encoder.size, app.chunked_encoder.idx = 0, False, -1
-
         if app.chunked_encoder.end: return
 
         async for chunk in app.protocol.pull():
@@ -672,7 +675,7 @@ class Pulltools(Parsers, Decoders):
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()
 
-        if app.method in app.no_response_body_methods or app.status_code == 304: return
+        if app.handler == NotImplemented: return
 
         if not app.handler: app.handler = app.protocol.pull
 
@@ -756,31 +759,43 @@ class Pulltools(Parsers, Decoders):
 
     async def adl(app):
         if not app.is_prepared(): await app.prepare_http()
-        
-        while app.received_len < app.content_length:
-            async for chunk in app.pull():
-                yield chunk
 
-            if app.handler != app.handle_raw: break
+        if app.handler == NotImplemented: return
+
+        if app.handler == app.handle_chunked:
+            async for chunk in app.pull(): yield chunk
+            return
+
+        while app.received_len < app.content_length:
+            if not app.is_prepared(): await app.prepare_http()
+            if app.handler == NotImplemented: return
+
+            try:
+                async for chunk in app.pull():
+                    yield chunk
+
+            except ServerDisconnected:
+                if app.method not in app.NON_BODIED_HTTP_METHODS: raise
 
             if app.received_len < app.content_length:
                 Range = "bytes=%s-%s" % (str(app.received_len), str(app.content_length))
-
                 if (_args_len := len(app.args)) >= 3:
-                    headers = dict(app.args[2])
-                    headers["Range"] = Range
-    
+                    headers = ddict(app.args[2])
                     if _args_len > 3:
                         app.args = (*app.args[:2], headers, *app.args[3:])
                     else:
                         app.args = (*app.args[:2], headers)
-
-                elif (headers := dict(app.kwargs.get("headers"))):
-                    headers["Range"] = Range
-                    app.kwargs["headers"] = headers
-
-                await app.prepare()
     
+                elif (headers := app.kwargs.get("headers")):
+                    app.kwargs["headers"] = (headers := ddict(headers))
+
+                headers_view = DictView(headers)
+                headers_view["Range"] = Range
+
+                await app._connector(*app.args, **app.kwargs)
+            else:
+                break
+
     async def save(app, *args, **kwargs):
         async for _ in app.__save__(*args, **kwargs): ...
 

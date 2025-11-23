@@ -51,7 +51,7 @@ class BlazeioProtocol:
 
             if app.transport.is_closing(): app.abort_connection()
         else:
-            if app.transport.is_closing(): app.abort_connection()
+            app.abort_connection()
 
     def __initialize__(app):
         ...
@@ -65,7 +65,5 @@ class BlazeioProtocol:
             await app.ensure_reading()
             while app.__stream__:
                 yield app.__stream__.popleft()
-            else:
-                if app.transport.is_closing(): break
 
 if __name__ == "__main__": ...

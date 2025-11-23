@@ -145,8 +145,8 @@ class SessionMethodSetter(type):
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
 
 class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
-    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback", "chunked_encoder", "__aentered__", "__aexited__", "server_disconnected")
-    __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"), ("on_exit_callback", "on_exit_callback"))
+    __slots__ = ("protocol", "args", "kwargs", "host", "port", "method", "path", "buff", "content_length", "content_type", "received_len", "response_headers", "status_code", "proxy", "timeout", "handler", "decoder", "decode_resp", "max_unthreaded_json_loads_size", "params", "proxy_host", "proxy_port", "follow_redirects", "auto_set_cookies", "reason_phrase", "consumption_started", "decompressor", "compressor", "url_to_host", "prepare_failures", "has_sent_headers", "loop", "close_on_exit", "encode_writes", "default_writer", "encoder", "eof_sent", "on_exit_callback", "chunked_encoder", "__aentered__", "__aexited__", "retries", "max_retries")
+    __from_kwargs__ = (("evloop", "loop"), ("use_protocol", "protocol"), ("on_exit_callback", "on_exit_callback"), ("max_retries", "max_retries"))
 
     NON_BODIED_HTTP_METHODS = {
         "GET", "HEAD", "OPTIONS", "DELETE"
@@ -155,10 +155,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
     __important_headers__ = ("Content-length", "Transfer-encoding", "Content-encoding", "Content-type", "Cookies", "Host")
     
-    known_ext_types = (BlazeioException, Eof, KeyboardInterrupt, CancelledError, RuntimeError, str)
+    known_ext_types = (BlazeioException, Eof, ServerDisconnected, KeyboardInterrupt, CancelledError, RuntimeError, str)
 
     def __init__(app, *args, **kwargs):
         for key in app.__slots__: setattr(app, key, None)
+        app.defaults()
+
         app.close_on_exit = kwargs.pop("close_on_exit", True)
 
         for key, set_key in app.__from_kwargs__:
@@ -166,6 +168,9 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 setattr(app, set_key, kwargs.pop(key))
 
         app.args, app.kwargs = args, kwargs
+
+    def defaults(app):
+        app.retries, app.max_retries = 0, 3
 
     def __getattr__(app, key, *args):
         if hasattr(app.protocol, key):
@@ -206,11 +211,12 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 return app
             elif app.kwargs.get("connect_only"):
                 return app
-        
-        return await app.create_connection(*app.args, **app.kwargs) if create_connection else app
+
+        return await app._connector(*app.args, **app.kwargs) if create_connection else app
 
     async def __aexit__(app, exc_type=None, exc_value=None, traceback=None):
         app.__aentered__, app.__aexited__ = False, True
+        app.defaults()
         if app.protocol and (app.close_on_exit or isinstance(exc_value, CancelledError)):
             if isinstance(app.protocol, BlazeioClientProtocol):
                 app.protocol.cancel()
@@ -249,19 +255,22 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         else:
             app.args, app.kwargs = args, kwargs
 
-        app.server_disconnected = False
-
-        while True:
-            try:
-                return await app.create_connection(*args, **kwargs)
-            except ServerDisconnected as ext:
-                if ext.origin == "writer" or app.server_disconnected:
-                    raise
-                else:
-                    app.server_disconnected = True
+        return await app._connector(*args, **kwargs)
 
     def form_urlencode(app, form: dict):
         return "&".join(["%s=%s" % (key, app.url_encode_sync(str(form[key]))) for key in form]).encode()
+
+    async def _connector(app, *args, **kwargs):
+        while app.retries <= app.max_retries:
+            try:
+                app.retries += 1
+                _ = await app.create_connection(*args, **kwargs)
+                app.retries = 0
+                return _
+            except ServerDisconnected:
+                ...
+
+        return await app.create_connection(*args, **kwargs)
 
     async def create_connection(app, url: (str, None) = None, method: (str, None) = "get", headers: dict = {}, connect_only: bool = False, host: (int, None) = None, port: (int, None) = None, path: (str, None) = None, content: (tuple[bool, AsyncIterable[bytes | bytearray]] | None) = None, add_host: bool = True, timeout: float = 30.0, json: dict = {}, cookies: dict = {}, response_headers: dict = {}, params: dict = {}, body: (bool, bytes, bytearray) = None, stream_file: (None, tuple) = None, decode_resp: bool = True, encode_writes: bool = True, max_unthreaded_json_loads_size: int = 102400, follow_redirects: bool = False, auto_set_cookies: bool = False, status_code: int = 0, form_urlencoded: (None, dict) = None, encoder: any = None, default_writer: any = None, eof_sent: bool = False, has_sent_headers: bool = False, decompressor: any = None, compressor: any = None, send_headers: bool = True, prepare_http: bool = True, chunked_encoder: bool = None, **kwargs):
         __locals__ = locals()
