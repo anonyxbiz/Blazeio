@@ -224,7 +224,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 await app.protocol.__close__()
                 await app.protocol.__wait_closed__.wait()
 
-        known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err, ServerDisconnected,))
+        known = isinstance(exc_value, app.known_ext_types) and not isinstance(exc_value, (Err,))
 
         if app.on_exit_callback:
             func = app.on_exit_callback[0]
