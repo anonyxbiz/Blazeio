@@ -28,6 +28,51 @@ class Utils:
             where += _len
         return view
 
+class BlazeioMultiplexerDep:
+    __slots__ = ()
+    def __prepend__(app, data, wakeup = False, clear = True):
+        if not data: return
+        if clear:
+            app.__buff.clear()
+
+        app.__prepends__.appendleft(data)
+        if wakeup: app.protocol.__evt__.set()
+
+    async def __pull__(app):
+        while True:
+            if not app.__prepends__:
+                await app.protocol.ensure_reading()
+
+            while app.protocol.__stream__:
+                chunk = app.protocol.__stream__.popleft()
+                if app.__prepends__:
+                    chunk = b"".join([i for i in app.__prepends__]) + chunk
+                    app.__prepends__.clear()
+                yield chunk
+                app.protocol.transport.resume_reading()
+
+            else:
+                if app.__prepends__:
+                    chunk = b"".join([i for i in app.__prepends__])
+                    app.__prepends__.clear()
+                    
+                    if len(chunk) <= 100:
+                        app.protocol.transport.resume_reading()
+
+                    yield chunk
+                else:
+                    app.protocol.transport.resume_reading()
+
+                if app.protocol.transport.is_closing(): raise app.protocol.__stream_closed_exception__()
+
+    async def mux(app):
+        for i in range(10):
+            async with io.Ehandler(exit_on_err = False, ignore = (io.CancelledError, app.protocol.__stream_closed_exception__)):
+                app.clear_state()
+                async for chunk in app.__pull__():
+                    if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
+                    await app._chunk_received(chunk)
+
 class BlazeioMultiplexer:
     __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "perf_analytics", "analytics", "__current_sid", "__sync__", "__on_closed")
     _data_bounds_ = (
@@ -41,6 +86,7 @@ class BlazeioMultiplexer:
     )
 
     _min_buff_size_ = 1024*512
+
     def __init__(app, protocol: io.BlazeioProtocol, evloop: any = None, _write_buffer_limits: tuple = ((1024**2)*10, 0), encrypt_streams: bool = False, perf_analytics: bool = True):
         app.protocol = protocol
         app.encrypt_streams = encrypt_streams
@@ -66,58 +112,8 @@ class BlazeioMultiplexer:
 
         app.create_task(app.mux())
 
-    def close(app, *args):
-        app.protocol.transport.close()
-
-    def init_analytics(app):
-        if not app.perf_analytics: return
-        app.analytics = io.ddict(enter_stream = io.ddict(total_enter_stream_durations = 0.0, streams = 0), transfer_rate = io.ddict(bytes_transferred = 0.0), start_time = io.perf_counter())
-    
-    def transport_writer(app, _id: bytes, sid: (bytes, None), __stream_opts: bytes, data: bytes):
-        if app.encrypt_streams:
-            data = Ciphen(_id).encrypt(data)
-        
-        app.protocol.transport.write(app.metadata(_id, sid, len(data), __stream_opts) + data)
-        return sid
-
-    def check_buff(app):
-        if len(app.protocol.__buff__) < app._min_buff_size_:
-            app.protocol.__buff__ = bytearray(app._min_buff_size_)
-            app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
-
-    def create_task(app, coro):
-        app.__tasks__.append(task := app.loop.create_task(coro))
-        return task
-
-    def disable_nagle(app):
-        app.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
-
-    def update_protocol_write_buffer_limits(app):
-        app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
-
-    def cancel(app):
-        app.create_task(app.on_conn_lost())
-
     def clear_state(app):
         app.__received_size, app.__expected_size, app.__current_stream_id, app.__current_stream, app.__stream_opts, app.__current_sid = 0, NotImplemented, NotImplemented, NotImplemented, NotImplemented, NotImplemented
-
-    def calc_analytics(app):
-        if not app.perf_analytics: return
-        app.analytics.transfer_rate.mb_per_sec = ((app.analytics.transfer_rate.bytes_transferred/1024**2)/(io.perf_counter() - app.analytics.start_time))
-        app.analytics.streams_per_second = (app.analytics.enter_stream.streams/(app.analytics.enter_stream.total_enter_stream_durations/app.analytics.enter_stream.streams))
-        app.analytics.protocol = io.ddict(buff_size_in_mb = float(len(app.protocol.__buff__)/1024**2))
-
-    def state(app):
-        app.calc_analytics()
-        return Utils.gen_state(app)
-
-    def __prepend__(app, data, wakeup = False, clear = True):
-        if not data: return
-        if clear:
-            app.__buff.clear()
-
-        app.__prepends__.appendleft(data)
-        if wakeup: app.protocol.__evt__.set()
 
     def _parse_bounds(app, __buff: (bytes, bytearray, None) = None):
         if __buff is None:
@@ -165,7 +161,76 @@ class BlazeioMultiplexer:
             app.__current_stream.__stream_ack__.set()
             return bytes(remainder)
         return None
-    
+
+    def metadata(app, _id: bytes, sid: bytes, _len: int, __stream_opts: (bytes, None) = None):
+        return b"%b%b%b%b%b%b%b%b%b%b%X%b" % (app._data_bounds_[0], _id, app._data_bounds_[1], app._data_bounds_[0], __stream_opts or b"", app._data_bounds_[1], app._data_bounds_[0], sid or b"", app._data_bounds_[1], app._data_bounds_[0], _len, app._data_bounds_[1])
+
+    def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
+        __current_stream.received_size += len(chunk)
+        if app.encrypt_streams:
+            chunk = Ciphen(__current_stream.id).decrypt(chunk)
+
+        __current_stream.__stream__.append(chunk)
+        __current_stream.__evt__.set()
+
+    def perform_checks(app, chunk: (bytes, bytearray)):
+        for checker in (app._eof_check, app._stream_closure_check, app._stream_ack):
+            if (_ := checker(chunk)) is not None:
+                return _
+
+        return None
+
+    def _has_handshake(app):
+        return app.__stream_opts == app._data_bounds_[6]
+
+    def transport_writer(app, _id: bytes, sid: (bytes, None), __stream_opts: bytes, data: bytes):
+        if app.encrypt_streams:
+            data = Ciphen(_id).encrypt(data)
+        
+        app.protocol.transport.write(app.metadata(_id, sid, len(data), __stream_opts) + data)
+        return sid
+
+    def __prepend__(app, data, wakeup = False, clear = True):
+        if not data: return
+        if clear: app.__buff.clear()
+
+        return app.protocol.prepend(data)
+
+    def close(app, *args):
+        app.protocol.transport.close()
+
+    def init_analytics(app):
+        if not app.perf_analytics: return
+        app.analytics = io.ddict(enter_stream = io.ddict(total_enter_stream_durations = 0.0, streams = 0), transfer_rate = io.ddict(bytes_transferred = 0.0), start_time = io.perf_counter())
+
+    def check_buff(app):
+        if len(app.protocol.__buff__) < app._min_buff_size_:
+            app.protocol.__buff__ = bytearray(app._min_buff_size_)
+            app.protocol.__buff__memory__ = memoryview(app.protocol.__buff__)
+
+    def create_task(app, coro):
+        app.__tasks__.append(task := app.loop.create_task(coro))
+        return task
+
+    def disable_nagle(app):
+        app.socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+
+    def update_protocol_write_buffer_limits(app):
+        app.protocol.transport.set_write_buffer_limits(*app._write_buffer_limits)
+
+    def cancel(app):
+        app.create_task(app.on_conn_lost())
+
+    def calc_analytics(app):
+        if not app.perf_analytics: return
+        app.analytics.transfer_rate.mb_per_sec = ((app.analytics.transfer_rate.bytes_transferred/1024**2)/(io.perf_counter() - app.analytics.start_time))
+        app.analytics.streams_per_second = (app.analytics.enter_stream.streams/(app.analytics.enter_stream.total_enter_stream_durations/app.analytics.enter_stream.streams))
+        app.analytics.protocol = io.ddict(buff_size_in_mb = float(len(app.protocol.__buff__)/1024**2))
+
+    def state(app):
+        app.calc_analytics()
+        return Utils.gen_state(app)
+
     async def on_conn_lost(app):
         async with app.__sync__:
             if app.__on_closed: return
@@ -203,27 +268,6 @@ class BlazeioMultiplexer:
             app.analytics.enter_stream.streams += 1
 
         return stream
-
-    def metadata(app, _id: bytes, sid: bytes, _len: int, __stream_opts: (bytes, None) = None):
-        return b"%b%b%b%b%b%b%b%b%b%b%X%b" % (app._data_bounds_[0], _id, app._data_bounds_[1], app._data_bounds_[0], __stream_opts or b"", app._data_bounds_[1], app._data_bounds_[0], sid or b"", app._data_bounds_[1], app._data_bounds_[0], _len, app._data_bounds_[1])
-
-    def update_stream(app, __current_stream, chunk: (bytes, bytearray)):
-        __current_stream.received_size += len(chunk)
-        if app.encrypt_streams:
-            chunk = Ciphen(__current_stream.id).decrypt(chunk)
-
-        __current_stream.__stream__.append(chunk)
-        __current_stream.__evt__.set()
-
-    def perform_checks(app, chunk: (bytes, bytearray)):
-        for checker in (app._eof_check, app._stream_closure_check, app._stream_ack):
-            if (_ := checker(chunk)) is not None:
-                return _
-
-        return None
-
-    def _has_handshake(app):
-        return app.__stream_opts == app._data_bounds_[6]
 
     async def _chunk_received(app, chunk: bytes):
         if app.__current_stream is NotImplemented:
@@ -293,40 +337,15 @@ class BlazeioMultiplexer:
             if app.__current_stream:
                 app.update_stream(app.__current_stream, chunk)
 
-    async def __pull__(app):
-        while True:
-            if not app.__prepends__:
-                await app.protocol.ensure_reading()
-
-            while app.protocol.__stream__:
-                chunk = app.protocol.__stream__.popleft()
-                if app.__prepends__:
-                    chunk = b"".join([i for i in app.__prepends__]) + chunk
-                    app.__prepends__.clear()
-                yield chunk
-                app.protocol.transport.resume_reading()
-
-            else:
-                if app.__prepends__:
-                    chunk = b"".join([i for i in app.__prepends__])
-                    app.__prepends__.clear()
-                    
-                    if len(chunk) <= 100:
-                        app.protocol.transport.resume_reading()
-
-                    yield chunk
-                else:
-                    app.protocol.transport.resume_reading()
-
-                if app.protocol.transport.is_closing(): raise app.protocol.__stream_closed_exception__()
-
     async def mux(app):
-        for i in range(10):
-            async with io.Ehandler(exit_on_err = False, ignore = (io.CancelledError, app.protocol.__stream_closed_exception__)):
-                app.clear_state()
-                async for chunk in app.__pull__():
-                    if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
+        async with io.Ehandler(exit_on_err = True, ignore = (io.CancelledError,)):
+            app.clear_state()
+            async for chunk in app.protocol:
+                if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
+                try:
                     await app._chunk_received(chunk)
+                except ValueError:
+                    ...
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task", "__overflow_evt__")
@@ -343,7 +362,7 @@ class Stream:
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
-        app.inflight_window = 2
+        app.inflight_window = 1
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()

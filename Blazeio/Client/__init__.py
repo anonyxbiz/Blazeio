@@ -663,4 +663,11 @@ class get_Session:
 getSession = get_Session()
 KeepaliveSession = getSession
 
+class ProtocolWrapper(ddict):
+    def __init__(app, protocol, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for key in protocol.__slots__:
+            if (value := getattr(protocol, key)) and isinstance(value, (int, str, float, bool, dict)):
+                app[key] = value
+
 if __name__ == "__main__": ...

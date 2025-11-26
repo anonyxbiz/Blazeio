@@ -3,10 +3,50 @@ import Blazeio as io
 from hmac import new as hmac_new
 from hashlib import sha1 as hashlib_sha1, sha256
 
+class Dyanamics:
+    __slots__ = ("s3",)
+    def __init__(app, s3):
+        app.s3 = s3
+
+class Upload(Dyanamics):
+    __slots__ = ("s3",)
+    async def json(app, path: str, data: dict, indent: int = 0, headers: dict = {}):
+        async with io.getSession(**app.s3.authorize(path, {"Content-type": "application/json", "Content-length": str(len(data := io.dumps(data, indent=indent).encode())), **headers}), body = data) as resp:
+            return io.ProtocolWrapper(resp, ok = resp.ok(), data = await resp.data())
+
+    async def file(app, path: str, file_path: str, indent: int = 0, headers: dict = {}):
+        if not io.path.exists(file_path): raise io.Err("File not found, %s" % file_path)
+
+        async with io.getSession(**app.s3.authorize(app.s3.url(path), {"Content-type": io.guess_type(file_path)[0], "Content-length": str(io.path.getsize(file_path)), **headers})) as resp:
+            await resp.send_file(file_path)
+            return io.ProtocolWrapper(resp, ok = resp.ok(), data = await resp.data())
+
+class Get(Dyanamics):
+    __slots__ = ("s3",)
+    async def json(app, path: str):
+        async with io.getSession.get(app.s3.url(path)) as resp:
+            if not resp.ok(): return
+            return await resp.json()
+
+    async def text(app, path: str):
+        async with io.getSession.get(app.s3.url(path)) as resp:
+            if not resp.ok(): return
+            return await resp.text()
+
 class S3:
     __slots__ = ("bucket", "region", "aws_key", "aws_secret", "cond")
+    dynamics = io.ddict(
+        upload = Upload,
+        get = Get
+    )
+
     def __init__(app, bucket: str, region: str, aws_key: str, aws_secret: str):
         app.bucket, app.region, app.aws_key, app.aws_secret, app.cond = bucket, region, aws_key, aws_secret, io.ioCondition()
+
+    def __getattr__(app, key, *args):
+        if not (ins := app.dynamics.get(key)): raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
+
+        return ins(app)
 
     def sign(app, key, msg):
         return hmac_new(key, msg.encode('utf-8'), sha256).digest()
