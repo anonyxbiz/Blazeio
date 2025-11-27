@@ -23,7 +23,7 @@ class RenderFreeTierPatch:
 
         while True:
             async with io.Ehandler() as e:
-                async with io.Session.get("%s/hello/world" % app.host, io.Rvtools.headers, params = io.ddict(perf_counter=io.perf_counter())) as r:
+                async with io.getSession.get("%s/hello/world" % app.host, io.Rvtools.headers, params = io.ddict(perf_counter=io.perf_counter())) as r:
                     await r.text()
 
             if e.err:
