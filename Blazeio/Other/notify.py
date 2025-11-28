@@ -11,7 +11,7 @@ class Notify:
             app.notifications.popleft()
         if message:
             if app.message_type == dict:
-                message = io.ddict(dt = io.dt.now(io.UTC), message = message)
+                message = io.ddict(timestamp = io.dt.now(io.UTC).timestamp(), message = message)
             app.notifications.append(message)
         app.update_event.set()
         return app

@@ -671,6 +671,14 @@ class Pulltools(Parsers, Decoders):
 
     def can_pull(app):
         return (not app.method in app.no_response_body_methods and app.status_code != 304)
+    
+    def content_type_ext(app):
+        if (content_type := app.content_type):
+            if (idx := content_type.find("/")) != -1:
+                content_type = content_type[idx + 1:]
+            if (idx := content_type.find(" ")) != -1:
+                content_type = content_type[:idx]
+            return content_type
 
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()
