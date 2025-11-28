@@ -1,5 +1,7 @@
 import Blazeio as io
 
+Routes = io.Routemanager()
+
 class RenderFreeTierPatch:
     def __init__(app, host = None, rnd_host = None, asleep = 30):
         for method, value in locals().items():
@@ -11,10 +13,12 @@ class RenderFreeTierPatch:
         app.e = None
         app.task = io.ioConf.loop.create_task(app.keep_alive_render())
 
+    @Routes
     async def _hello_world(app, r):
         app.request_count += 1
         await io.Deliver.text("Hello World@%s" % io.perf_counter())
-
+    
+    @Routes
     async def _rftp_request_count(app, r):
         await io.Deliver.json(io.ddict(request_count = app.request_count, e = app.e))
 
@@ -44,3 +48,6 @@ class RenderFreeTierPatch:
             else:
                 app.host = "http://%s:%s" % (app.host, port)
             app.host_resolved.set()
+
+        if r.path in Routes and (Blazeio_App := io.Scope.get("Blazeio_App")):
+            raise io.Eof(await Blazeio_App.declared_routes.get(r.path).get("func")(r))
