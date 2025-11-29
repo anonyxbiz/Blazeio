@@ -2,10 +2,6 @@
 push.py
 Blazeio.egg-info
 **/__pycache__/
-**/__pycache__/
-*.pyc
-*.pyo
-*.pyd
 Blazeio/Bench/latest_blazeio_benchmark.txt
 Blazeio/Protocols/bmp.md
 Blazeio/Protocols/udp.py
