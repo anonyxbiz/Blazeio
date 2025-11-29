@@ -11,7 +11,7 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.9.9.4"
+version = "2.9.9.5"
 
 kwargs = dict(
     name = "Blazeio",
