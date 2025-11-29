@@ -1,34 +1,42 @@
 from setuptools import setup, find_packages, Extension
-from datetime import datetime as dt
-from os import environ, getcwd, path, system, environ
+import os
 from platform import system as platform_system
 
-data_path = path.dirname(__file__)
-
-with open("%s/requirements.txt" % data_path) as f:
+with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
-with open("%s/README.md" % data_path, encoding="utf-8") as f:
+with open("README.md", encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.9.9.1"
+version = "2.9.9.2"
 
-exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util")
+ext_modules = [
+    Extension(
+        "Blazeio.Blazeio_iourllib",
+        sources=["Blazeio/Extensions/Blazeio_iourllib.c"],
+        extra_compile_args=['-O3'],
+    ),
+    Extension(
+        "Blazeio.client_payload_gen", 
+        sources=["Blazeio/Extensions/client_payload_gen.c"],
+        extra_compile_args=['-O3'],
+    ),
+    Extension(
+        "Blazeio.c_request_util",
+        sources=["Blazeio/Extensions/c_request_util.c"],
+        extra_compile_args=['-O3'],
+    ),
+]
 
-ext_modules = []
+if not os.environ.get("BlazeioDev"):
+    kwargs = {
+        "ext_modules": ext_modules,
+        "cmdclass": {},
+    }
+else:
+    kwargs = {}
 
-for ext in exts:
-    if environ.get("BlazeioDev", None) or platform_system() == 'Windows':
-        system("%spython %s build --mname %s --mpath %s && python %s install --mname %s --mpath %s" % ("cd %s && " % path.join(data_path, "Blazeio", "Extensions"), "setup_build.py", ext, ext + ".c", "setup_build.py", ext, ext + ".c"))
-    else:
-        for module in exts:
-            ext_modules.append(Extension(
-                module,
-                sources=["/".join(["Blazeio", "Extensions", module + ".c"])],
-                extra_compile_args=['-O3'],
-            ))
-
-kwargs = dict(
+setup(
     name="Blazeio",
     version=version,
     description="Blazeio",
@@ -52,16 +60,6 @@ kwargs = dict(
         'console_scripts': [
             'Blazeio = Blazeio.__main__:main',
         ],
-    }
+    },
+    **kwargs
 )
-
-if ext_modules:
-    kwargs["ext_modules"] = ext_modules
-    kwargs["options"] = {
-        'build_ext': {
-            'inplace': False if environ.get("BlazeioDev", None) else False,
-            'force': True
-        }
-    }
-
-setup(**kwargs)
