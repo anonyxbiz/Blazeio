@@ -295,6 +295,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
 
             app.host, app.port, app.path = ioConf.url_to_host(url, params)
 
+        callbacks = kwargs.pop("callbacks", None)
+
         normalized_headers = DictView(stdheaders)
 
         for i in app.__important_headers__:
@@ -396,7 +398,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             if prepare_http:
                 await app.prepare_http()
 
-        if app.is_prepared() and (callbacks := kwargs.get("callbacks")):
+        if app.is_prepared() and callbacks:
             for callback in callbacks: await callback(app) if iscoroutinefunction(callback) else callback(app)
 
         return app

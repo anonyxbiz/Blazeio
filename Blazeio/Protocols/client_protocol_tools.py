@@ -518,6 +518,26 @@ class Parsers:
 
             return location
 
+    def redirect(app):
+        return app.redirection_url()
+
+    def get_filename(app):
+        if (content_disposition := app.headers.get("content-disposition")):
+            return (filename := content_disposition[content_disposition.find(i := 'filename="') + len(i):])[:filename.find('"')]
+
+    def gen_filename(app):
+        if (idx := (ext := app.content_type[app.content_type.find("/")+1:]).find(";")) != -1:
+            ext = ext[:idx]
+        return "%s.%s" % (token_urlsafe(16), ext)
+
+    def content_type_ext(app):
+        if (content_type := app.content_type):
+            if (idx := content_type.find("/")) != -1:
+                content_type = content_type[idx + 1:]
+            if (idx := content_type.find(" ")) != -1:
+                content_type = content_type[:idx]
+            return content_type
+
     async def _prepare_http(app):
         if app.is_prepared(): return True
         if not app.protocol: raise ServerDisconnected()
@@ -603,15 +623,6 @@ class Parsers:
 
             if app.received_len >= app.content_length: return
 
-    def get_filename(app):
-        if (content_disposition := app.headers.get("content-disposition")):
-            return (filename := content_disposition[content_disposition.find(i := 'filename="') + len(i):])[:filename.find('"')]
-
-    def gen_filename(app):
-        if (idx := (ext := app.content_type[app.content_type.find("/")+1:]).find(";")) != -1:
-            ext = ext[:idx]
-        return "%s.%s" % (token_urlsafe(16), ext)
-
 class Pushtools(Encoders):
     __slots__ = ()
     def __init__(app): ...
@@ -671,14 +682,6 @@ class Pulltools(Parsers, Decoders):
 
     def can_pull(app):
         return (not app.method in app.no_response_body_methods and app.status_code != 304)
-    
-    def content_type_ext(app):
-        if (content_type := app.content_type):
-            if (idx := content_type.find("/")) != -1:
-                content_type = content_type[idx + 1:]
-            if (idx := content_type.find(" ")) != -1:
-                content_type = content_type[:idx]
-            return content_type
 
     async def pull(app):
         if not app.is_prepared(): await app.prepare_http()

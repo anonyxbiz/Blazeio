@@ -11,7 +11,7 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.9.9.0"
+version = "2.9.9.1"
 
 exts = ("Blazeio_iourllib", "client_payload_gen", "c_request_util")
 
@@ -59,7 +59,7 @@ if ext_modules:
     kwargs["ext_modules"] = ext_modules
     kwargs["options"] = {
         'build_ext': {
-            'inplace': False if environ.get("BlazeioDev", None) else True,
+            'inplace': False if environ.get("BlazeioDev", None) else False,
             'force': True
         }
     }

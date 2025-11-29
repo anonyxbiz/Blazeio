@@ -21,19 +21,23 @@ class MultiContext:
     def __init__(app, *contexts):
         app.contexts = contexts
         app.exceptions, app.results = [], []
+    
+    def __len__(app):
+        return len(app.contexts)
 
     def __iter__(app):
         for context in app.contexts:
-            yield context
+            if context: yield context
 
     async def __aenter__(app):
-        for context in app.contexts: await context.__aenter__()
+        for context in app.contexts:
+            if context: await context.__aenter__()
         return app
 
     async def __aexit__(app, *args):
         for context in app.contexts:
             try:
-                app.results.append(await context.__aexit__(*args))
+                if context: app.results.append(await context.__aexit__(*args))
             except Exception as ext:
                 app.exceptions.append(ext)
 
