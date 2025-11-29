@@ -39,7 +39,7 @@ setup(
     ext_modules = ext_modules,
     options={
         'build_ext': {
-            'inplace': False if environ.get("BlazeioDev", None) else False,
+            'inplace': False if environ.get("BlazeioDev", None) else True,
             'force': True
         }
     },
