@@ -11,7 +11,7 @@ with open("%s/requirements.txt" % data_path) as f:
 with open("%s/README.md" % data_path, encoding="utf-8") as f:
     long_description = f.read()
 
-version = "2.9.9.2"
+version = "2.9.9.3"
 
 kwargs = dict(
     name = "Blazeio",
@@ -56,6 +56,6 @@ kwargs = dict(
 if platform_system() == 'Windows':
     kwargs.pop("options")
     for module in kwargs.pop("ext_modules"):
-        system("%spython %s build --mname %s --mpath %s && python %s install --mname %s --mpath %s" % ("cd %s && " % path.join(data_path, "Blazeio", "Extensions"), "setup_build.py", module["name"], path.basename(module['sources'][0]), "setup_build.py", module["name"], path.basename(module['sources'][0])))
+        system("%spython %s build --mname %s --mpath %s && python %s install --mname %s --mpath %s" % ("cd %s && " % path.join(data_path, "Blazeio", "Extensions"), "setup_build.py", getattr(module, "name"), path.basename(getattr(module, "sources")[0]), "setup_build.py", getattr(module, "name"), path.basename(getattr(module, "sources")[0])))
 
 setup(**kwargs)
