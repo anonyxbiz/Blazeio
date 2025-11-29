@@ -544,7 +544,7 @@ class Server:
             app.is_server_running.set()
             app.start_timestamp = dt.now().timestamp()
 
-            await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, "System: %s" % os_name, "Cpu_count: %s" % psutilcpu_count(), "Server [%s] running on %s" % (app.server_name, app.ServerConfig.server_address), "Request Logging is %s.\n" % ("enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
+            await plog.magenta("Blazeio (Version: %s)" % __version__, "PID: %s" % pid, "System: %s" % os_name, "Cpu_count: %s" % psutilcpu_count(), "Server [%s] listening on %s" % (app.server_name, app.ServerConfig.server_address), "Request Logging is %s.\n" % ("enabled" if app.ServerConfig.__log_requests__ else "disabled"), func = app.run)
 
             await app.callback_runner(app.on_run_callbacks)
 
