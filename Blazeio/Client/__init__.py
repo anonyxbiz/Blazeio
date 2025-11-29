@@ -280,7 +280,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             elif isinstance(val, list): val = list(val)
             setattr(app, key, val)
 
-        stdheaders = dict(headers)
+        stdheaders = {key: str(val) for key, val in headers.items()}
         
         if app.protocol:
             app.reset_protocol()

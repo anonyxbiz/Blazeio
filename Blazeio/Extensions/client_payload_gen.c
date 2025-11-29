@@ -97,7 +97,9 @@ static PyObject* gen_payload(PyObject* self, PyObject* args, PyObject* kwargs) {
         PyMem_Free(header_entries);
         PyErr_NoMemory();
         return NULL;
-    }
+    };
+    
+    Py_BEGIN_ALLOW_THREADS
     
     char *pos = buffer;
 
@@ -154,6 +156,8 @@ static PyObject* gen_payload(PyObject* self, PyObject* args, PyObject* kwargs) {
     // Add final CRLF
     memcpy(pos, "\r\n", 2);
     pos += 2;
+    
+    Py_END_ALLOW_THREADS
 
     PyObject *result = PyBytes_FromStringAndSize(buffer, pos - buffer);
     PyMem_Free(header_entries);

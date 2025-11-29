@@ -1,4 +1,4 @@
-version = "1.2.3.3"
+version = "1.2.4.8"
 
 from argparse import ArgumentParser
 parser = ArgumentParser(prog="Setup", description = "Setup")
@@ -39,7 +39,7 @@ setup(
     ext_modules = ext_modules,
     options={
         'build_ext': {
-            'inplace': False if environ.get("BlazeioDev", None) else True,
+            'inplace': False if environ.get("BlazeioDev", None) else False,
             'force': True
         }
     },
