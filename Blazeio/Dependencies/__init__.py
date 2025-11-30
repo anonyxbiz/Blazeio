@@ -362,8 +362,9 @@ class Default_logger:
         'b_white': '\033[97m'
     })
     colors_reversed = ddict({value: key for key, value in colors.items()})
-
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
+    realtime = True
+
     def __init__(app, name: str = "", maxsize: int = 1000):
         ioConf.add_shutdown_callback(app.stop)
         app.name = name
@@ -413,8 +414,9 @@ class Default_logger:
         if app.override_logger:
             return await app.override_logger(*args, **kwargs)
 
-        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event := SharpEvent())), app.loop))
-        return await event.wait()
+        await wrap_future(run_coroutine_threadsafe(app.logs.put((args, kwargs, event := (SharpEvent() if app.realtime else None))), app.loop))
+
+        if app.realtime: return await event.wait()
 
     async def raw(app, log, *args, **kwargs):
         return await app.__log__(*args, raw = log, **kwargs)
@@ -432,7 +434,10 @@ class Default_logger:
             await app.logs.get_one(pop=False)
             while app.logs.queue:
                 args, kwargs, event = app.logs.popleft()
-                event.loop.call_soon(event.set, app.__log_actual__(*args, **kwargs))
+                if event:
+                    event.loop.call_soon(event.set, app.__log_actual__(*args, **kwargs))
+                else:
+                    app.__log_actual__(*args, **kwargs)
 
             if not app.logs.queue:
                 app.log_idle_event.set()

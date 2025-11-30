@@ -81,7 +81,7 @@ class BlazeioClient(BlazeioClientProtocol):
     __slots__ = ("host", "port", "args", "kwargs", "socks5proxy", "loop", "httpproxy", "proxy", "sock")
     def __init__(app, host: str, port: int, *args, socks5proxy: (dict, None) = None, httpproxy: (dict, None) = None, loop: any = None, proxy: (Proxyconnector, None) = None, **kwargs):
         super().__init__(**{i: kwargs.pop(i) for i in BlazeioClientProtocol.expected_kwargs if i in kwargs})
-        app.host, app.port, app.args, app.kwargs, app.socks5proxy, app.httpproxy, app.loop, app.proxy = host, port, args, kwargs, socks5proxy, httpproxy, loop, proxy
+        app.host, app.port, app.args, app.kwargs, app.socks5proxy, app.httpproxy, app.loop, app.proxy = host, port, args, kwargs, ddict(socks5proxy) if socks5proxy else socks5proxy, ddict(httpproxy) if httpproxy else httpproxy, loop, proxy
 
     async def __aenter__(app):
         await app.create_connection()
@@ -199,10 +199,6 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
         else:
             app.__aentered__, app.__aexited__ = True, False
 
-        if (task := current_task()):
-            if not hasattr(task, "__BlazeioClientProtocol__"):
-                task.__BlazeioClientProtocol__ = app
-
         if not app.loop:
             app.loop = get_event_loop()
 
@@ -266,6 +262,8 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
                 app.retries += 1
                 _ = await app.create_connection(*args, **kwargs)
                 app.retries = 0
+                if (task := current_task()):
+                    task.__BlazeioClientProtocol__ = app.protocol
                 return _
             except ServerDisconnected:
                 if not app.method in app.NON_BODIED_HTTP_METHODS: raise
@@ -510,8 +508,8 @@ class __SessionPool__:
 
     async def get(app, url, method, *args, **kwargs):
         host, port, path = ioConf.url_to_host(url, {})
-        
-        if not (instances := app.sessions.get(key := (host, port))):
+
+        if not (instances := app.sessions.get(key := (host, port, *(_.values() if (_ := kwargs.get("socks5proxy", None)) else ()), *(_.values() if (_ := kwargs.get("httpproxy", None)) else ())))):
             app.sessions[key] = (instances := [])
             instances.append(instance := app.create_instance(key, url, method, *args, **kwargs))
         else:

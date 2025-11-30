@@ -269,7 +269,9 @@ class Routemanager(ddict):
         return "Routemanager"
 
     def __call__(app, fn, *args, **kwargs):
-        app[app.normalize_funcname(fn.__name__)] = (fn, args, kwargs)
+        params = {annotation: fn.__defaults__[i] for i, annotation in enumerate(list(fn.__annotations__.keys())[int(len(fn.__annotations__) - len(fn.__defaults__)):])}
+
+        app[app.normalize_funcname(params.get("route") or fn.__name__)] = ddict(nargs = (fn, args, kwargs), **params)
         return fn
 
     def normalize_funcname(app, funcname: str):
@@ -664,9 +666,12 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
     def add_route(app, func: Callable, parent_func: (None, Callable) = None, route_name: (None, str) = None):
         with Ehandler():
             if parent_func is None: parent_func = func
+            
+            if hasattr(parent_func, "__class__"):
+                params = ddict({k: (v.default if str(v.default) != "<class 'inspect._empty'>"else None) for k, v in dict(sig(parent_func).parameters).items()})
+            else:
+                params = ddict({annotation: parent_func.__defaults__[i] for i, annotation in enumerate(list(parent_func.__annotations__.keys())[int(len(parent_func.__annotations__) - len(parent_func.__defaults__)):])})
 
-            params = {k: (v.default if str(v.default) != "<class 'inspect._empty'>"else None) for k, v in dict(sig(parent_func).parameters).items()}
-    
             if route_name is None: route_name = str(parent_func.__name__)
     
             if route_name == "__main_handler__":
@@ -678,7 +683,7 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
                     route_name = app.normalize_funcname(route_name)
                 else:
                     route_name = route
-    
+
             data = {
                 "func": func,
                 "params": params,

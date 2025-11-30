@@ -585,8 +585,9 @@ class Errdetail(BlazeioException):
 
 class Ehandler:
     __slots__ = ("onerr", "ignore", "_raise", "exit_on_err", "err", "on_exit_cbs", "kwargs", "entered", "frame")
-    def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False, frame = 5):
+    def __init__(app, onerr = None, ignore = [], _raise = [], exit_on_err = False, frame = 5, on_exit = []):
         app.kwargs = ddict(onerr=onerr, ignore=ignore, _raise=_raise, exit_on_err=exit_on_err, frame = frame)
+        app.on_exit_cbs = list(on_exit)
         app.entered = False
         app(app.kwargs)
 
@@ -599,7 +600,6 @@ class Ehandler:
                 setattr(app, attr, [val])
 
         app.err = None
-        app.on_exit_cbs = []
 
     def __enter__(app):
         if app.entered: app(app.kwargs)
@@ -624,7 +624,7 @@ class Ehandler:
 
         if app.on_exit_cbs:
             for func, args, kwargs in app.on_exit_cbs:
-                func(*args, **kwargs)
+                create_task(func(*args, **kwargs)) if iscoroutinefunction(func) else func(*args, **kwargs)
 
         if exc_v is not None:
             if app.exit_on_err: return False
@@ -651,7 +651,7 @@ class Ehandler:
         
         if app.on_exit_cbs:
             for func, args, kwargs in app.on_exit_cbs:
-                await func(*args, **kwargs)
+                await func(*args, **kwargs) if iscoroutinefunction(func) else func(*args, **kwargs)
 
         if exc_v is not None:
             if app.exit_on_err: return False
