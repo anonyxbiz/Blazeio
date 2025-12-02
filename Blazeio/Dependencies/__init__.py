@@ -39,6 +39,8 @@ from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 
 from psutil import Process as psutilProcess, cpu_count as psutilcpu_count
 
+from atexit import register as atexit_register
+
 try:
     from ujson import dumps as ujson_dumps, loads, JSONDecodeError
     dumps = lambda *args, indent = 4, reject_bytes = False, escape_forward_slashes = False, **kwargs: ujson_dumps(*args, indent = indent, reject_bytes = reject_bytes, escape_forward_slashes = escape_forward_slashes, **kwargs)
@@ -284,14 +286,9 @@ class Enqueue:
         app.queue_add_event = SharpEvent(True, app.loop)
         app.queueunderflow = cond(evloop = app.loop) if cond else Condition()
         app.loop.create_task(app.check_overflow())
-
-    async def check_overflow(app):
-        while True:
-            if len(app.queue) <= app.maxsize:
-                async with app.queueunderflow:
-                    app.queueunderflow.notify(app.maxsize - len(app.queue))
-
-            await app.queue_event.wait()
+    
+    def __len__(app):
+        return len(app.queue)
 
     def available(app):
         return len(app.queue) <= app.maxsize
@@ -305,6 +302,25 @@ class Enqueue:
         item = app.queue.popleft()
         app.queue_event.set()
         return item
+
+    def put_nowait(app, item):
+        app.queue.append(item)
+        app.wakeup()
+
+    def wakeup(app):
+        app.queue_event.set()
+        app.queue_add_event.set()
+
+    def empty(app):
+        return len(app.queue) <= 0
+
+    async def check_overflow(app):
+        while True:
+            if len(app.queue) <= app.maxsize:
+                async with app.queueunderflow:
+                    app.queueunderflow.notify(app.maxsize - len(app.queue))
+
+            await app.queue_event.wait()
 
     async def get_one(app, pop=True):
         if not app.queue:
@@ -324,17 +340,6 @@ class Enqueue:
         while True:
             await app.queue_add_event.wait()
             while app.queue: yield app.queue.popleft()
-
-    def put_nowait(app, item):
-        app.queue.append(item)
-        app.wakeup()
-
-    def wakeup(app):
-        app.queue_event.set()
-        app.queue_add_event.set()
-
-    def empty(app):
-        return len(app.queue) <= 0
 
 class Default_logger:
     colors = ddict({
@@ -363,7 +368,7 @@ class Default_logger:
     })
     colors_reversed = ddict({value: key for key, value in colors.items()})
     known_exceptions: tuple = ("[Errno 104] Connection reset by peer", "Client has disconnected.", "Connection lost", "asyncio/tasks.py",)
-    realtime = True
+    realtime = False
 
     def __init__(app, name: str = "", maxsize: int = 1000):
         ioConf.add_shutdown_callback(app.stop)
@@ -376,6 +381,7 @@ class Default_logger:
         app._thread = Thread(target=app.start, daemon=True)
         app._thread.start()
         ioConf.event_wait_clear(app.started_event)
+        atexit_register(app.stop)
 
     def __getattr__(app, name):
         if name in app.colors:
@@ -455,11 +461,11 @@ class Default_logger:
             app.stopped_event.set()
 
     def stop(app):
+        if app.should_stop: return 
         app.should_stop = True
         app.logs.loop.call_soon_threadsafe(app.logs.wakeup)
         app.stopped_event.wait()
         app._thread.join()
-        sys_stdout.flush()
 
 def optional_module_importer(arg, optional_modules = ("uvloop",)):
     for if_, else_ in arg:
@@ -530,6 +536,7 @@ p, log = Log.info, logger
 class __ReMonitor__:
     __slots__ = ("Monitoring_thread", "event_loop", "event_loops", "Monitoring_thread_loop", "_start_monitoring", "servers", "stopped_event", "terminated_event", "started_event", "tasks", "callbacks", "scheduler_interval", "_async_stopped_event")
     default_payload_timeout = float(60*60)
+    default__timeout_check_freq__ = 30
     def __init__(app, scheduler_interval: int = 30, event_loop: any = loop, event_loops: list = [], servers: list = [], tasks: list = []):
         ioConf.add_shutdown_callback(app.Monitoring_thread_join)
         app.tasks = tasks
@@ -539,7 +546,7 @@ class __ReMonitor__:
         app.event_loops.append(app.event_loop)
         app.servers = servers
         app.callbacks = []
-        app._start_monitoring = SharpEvent(evloop = app.event_loop)
+        app._start_monitoring = SharpEvent()
         app._async_stopped_event = SharpEvent()
         app.started_event = Tevent()
         app.stopped_event = Tevent()
@@ -547,6 +554,7 @@ class __ReMonitor__:
         app.Monitoring_thread = Thread(target=app.Monitoring_thread_monitor, args=(app,), daemon = True)
         app.Monitoring_thread.start()
         ioConf.event_wait_clear(app.started_event)
+        atexit_register(app.stop)
 
     def reboot(app):
         app.Monitoring_thread_join()
@@ -568,7 +576,9 @@ class __ReMonitor__:
         if app.terminated_event.is_set(): return
         app.terminated_event.set()
         app._async_stopped_event.loop.call_soon_threadsafe(app._async_stopped_event.set)
+        app._async_stopped_event.set()
         app.stopped_event.wait()
+        app.Monitoring_thread.join()
 
     def Monitoring_thread_join(app):
         app.stop()
@@ -580,10 +590,13 @@ class __ReMonitor__:
 
     def Monitoring_thread_monitor(app, parent=None):
         app.Monitoring_thread_loop = new_event_loop()
-        for coro in (app.cb_scheduler(), app.__monitor_loop__()):
+
+        for coro in (app.cb_scheduler(), ):
             app.create_task(coro)
 
-        app.Monitoring_thread_loop.run_until_complete(app.wait_stopped())
+        app.Monitoring_thread_loop.call_soon_threadsafe(app._start_monitoring.set)
+
+        app.Monitoring_thread_loop.run_until_complete(app.__monitor_loop__())
 
     def add_callback(app, delay, fn, *args, **kwargs):
         app.callbacks.append(cb := (get_event_loop(), perf_counter(), float(delay), fn, args, kwargs))
@@ -593,20 +606,16 @@ class __ReMonitor__:
         if cb in app.callbacks:
             app.callbacks.remove(cb)
 
-    async def wait_stopped(app):
-        try:
-            await wrap_future(run_coroutine_threadsafe(app._async_stopped_event.wait_clear(), app._async_stopped_event.loop))
-        except CancelledError: ...
-
     async def __monitor_loop__(app):
         try:
             app.started_event.set()
-            await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait(), app._start_monitoring.loop))
+            await wrap_future(run_coroutine_threadsafe(app._start_monitoring.wait_clear(), app.Monitoring_thread_loop))
+
             while not app.terminated_event.is_set():
                 for server in app.servers:
                     await wrap_future(run_coroutine_threadsafe(app.analyze_protocols(), app.event_loop))
 
-                app.terminated_event.wait(server.ServerConfig.__timeout_check_freq__)
+                app.terminated_event.wait(server.ServerConfig.__timeout_check_freq__ if app.servers else app.default__timeout_check_freq__)
         finally:
             app.stopped_event.set()
 
@@ -649,16 +658,17 @@ class __ReMonitor__:
                     except Exception as e: await Log.b_red("Blazeio.analyze_protocols", str(e))
 
     async def cb_scheduler(app):
-        while True:
+        while not app.terminated_event.is_set():
             try:
                 await sleep(app.scheduler_interval)
+
                 for cb in app.callbacks:
                     evloop, creation_time, delay, fn, args, kwargs = cb
                     if (perf_counter() - creation_time) >= float(delay):
                         app.rm_callback(cb)
                         await wrap_future(run_coroutine_threadsafe(fn(*args, **kwargs), evloop)) if iscoroutinefunction(fn) else evloop.call_soon_threadsafe(fn, *args, **kwargs)
 
-            except Exception as e: await Log.b_red("Blazeio.cb_scheduler", str(e))
+            except Exception as e: print("Blazeio.cb_scheduler", str(e))
 
 ReMonitor = __ReMonitor__()
 

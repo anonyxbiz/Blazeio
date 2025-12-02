@@ -22,7 +22,7 @@ class App:
     async def fetch(app, url: str):
         if not url[:5].lower().startswith("http"): url = "https://%s" % url
 
-        headers = app.default_headers(url, {header.split("=")[0]: header.split("=")[1] for header in app.headers.split(",") if "=" in header} if app.headers else app.headers)
+        headers = app.default_headers(url, {header[:header.find("=")]: header[header.find("=")+1:] for header in app.headers.split(",") if "=" in header} if app.headers else app.headers)
 
         async with perf_timing() as timer:
             async with getSession(url, app.method or "get", headers, follow_redirects = app.follow_redirects) as resp:
