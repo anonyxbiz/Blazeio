@@ -5,10 +5,11 @@ from .streaming import *
 
 class Simpleserve:
     __slots__ = ('headers','cache_control','CHUNK_SIZE','r','file_size','filename','file_stats','last_modified','etag','last_modified_str','file','content_type','content_disposition','start','end','range_','status', 'exclude_headers', 'inline', 'attachment')
+    mimetypes_add_type('image/webp', '.webp')
     compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
-
     headers_demux = ddict(content_type = "Content-Type", content_length = "Content-Length", content_disposition = "Content-Disposition", last_modified_str = "Last-Modified", etag = "Etag")
-    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "0"}, status: int = 200, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, **kwargs):
+    rare_validation = ("image", "video",)
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "3600"}, status: int = 200, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, **kwargs):
         if r and file:
             app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers, app.inline, app.attachment = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers, inline, attachment
             if not path.exists(app.file): raise NotFoundErr("Not Found", 404)
@@ -80,7 +81,7 @@ class Simpleserve:
 
         if app.cache_control:
             if not (i := "Cache-control") in app.exclude_headers:
-                app.headers[i] = "public, max-age=%s, must-revalidate" % app.cache_control.get("max-age", "3600")
+                app.headers[i] = "public, max-age=%s%s" % (app.cache_control.get("max-age", "3600"), ", must-revalidate" if app.content_type[:app.content_type.find("/")] not in app.rare_validation else "")
 
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
             app.range_ = range_

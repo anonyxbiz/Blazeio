@@ -17,7 +17,7 @@ from datetime import datetime as dt, UTC, timedelta
 from inspect import signature as sig, stack
 from typing import Callable, Any, Optional, Union
 
-from mimetypes import guess_type
+from mimetypes import guess_type, add_type as mimetypes_add_type
 from os import stat, kill, getpid, path, environ, name as os_name, getcwd
 
 from os import path as os_path, mkdir, remove

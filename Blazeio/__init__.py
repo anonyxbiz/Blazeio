@@ -269,7 +269,7 @@ class Routemanager(ddict):
         return "Routemanager"
 
     def __call__(app, fn, *args, **kwargs):
-        params = {annotation: fn.__defaults__[i] for i, annotation in enumerate(list(fn.__annotations__.keys())[int(len(fn.__annotations__) - len(fn.__defaults__)):])} if not hasattr(fn, "__class__") else {}
+        params = {annotation: fn.__defaults__[i] for i, annotation in enumerate(list(fn.__annotations__.keys())[int(len(fn.__annotations__) - len(fn.__defaults__)):])} if str(type(fn)) == "<class 'function'>" else {}
 
         app[app.normalize_funcname(params.get("route") or fn.__name__)] = ddict(nargs = (fn, args, kwargs), **params)
         return fn

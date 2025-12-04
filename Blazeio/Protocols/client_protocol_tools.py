@@ -836,7 +836,6 @@ class Pulltools(Parsers, Decoders):
 
     async def send_file(app, file_path: str, chunk_size: (bool, int) = None):
         if not chunk_size: chunk_size = ioConf.OUTBOUND_CHUNK_SIZE
-
         async with async_open(file_path, "rb") as f:
             while (chunk := await f.read(chunk_size)): await app.write(chunk)
 
