@@ -81,7 +81,7 @@ class Simpleserve:
 
         if app.cache_control:
             if not (i := "Cache-control") in app.exclude_headers:
-                app.headers[i] = "public, max-age=%s%s" % (app.cache_control.get("max-age", "3600"), ", must-revalidate" if app.content_type[:app.content_type.find("/")] not in app.rare_validation else "")
+                app.headers[i] = "public, max-age=%s, must-revalidate" % (app.cache_control.get("max-age", "3600") if app.content_type[:app.content_type.find("/")] not in app.rare_validation else "3600")
 
         if (range_ := app.r.headers.get('Range')) and (idx := range_.rfind('=')) != -1:
             app.range_ = range_

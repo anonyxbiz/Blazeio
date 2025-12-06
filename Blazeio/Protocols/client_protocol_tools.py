@@ -470,6 +470,9 @@ class Parsers:
 
     def is_prepared(app): return True if app.status_code and app.handler else False
 
+    def current_url(app):
+        return "%s%s%s" % ("https://" if getattr(app.protocol.transport, "_ssl_protocol", None) else "http://", app.host, app.path)
+
     def raw_cookies(app):
         cookies = ""
         if (Cookies := app.response_headers.get("set-cookie")):
