@@ -1,3 +1,4 @@
+# Blazeio.Modules.server_tools
 from ..Dependencies import *
 from ..Dependencies.alts import *
 from .request import *
@@ -147,19 +148,82 @@ class Simpleserve:
     async def __aexit__(app, ext_t, ext_v, tb):
         return False
 
-class StaticServer:
-    __slots__ = ("root", "root_dir", "chunk_size", "page_dir", "home_page", "cache_control")
+class HtmlTemplate:
+    __slots__ = ()
+    html_template_scheme = ddict(
+        structure = ("head", "bof", "footer", "eof"),
+        max_length = 1,
+        scheme = {
+            "/": ddict(
+                structure = ("head", "bof", "footer", "eof")
+            )
+        }
+    )
+    def html_template_validate(app):
+        for root, template in app.html_template.items():
+            if len(root) > app.html_template_scheme.max_length:
+                app.html_template_scheme.max_length = len(root)
+
+            if not (structure := template.get("structure")):
+                raise Err("*html_template(template)* must have a *structure*")
+
+            for key in app.html_template_scheme.structure:
+                if not structure.get(key):
+                    raise Err("*[%s]html_template(template.structure)* must have the *%s* attribute" % (root, key))
+    
+    def match_template(app, ref: str):
+        if len(ref) > app.html_template_scheme.max_length:
+            ref = ref[:app.html_template_scheme.max_length]
+
+        while (idx := ref.rfind("/")) != -1:
+            if (template := app.html_template.get(ref[:idx+1])):
+                return template
+            ref = ref[:idx]
+
+    async def send_file(app, r: BlazeioProtocol, file_path: str):
+        async with async_open(file_path, "rb") as f:
+            while (chunk := await f.read(app.chunk_size)):
+                await r.write(chunk)
+
+    async def html_template_handler(app, r: BlazeioProtocol, file_path: str, template: dict):
+        async with Simpleserve(r, file_path, app.chunk_size, cache_control = app.cache_control) as f:
+            if f.headers.get(f.headers_demux.content_length):
+                f.headers[f.headers_demux.content_length] = str(int(f.headers[f.headers_demux.content_length]) + sum([path.getsize(template["structure"][i]) for i in app.html_template_scheme.structure]))
+
+            await r.prepare(f.headers, f.status)
+            
+            await app.send_file(r, template["structure"][app.html_template_scheme.structure[0]])
+            await app.send_file(r, template["structure"][app.html_template_scheme.structure[1]])
+
+            async for chunk in f:
+                await r.write(chunk)
+                
+            await app.send_file(r, template["structure"][app.html_template_scheme.structure[2]])
+
+            await app.send_file(r, template["structure"][app.html_template_scheme.structure[3]])
+
+class StaticServer(HtmlTemplate):
+    __slots__ = ("root", "root_dir", "chunk_size", "page_dir", "home_page", "cache_control", "html_template")
     ext_delimiter: str = "."
     html_ext: str = ".html"
     pop_chunked_headers = ("Content-Length", "Content-Range")
-    def __init__(app, root: str, root_dir: str, chunk_size: int, page_dir: str = "page", home_page: str = "index.html", cache_control: dict = {"max-age": "3600"}):
-        app.root, app.root_dir, app.chunk_size, app.page_dir, app.home_page, app.cache_control = root, root_dir, chunk_size, page_dir, home_page, cache_control
+
+    def __init__(app, root: str, root_dir: str, chunk_size: int, page_dir: str = "page", home_page: str = "index.html", cache_control: dict = {"max-age": "3600"}, html_template: (dict, None) = None):
+        app.root, app.root_dir, app.chunk_size, app.page_dir, app.home_page, app.cache_control, app.html_template = root, root_dir, chunk_size, page_dir, home_page, cache_control, html_template
+        app.validate()
+    
+    def validate(app):
+        if app.html_template:
+            app.html_template_validate()
 
     async def handle_all_middleware(app, r: BlazeioProtocol):
         if r.path[:len(app.root)] != app.root: return
 
         if not path.exists(file_path := path.join(app.root_dir, route) if app.ext_delimiter in (route := r.path[1:] or path.join(app.page_dir, app.home_page)) else path.join(app.root_dir, app.page_dir, route + app.html_ext)):
             raise Abort("Not found", 404)
+
+        if file_path.endswith(app.html_ext) and app.html_template and (template := app.html_template.get(r.path) or app.match_template(r.path)):
+            return await app.html_template_handler(r, file_path, template)
 
         async with Simpleserve(r, file_path, app.chunk_size, cache_control = app.cache_control) as f:
             await r.prepare(f.headers, f.status)
