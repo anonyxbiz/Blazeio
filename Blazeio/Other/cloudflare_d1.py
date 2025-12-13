@@ -20,9 +20,13 @@ class Client:
     async def sql(app, path: str, cmd: str, *args, result_only: bool = True):
         if args:
             count = 0
-            while (idx := cmd.find("?")) != -1:
-                cmd = cmd[:idx] + app.escape(args[count]) + cmd[idx+1:]
+            index = 0
+            while (idx := cmd[index:].find("?")) != -1:
+                idx += index
+                escaped = app.escape(args[count])
+                cmd = cmd[:idx] + escaped + cmd[idx+1:]
                 count += 1
+                index = (idx + len(escaped))
 
         async with io.getSession.post(app.url + path, app.headers, json = io.ddict(sql = cmd)) as resp:
             data = await resp.json()
