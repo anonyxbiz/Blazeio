@@ -2,38 +2,36 @@
 import Blazeio as io
 
 class Client:
-    __slots__ = ("url", "headers",)
-    def __init__(app, url: str, headers: dict):
-        app.url, app.headers = url, headers
+    __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "endpoint")
+    base_url = "https://api.cloudflare.com/client/v4"
+    sql_paths = ("query",)
+    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True):
+        io.set_from_args(app, locals(), (str, dict, bool, None))
+        app.endpoint = "%s/accounts/%s/d1/database/%s" % (app.base_url, app.account_id, app.database_id)
+        io.create_task(app.initialize())
 
-    def escape(app, value):
-        if value is None:
-            return "NULL"
-        elif isinstance(value, (int, float)):
-            return str(value)
-        elif isinstance(value, bool):
-            return "1" if value else "0"
-        else:
-            escaped = str(value).replace("'", "''")
-            return "'%s'" % escaped
+    def __getattr__(app, key: str):
+        if key not in app.sql_paths: raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
-    async def sql(app, path: str, cmd: str, *args, result_only: bool = True):
-        if args:
-            count = 0
-            index = 0
-            while (idx := cmd[index:].find("?")) != -1:
-                idx += index
-                escaped = app.escape(args[count])
-                cmd = cmd[:idx] + escaped + cmd[idx+1:]
-                count += 1
-                index = (idx + len(escaped))
+        def method(*args, **kwargs): return app.sql("/%s" % key, *args, **kwargs)
 
-        async with io.getSession.post(app.url + path, app.headers, json = io.ddict(sql = cmd)) as resp:
+        method.__name__ = key
+        return method
+
+    async def initialize(app):
+        if not app.schema: return
+        for name, table in app.schema.get("tables").items():
+            if table.get("drop"):
+                await app.query("DROP TABLE IF EXISTS %s;" % name)
+            await app.query('CREATE TABLE IF NOT EXISTS %s (%s);' % (name, (', '.join(['%s %s' % (key, value) for key, value in table.get("columns").items()]))))
+
+    async def sql(app, path: str, cmd: str, *params):
+        async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params))) as resp:
             data = await resp.json()
             if (result := data.get("result")) and (results := result[0].get("results")):
                 return results if len(results) > 1 else io.ddict(results[0])
 
-            if not result_only:
+            if not app.result_only:
                 return result
 
 if __name__ == "__main__":
