@@ -17,13 +17,27 @@ class Client:
 
         method.__name__ = key
         return method
+    
+    async def validate_column(app, name: str, column: str, definition: str):
+        if not await app.query("SELECT name FROM pragma_table_info('%s') WHERE name = '%s';" % (name, column)):
+            await app.query("ALTER TABLE %s ADD COLUMN %s %s;" % (name, column, definition))
 
     async def initialize(app):
         if not app.schema: return
-        for name, table in app.schema.get("tables").items():
-            if table.get("drop"):
-                await app.query("DROP TABLE IF EXISTS %s;" % name)
-            await app.query('CREATE TABLE IF NOT EXISTS %s (%s);' % (name, (', '.join(['%s %s' % (key, value) for key, value in table.get("columns").items()]))))
+        tasks = []
+        try:
+            for name, table in app.schema.get("tables").items():
+                if table.get("drop"):
+                    await app.query("DROP TABLE IF EXISTS %s;" % name)
+                if await app.query("SELECT name FROM sqlite_master WHERE type='table' AND name='%s';" % name):
+                    tasks.extend([io.create_task(app.validate_column(name, column, value)) for column, value in table.get("columns").items()])
+                else:
+                    tasks.append(io.create_task(app.query("CREATE TABLE IF NOT EXISTS %s (%s%s);" % (name, (", ".join(["%s %s" % (key, value) for key, value in table.get("columns").items()])), ", " + ", ".join(list(table.get("commands"))) if table.get("commands") else ""))))
+
+                    if table.get("create_index"):
+                        tasks.append(io.create_task(app.query("CREATE INDEX idx_%s ON %s (%s);" % (name, name, ", ".join(list(table.get("columns").keys()))))))
+        finally:
+            if tasks: await io.gather(*tasks)
 
     async def sql(app, path: str, cmd: str, *params):
         async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params))) as resp:
