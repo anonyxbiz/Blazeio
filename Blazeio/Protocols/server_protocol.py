@@ -120,4 +120,21 @@ class Httpkeepalive:
 
                 ServerProtocolEssentials.reset(r)
 
+class ConnectionTaskShield:
+    __slots__ = ("r", "cancel_on_disconnect",)
+    def __init__(app, r: BlazeioProtocol = None):
+        app.r = r or current_task().__BlazeioProtocol__
+        app.cancel_on_disconnect = app.r.cancel_on_disconnect
+
+    async def __aenter__(app):
+        app.r.cancel_on_disconnect = False
+        return app
+
+    async def __aexit__(app, *args):
+        app.r.cancel_on_disconnect = app.cancel_on_disconnect
+        if app.r.transport.is_closing():
+            app.r.abort_connection()
+
+        return False
+
 if __name__ == "__main__": ...

@@ -2,17 +2,22 @@
 import Blazeio as io
 
 class Client:
-    __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "endpoint")
+    __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event")
     base_url = "https://api.cloudflare.com/client/v4"
     sql_paths = ("query",)
-    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True):
-        io.set_from_args(app, locals(), (str, dict, bool, None))
+    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True, retries: int = 3):
+        io.set_from_args(app, locals(), (str, int, dict, bool, None))
+        app.table_checks_completion_event = io.SharpEvent()
         app.endpoint = "%s/accounts/%s/d1/database/%s" % (app.base_url, app.account_id, app.database_id)
         io.create_task(app.initialize())
 
     @property
     def __name__(app):
         return "Client"
+    
+    def __await__(app):
+        yield from app.table_checks_completion_event.wait().__await__()
+        return
 
     def __call__(app, *args, **kwargs):
         return app.sql("/query", *args, **kwargs)
@@ -47,16 +52,29 @@ class Client:
             for name, table in app.schema.get("tables").items():
                 tasks.append(io.create_task(app.check_table(name, table)))
         finally:
-            if tasks: await io.gather(*tasks)
+            try:
+                if tasks: await io.gather(*tasks)
+            finally:
+                app.table_checks_completion_event.set()
 
-    async def sql(app, path: str, cmd: str, *params, batch: bool = False):
-        async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params), batch = batch)) as resp:
-            data = await resp.json()
-            if (result := data.get("result")) and (results := result[0].get("results")):
-                return results if len(results) > 1 else io.ddict(results[0])
+    async def sql(app, path: str, cmd: str, *params, data_type: (dict, list) = dict, batch: bool = False):
+        retries = app.retries
+        while (retries := retries-1) >= 1:
+            try:
+                async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params), batch = batch)) as resp:
+                    data = await resp.json()
+                    if (result := data.get("result")) and (results := result[0].get("results")):
+                        return results if (len(results) > 1 or data_type == list) else io.ddict(results[0])
+        
+                    if not app.result_only:
+                        return result
+                    else:
+                        return []
 
-            if not app.result_only:
-                return result
+            except io.ServerDisconnected:
+                continue
+
+            break
 
 if __name__ == "__main__":
     ...

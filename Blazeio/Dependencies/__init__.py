@@ -636,6 +636,8 @@ class __ReMonitor__:
         else:
             return
 
+        if not Payload.cancel_on_disconnect: return
+
         if await app.enforce_health(Payload, task): return
 
         if not Payload.__timeout__: return
