@@ -25,6 +25,12 @@ class Client:
     def query(app, *args, **kwargs):
         return app.sql("/query", *args, **kwargs)
 
+    async def unique_token(app, q: str, *params):
+        for i in range(1, 1000):
+            for o in range(1, 1*i):
+                if not await app(q, *params, token := io.token_urlsafe(o)):
+                    return token
+
     async def validate_column(app, name: str, column: str, definition: str):
         if not await app("SELECT name FROM pragma_table_info('%s') WHERE name = '%s';" % (name, column)):
             await app("ALTER TABLE %s ADD COLUMN %s %s;" % (name, column, definition))
