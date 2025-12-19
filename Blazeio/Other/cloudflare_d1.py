@@ -25,9 +25,9 @@ class Client:
     def query(app, *args, **kwargs):
         return app.sql("/query", *args, **kwargs)
 
-    async def unique_token(app, q: str, *params):
+    async def unique_token(app, q: str, *params, start: int = 1):
         for i in range(1, 1000):
-            for o in range(1, 1*i):
+            for o in range(start, 1*i):
                 if not await app(q, *params, token := io.token_urlsafe(o)):
                     return token
 
