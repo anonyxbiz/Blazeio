@@ -28,7 +28,7 @@ class Client:
     async def unique_token(app, q: str, *params, start: int = 1):
         for i in range(1, 1000):
             for o in range(start, 1*i):
-                if not await app(q, *params, token := io.token_urlsafe(o)):
+                if not await app(q, *params, token := io.token_urlsafe(o)[:o]):
                     return token
 
     async def validate_column(app, name: str, column: str, definition: str):

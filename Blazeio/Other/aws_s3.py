@@ -43,6 +43,10 @@ class S3:
     def __init__(app, bucket: str, region: str, aws_key: str, aws_secret: str):
         app.bucket, app.region, app.aws_key, app.aws_secret, app.cond = bucket, region, aws_key, aws_secret, io.ioCondition()
 
+        for i in app.__slots__:
+            if getattr(app, i) is None:
+                raise io.Err("%s cannot be None" % i)
+
     def __getattr__(app, key, *args):
         if not (ins := app.dynamics.get(key)): raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, key))
 
