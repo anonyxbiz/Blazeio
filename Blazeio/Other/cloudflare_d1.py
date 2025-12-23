@@ -1,6 +1,9 @@
 # Blazeio.Other.cloudflare_d1
 import Blazeio as io
 
+class SqlError(io.Err):
+    ...
+
 class Client:
     __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event")
     base_url = "https://api.cloudflare.com/client/v4"
@@ -34,7 +37,7 @@ class Client:
     async def validate_column(app, name: str, column: str, definition: str):
         if not await app("SELECT name FROM pragma_table_info('%s') WHERE name = '%s';" % (name, column)):
             await app("ALTER TABLE %s ADD COLUMN %s %s;" % (name, column, definition))
-    
+
     async def check_table(app, name: str, table: dict):
         tasks = []
         try:
@@ -69,9 +72,13 @@ class Client:
             try:
                 async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params), batch = batch)) as resp:
                     data = await resp.json()
+
+                    if not data.success:
+                        raise SqlError(io.dumps(data.errors, indent=0))
+
                     if (result := data.get("result")) and (results := result[0].get("results")):
                         return results if (len(results) > 1 or data_type == list) else io.ddict(results[0])
-        
+
                     if not app.result_only:
                         return result
                     else:

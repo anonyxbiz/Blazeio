@@ -84,14 +84,14 @@ class Decoders:
     async def gzip_decoder(app):
         if not app.decompressor: app.decompressor = decompressobj(16 + zlib_MAX_WBITS)
 
-        buff = memarray()
+        buff = bytearray()
 
         async for chunk in app.handler():
             buff.extend(chunk)
 
             if len(buff) >= 1024:
                 yield app.decompressor.decompress(bytes(buff))
-                buff = memarray(buff[len(buff):])
+                buff = buff[len(buff):]
 
         if buff: yield app.decompressor.decompress(bytes(buff))
 
@@ -700,6 +700,7 @@ class Pulltools(Parsers, Decoders):
                     yield chunk
             else:
                 async for chunk in app.decoder(): yield chunk
+
         except CancelledError:
             if app.protocol and app.protocol.transport and not app.protocol.transport.is_closing(): app.protocol.transport.close()
             raise
