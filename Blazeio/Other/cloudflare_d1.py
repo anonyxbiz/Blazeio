@@ -73,9 +73,6 @@ class Client:
                 async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params), batch = batch)) as resp:
                     data = await resp.json()
 
-                    if not data.success:
-                        raise SqlError(io.dumps(data.errors, indent=0))
-
                     if (result := data.get("result")) and (results := result[0].get("results")):
                         return results if (len(results) > 1 or data_type == list) else io.ddict(results[0])
 
