@@ -190,7 +190,7 @@ class Request(Depreciated):
             payload = bytearray()
             async for chunk in r.pull(): payload.extend(chunk)
 
-        try: return loads(payload.decode("utf-8"))
+        try: return ddict(loads(payload.decode("utf-8")))
         except JSONDecodeError: raise Err("No valid JSON found in the stream.")
 
     @classmethod
@@ -285,7 +285,7 @@ class Request(Depreciated):
         if not r: r = Context.r_sync()
 
         if r.method in r.non_bodied_methods:
-            return app.get_params_sync(r)
+            return r.params()
         else:
             return await app.get_json(r)
 
@@ -303,7 +303,7 @@ class Request(Depreciated):
     async def bop(app, r = None, *args):
         if not r: r = Context.r_sync()
         if r.method in r.non_bodied_methods:
-            return app.get_params_sync(r)
+            return r.params()
         else:
             return await app.get_json(r)
 

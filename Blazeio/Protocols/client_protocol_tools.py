@@ -89,14 +89,17 @@ class Decoders:
         async for chunk in app.handler():
             buff.extend(chunk)
 
-            if len(buff) >= 1024:
-                yield app.decompressor.decompress(bytes(buff))
-                buff = buff[len(buff):]
+            if len(buff) >= 2048:
+                try:
+                    yield app.decompressor.decompress(bytes(buff[:-1024]))
+                    buff = buff[-1024:]
+                    if (chunk := app.decompressor.flush()): yield chunk
+                except:
+                    ...
 
         if buff: yield app.decompressor.decompress(bytes(buff))
 
-        if (chunk := app.decompressor.flush()):
-            yield chunk
+        if (chunk := app.decompressor.flush()): yield chunk
 
 class Encoders:
     __slots__ = ()
