@@ -83,6 +83,8 @@ class Client:
 
             except io.ServerDisconnected:
                 continue
+            except io.JSONDecodeError:
+                if cmd.startswith("SELECT"): continue
 
             break
 
