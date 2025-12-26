@@ -8,7 +8,7 @@ class Client:
     __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event")
     base_url = "https://api.cloudflare.com/client/v4"
     sql_paths = ("query",)
-    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True, retries: int = 3):
+    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True, retries: int = 5):
         io.set_from_args(app, locals(), (str, int, dict, bool, None))
         app.table_checks_completion_event = io.SharpEvent()
         app.endpoint = "%s/accounts/%s/d1/database/%s" % (app.base_url, app.account_id, app.database_id)
@@ -71,7 +71,11 @@ class Client:
         while (retries := retries-1) >= 1:
             try:
                 async with io.getSession.post(app.endpoint + path, app.headers, json = io.ddict(sql = cmd, params = list(params), batch = batch)) as resp:
-                    data = await resp.json()
+                    try:
+                        data = await resp.json()
+                    except io.JSONDecodeError:
+                        if cmd.startswith("SELECT"): continue
+                        raise
 
                     if (result := data.get("result")) and (results := result[0].get("results")):
                         return results if (len(results) > 1 or data_type == list) else io.ddict(results[0])
@@ -83,8 +87,6 @@ class Client:
 
             except io.ServerDisconnected:
                 continue
-            except io.JSONDecodeError:
-                if cmd.startswith("SELECT"): continue
 
             break
 
