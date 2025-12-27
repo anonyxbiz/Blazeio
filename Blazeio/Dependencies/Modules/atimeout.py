@@ -20,5 +20,10 @@ class ClientTimeout:
         ReMonitor.rm_callback(app.cb)
         return False
 
+async def ayield(every = 0):
+    while True:
+        yield every
+        await sleep(every)
+
 if __name__ == "__main__":
     ...
