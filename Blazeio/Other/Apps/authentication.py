@@ -12,7 +12,7 @@ class Register:
 
     async def register(app, r: io.BlazeioProtocol):
         data = await r.body_or_params()
-        
+
         if not (email := data.get("email")):
             raise io.Abort("email is required", 403)
 
@@ -59,7 +59,7 @@ class Login:
         await app.database(
             "INSERT INTO sessions (user_id, cookie, expires_at, ip) VALUES (?, ?, ?, ?);",
             user.id,
-            cookie := await app.database.unique_token("SELECT cookie FROM sessions WHERE user_id = ? AND cookie = ?", user.id, start = 32),
+            cookie := await app.database.unique_id("SELECT cookie FROM sessions WHERE user_id = ? AND cookie = ?", user.id, start = 32),
             (expires := (io.dt.now(io.UTC) + io.timedelta(**app.schema.session.expires_after))).isoformat(),
             r.ip_host,
         )

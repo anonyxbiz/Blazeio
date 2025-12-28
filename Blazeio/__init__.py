@@ -4,13 +4,16 @@ from .Dependencies.alts import __version__
 from .Protocols.server_protocol import *
 from .Protocols.client_protocol import *
 
+from .Parsers.min_http_parser import *
+
 from .Modules.streaming import *
 from .Modules.server_tools import *
-from .Parsers.min_http_parser import *
 from .Modules.request import *
 from .Modules.reasons import *
 from .Modules.templatify import *
 from .Modules.Server.writers import *
+
+from .Utils.socket_ops import *
 
 from .Client import *
 from .Other._refuture import *

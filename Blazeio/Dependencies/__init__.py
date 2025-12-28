@@ -24,7 +24,6 @@ from os import path as os_path, mkdir, remove
 from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
 
 from threading import Thread, Lock as T_lock, Event as Tevent, main_thread
-from html import escape, unescape
 
 from traceback import extract_tb, format_exc
 from ssl import create_default_context, Purpose, PROTOCOL_TLS_SERVER, OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_TLSv1, OP_NO_TLSv1_1, OP_NO_COMPRESSION, CERT_NONE, SSLError, TLSVersion
@@ -40,6 +39,9 @@ from brotlicffi import Decompressor, Compressor, compress as brotlicffi_compress
 from psutil import Process as psutilProcess, cpu_count as psutilcpu_count
 
 from atexit import register as atexit_register
+
+from html import escape, unescape
+from uuid import uuid4
 
 try:
     from ujson import dumps as ujson_dumps, loads, JSONDecodeError
