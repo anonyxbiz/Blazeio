@@ -48,6 +48,11 @@ class Login:
         def _login(r: io.BlazeioProtocol, route: str = app.schema.login.endpoint):
             return app.login(r)
 
+        @app.add_route
+        @app.routes
+        def _logout(r: io.BlazeioProtocol, route: str = app.schema.logout.endpoint):
+            return app.logout(r)
+
     async def login(app, r: io.BlazeioProtocol):
         data = await r.body_or_params()
         if not (username := data.get("username")) or not (password := data.get("password")):
@@ -71,6 +76,13 @@ class Login:
 
         raise io.Abort(*app.schema.login.on_successs_raise)
 
+    async def logout(app, r: io.BlazeioProtocol):
+        await app.database("DELETE FROM sessions WHERE user_id = ? AND cookie = ?;", r.store[app.schema.session.key]["user_id"], r.store[app.schema.session.key]["cookie"])
+
+        r.set_cookie(app.schema.session.cookie["name"], r.store[app.schema.session.key]["cookie"], "Tue, 07 Jan 2000 01:48:07 UTC", **app.schema.session.cookie["options"])
+
+        raise io.Abort(*app.schema.logout.on_successs_raise)
+
 class Session:
     __slots__ = ()
     def __init__(app):
@@ -78,8 +90,6 @@ class Session:
 
     async def validate_session(app, r: io.BlazeioProtocol, cookie: str):
         if (session := await app.database("SELECT u.*, s.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.cookie = ? AND s.expires_at > ?;", cookie, io.dt.now(io.UTC).isoformat())):
-            for i in ("password", "cookie"):
-                session.pop(i, None)
             r.store[app.schema.session.key] = session
 
     async def auth_user(app, r: io.BlazeioProtocol):
@@ -102,13 +112,14 @@ class Session:
             raise io.Abort(*app.schema.session.on_fail_raise)
 
 class Auth(Register, Login, Session):
-    __slots__ = ("database", "schema", "hashing_key", "_register", "_login")
+    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout")
     routes = io.Routemanager()
-    def __init__(app, database, hashing_key: str, register: dict, login: dict, session: dict):
+    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict):
         app.database, app.hashing_key = database, hashing_key
         app.schema = io.ddict(
             register = io.ddict(register),
             login = io.ddict(login),
+            logout = io.ddict(logout),
             session = io.ddict(session),
         )
         io.Super(app).__init__()
