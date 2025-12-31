@@ -72,3 +72,18 @@ class Ringarray(bytearray):
             return app.__iadd__(rem)
 
         return app
+
+def update_raw_cookies(cookies: str, key: str, value: str):
+    if (idx := cookies.find(i := "%s=" % key)) != -1:
+        if (idx2 := cookies[idx:].find(";")) == -1:
+            idx2 = 0
+        if value:
+            cookies = cookies[:idx+len(i)] + value + cookies[idx + idx2:]
+        else:
+            cookies = cookies[:idx] + cookies[idx + idx2:]
+    elif value and cookies:
+        cookies += "; %s=%s" % (key, value)
+    elif value:
+        cookies += "%s=%s" % (key, value)
+
+    return cookies
