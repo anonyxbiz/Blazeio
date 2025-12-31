@@ -215,11 +215,14 @@ class StaticServer(HtmlTemplate):
     def validate(app):
         if app.html_template:
             app.html_template_validate()
+    
+    def path_if_exists(app, file_path: str):
+        return file_path if path.exists(file_path) else None
 
     async def handle_all_middleware(app, r: BlazeioProtocol):
         if r.path[:len(app.root)] != app.root: return
 
-        if not path.exists(file_path := (path.join(app.root_dir, route) or path.join(app.root_dir, app.page_dir, route)) if app.ext_delimiter in (route := r.path[1:] or path.join(app.page_dir, app.home_page)) else path.join(app.root_dir, app.page_dir, route + app.html_ext)):
+        if not path.exists(file_path := (app.path_if_exists(path.join(app.root_dir, route)) or path.join(app.root_dir, app.page_dir, route)) if app.ext_delimiter in (route := r.path[1:] or path.join(app.page_dir, app.home_page)) else path.join(app.root_dir, app.page_dir, route + app.html_ext)):
             raise Abort("Not found", 404)
 
         if file_path.endswith(app.html_ext) and app.html_template and (template := app.html_template.get(r.path) or app.match_template(r.path)):
