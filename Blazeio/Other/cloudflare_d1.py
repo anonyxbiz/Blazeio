@@ -4,7 +4,23 @@ import Blazeio as io
 class SqlError(io.Err):
     ...
 
-class Client:
+class Response:
+    __slots__ = ()
+
+    async def stream(app, cmd: str, *params, data_type: (dict, list) = dict, batch: bool = False):
+        retries = app.retries
+        while (retries := retries-1) >= 1:
+            try:
+                async with io.getSession.post(app.endpoint + "/query", app.headers, json = io.ddict(sql = cmd, params = list(params), batch = batch)) as resp:
+                    async for chunk in resp:
+                        yield chunk
+
+            except io.ServerDisconnected:
+                continue
+
+            break
+
+class Client(Response):
     __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event", "log")
     base_url = "https://api.cloudflare.com/client/v4"
     sql_paths = ("query",)
@@ -89,10 +105,10 @@ class Client:
                     except io.JSONDecodeError:
                         if cmd.startswith("SELECT"): continue
                         raise
-
+            
                     if (result := data.get("result")) and (results := result[0].get("results")):
                         return results if (len(results) > 1 or data_type == list) else io.ddict(results[0])
-
+                
                     if not app.result_only:
                         return result
                     else:
