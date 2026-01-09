@@ -5,10 +5,10 @@ class SqlError(io.Err):
     ...
 
 class Client:
-    __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event")
+    __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event", "log")
     base_url = "https://api.cloudflare.com/client/v4"
     sql_paths = ("query",)
-    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True, retries: int = 5):
+    def __init__(app, account_id: str, database_id: str, headers: dict, schema: (None, dict) = None, result_only: bool = True, retries: int = 5, log: bool = False):
         io.set_from_args(app, locals(), (str, int, dict, bool, None))
         app.table_checks_completion_event = io.SharpEvent()
         app.endpoint = "%s/accounts/%s/d1/database/%s" % (app.base_url, app.account_id, app.database_id)
@@ -40,24 +40,30 @@ class Client:
                 for a in range(o):
                     if not await app(q, *params, token := str(io.uuid4())[:o]):
                         return token
+    
+    async def checker(app, cmd: str, *args, **kwargs):
+        if app.log:
+            await io.plog.yellow(cmd)
+
+        return await app(cmd, *args, **kwargs)
 
     async def validate_column(app, name: str, column: str, definition: str):
-        if not await app("SELECT name FROM pragma_table_info('%s') WHERE name = '%s';" % (name, column)):
-            await app("ALTER TABLE %s ADD COLUMN %s %s;" % (name, column, definition))
+        if not await app.checker("SELECT name FROM pragma_table_info('%s') WHERE name = '%s';" % (name, column)):
+            await app.checker("ALTER TABLE %s ADD COLUMN %s %s;" % (name, column, definition))
 
     async def check_table(app, name: str, table: dict):
         tasks = []
         try:
             if table.get("drop"):
-                await app("DROP TABLE IF EXISTS %s;" % name)
+                await app.checker("DROP TABLE IF EXISTS %s;" % name)
 
             if isinstance(await app("SELECT name FROM sqlite_master WHERE type='table' AND name='%s';" % name), dict):
                 tasks.extend([io.create_task(app.validate_column(name, column, value)) for column, value in table.get("columns").items()])
             else:
-                await app(cmd := "CREATE TABLE IF NOT EXISTS %s (%s%s);" % (name, (", ".join(["%s %s" % (key, value) for key, value in table.get("columns").items()])), ", " + ", ".join(list(table.get("commands"))) if table.get("commands") else ""))
+                await app.checker(cmd := "CREATE TABLE IF NOT EXISTS %s (%s%s);" % (name, (", ".join(["%s %s" % (key, value) for key, value in table.get("columns").items()])), ", " + ", ".join(list(table.get("commands"))) if table.get("commands") else ""))
 
                 if table.get("create_index"):
-                    await app("CREATE INDEX idx_%s ON %s (%s);" % (name, name, ", ".join(list(table.get("columns").keys()))))
+                    await app.checker("CREATE INDEX idx_%s ON %s (%s);" % (name, name, ", ".join(list(table.get("columns").keys()))))
         finally:
             if tasks: return await io.gather(*tasks)
 

@@ -89,8 +89,14 @@ class Session:
         ...
 
     async def validate_session(app, r: io.BlazeioProtocol, cookie: str):
+        if app.session_cache and (session := app.session_cache.get(cookie)):
+            r.store[app.schema.session.key] = session
+            return
+
         if (session := await app.database("SELECT u.*, s.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.cookie = ? AND s.expires_at > ?;", cookie, io.dt.now(io.UTC).isoformat())):
             r.store[app.schema.session.key] = session
+            if app.session_cache:
+                app.session_cache.add(cookie, session)
 
     async def auth_user(app, r: io.BlazeioProtocol):
         if r.store is None:
@@ -111,11 +117,28 @@ class Session:
         if not r.store.session:
             raise io.Abort(*app.schema.session.on_fail_raise)
 
-class Auth(Register, Login, Session):
-    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout")
+class SessionCache:
+    __slots__ = ("sessions", "max_size")
+    def __init__(app, max_size: int = 1000):
+        app.sessions, app.max_size = io.ddict(), max_size
+
+    def add(app, cookie: str, session):
+        if len(app.sessions) >= app.max_size: return
+        app.sessions[cookie] = session
+
+    def get(app, cookie: str):
+        if (session := app.sessions.get(cookie)):
+            if (io.dt.now() > io.dt.fromisoformat(session.get("expires_at")).replace(tzinfo=None)):
+                app.sessions.pop(cookie)
+            else:
+                return session
+
+class Authenticator(Register, Login, Session):
+    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache")
     routes = io.Routemanager()
-    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict):
+    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None):
         app.database, app.hashing_key = database, hashing_key
+        app.session_cache = session_cache
         app.schema = io.ddict(
             register = io.ddict(register),
             login = io.ddict(login),

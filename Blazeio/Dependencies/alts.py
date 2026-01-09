@@ -693,8 +693,8 @@ async def aread(filepath: str, *args, **kwargs):
     async with async_open(filepath, "rb", *args, **kwargs) as f:
         return await f.read()
 
-async def asave(filepath: str, data: (bytes, bytearray), *args, **kwargs):
-    async with async_open(filepath, "wb", *args, **kwargs) as f:
+async def asave(filepath: str, data: (bytes, bytearray), *args, mode: str = "wb", **kwargs):
+    async with async_open(filepath, mode, *args, **kwargs) as f:
         if not isinstance(data, (bytes, bytearray)):
             data = data.encode()
 
