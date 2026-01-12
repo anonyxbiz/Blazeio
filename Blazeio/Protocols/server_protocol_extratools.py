@@ -181,7 +181,7 @@ class ExtraToolset:
         return app
 
     def __getattr__(app, *_args):
-        if isinstance(app.store, dict) and (value := app.store.get(_args[0], None)):
+        if isinstance(app.store, (dict,)) and (value := app.store.get(_args[0], None)) is not None:
             return value
 
         def method(*args, **kwargs):

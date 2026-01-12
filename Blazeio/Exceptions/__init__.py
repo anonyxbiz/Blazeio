@@ -64,7 +64,7 @@ class CloseConnection(BlazeioException):
     def __init__(app): ...
 
 class ProtocolError(BlazeioException):
-    __slots__ = ('message')
+    __slots__ = ('message',)
     def __init__(app, message=None):
         app.message = str(message)
 
@@ -74,5 +74,22 @@ class ProtocolError(BlazeioException):
 class Eof(BlazeioException):
     __slots__ = ()
     def __init__(app, *args): ...
+
+class ModuleError(BlazeioException):
+    __slots__ = ('name', 'error', 'message')
+    def __init__(app, name: str, *error):
+        app.name, app.error, app.message = name, error, None
+
+    def get_message(app) -> str:
+        if app.message: return app.message
+        app.message, indent = "[%s] Error:" % app.name, 0
+        for i in app.error:
+            indent += 1
+            app.message += "\n%s%s" % (" " * indent, i)
+
+        return app.message
+
+    def __str__(app) -> str:
+        return app.get_message()
 
 if __name__ == "__main__": ...

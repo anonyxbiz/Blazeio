@@ -111,7 +111,8 @@ class Session:
         return r.store.session
 
     async def before_middleware(app, r: io.BlazeioProtocol):
-        if not r.path in app.routes: return
+        if not r.path in app.routes and not r.path.startswith(app.wildcard_paths): return
+
         await app.auth_user(r)
 
         if not r.store.session:
@@ -134,11 +135,12 @@ class SessionCache:
                 return session
 
 class Authenticator(Register, Login, Session):
-    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache")
+    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths")
     routes = io.Routemanager()
-    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None):
+    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, wildcard_paths: tuple = ()):
         app.database, app.hashing_key = database, hashing_key
         app.session_cache = session_cache
+        app.wildcard_paths = wildcard_paths
         app.schema = io.ddict(
             register = io.ddict(register),
             login = io.ddict(login),
