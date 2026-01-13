@@ -20,6 +20,34 @@ class Response:
 
             break
 
+class StreamTo:
+    __slots__ = ("db", "stream", "headers", "status_code")
+    def __init__(app, db, stream: io.BlazeioProtocol, headers: dict = {}, status_code: (int, None) = None):
+        app.db, app.stream, app.headers, app.status_code = db, stream, io.ddict(headers), status_code
+
+    def __call__(app, *args, **kwargs):
+        return app.stream_into(*args, **kwargs)
+
+    async def stream_into(app, cmd: str, *params, **kwargs):
+        retries = app.db.retries
+        while (retries := retries-1) >= 1:
+            try:
+                async with io.getSession.post(app.db.endpoint + "/query", app.db.headers, json = io.ddict(sql = cmd, params = list(params), **kwargs)) as resp:
+                    app.headers["Content-type"] = resp.content_type
+                    
+                    if not app.stream.__is_prepared__:
+                        await app.stream.prepare({**io.Ctypes.chunked, **app.headers}, app.status_code if app.status_code is not None else resp.status_code)
+
+                    async for chunk in resp:
+                        await app.stream.write(chunk)
+
+                    await app.stream.eof()
+
+            except io.ServerDisconnected:
+                continue
+
+            break
+
 class Client(Response):
     __slots__ = ("account_id", "database_id", "headers", "schema", "result_only", "retries", "endpoint", "table_checks_completion_event", "log")
     base_url = "https://api.cloudflare.com/client/v4"
@@ -44,6 +72,9 @@ class Client(Response):
     def query(app, *args, **kwargs):
         return app.sql("/query", *args, **kwargs)
 
+    def stream_to(app, *args, **kwargs):
+        return StreamTo(app, *args, **kwargs)
+
     async def unique_token(app, q: str, *params, start: int = 1):
         for i in range(1, 1000):
             for o in range(start, 1*i):
@@ -61,7 +92,12 @@ class Client(Response):
         if app.log:
             await io.plog.yellow(cmd)
 
-        return await app(cmd, *args, **kwargs)
+        result = await app(cmd, *args, **kwargs)
+
+        if app.log:
+            await io.plog.yellow(io.dumps(result))
+        
+        return result
 
     async def validate_column(app, name: str, column: str, definition: str):
         if not await app.checker("SELECT name FROM pragma_table_info('%s') WHERE name = '%s';" % (name, column)):
@@ -80,6 +116,10 @@ class Client(Response):
 
                 if table.get("create_index"):
                     await app.checker("CREATE INDEX idx_%s ON %s (%s);" % (name, name, ", ".join(list(table.get("columns").keys()))))
+
+                if (on_creation_queries := table.get("on_creation_queries")):
+                    tasks.extend([io.create_task(app.checker(*i)) for i in on_creation_queries])
+
         finally:
             if tasks: return await io.gather(*tasks)
 
