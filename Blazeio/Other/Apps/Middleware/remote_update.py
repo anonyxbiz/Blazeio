@@ -3,7 +3,7 @@ import Blazeio as io
 
 class Updater:
     __slots__ = ("web", "auth_token", "route", "auth_token_key", "cmd")
-    def __init__(app, auth_token: str = "93nk-xofsrOq4VY", route: str = "/system/remote/update", auth_token_key: str = "auth_token", cmd: str = " ".join(["git", "stash", "&&", "git", "pull"])):
+    def __init__(app, auth_token: str, route: str = "/system/remote/update", auth_token_key: str = "auth_token", cmd: str = " ".join(["git", "stash", "&&", "git", "pull"])):
         io.set_from_args(app, locals(), (str,))
 
     def __server_instance__(app, web: io.App):
