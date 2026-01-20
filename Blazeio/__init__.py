@@ -64,6 +64,10 @@ class OOP_Route_Def:
                     app.create_task(plog.info("Added %s => %s." % (name, name), func = app.attach, dnewline = False, newline = False))
                     raise Eof()
 
+                if name == "__server_instance__" and (co_var := co_var_name(method, app)):
+                    method(**{co_var: app})
+                    raise Eof()
+
                 if not name.startswith("_") or name.startswith("__"):
                     if not name.endswith("_middleware"):
                         raise Eof()
@@ -707,7 +711,7 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
                 component = "middleware"
                 color = "\033[34m"
 
-            app.create_task(plog.info("Added %s => %s." % (component, route_name), func = app.add_route, dnewline = False, newline = False))
+            app.create_task(plog.info("Added %s(%d) => %s." % (component, len(app.declared_routes), route_name), func = app.add_route, dnewline = False, newline = False))
             return func
 
     def route_validator(app):

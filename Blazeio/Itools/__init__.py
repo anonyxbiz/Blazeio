@@ -347,4 +347,10 @@ class AsyncSyncCompatibilityWithResult:
                 return cls
         app.result = compatible(result)
 
+def co_var_name(func, typeof):
+    for i in func.__code__.co_varnames:
+        if (annotation := func.__annotations__.get(i)):
+            if isinstance(typeof, annotation):
+                return i
+
 if __name__ == "__main__": ...

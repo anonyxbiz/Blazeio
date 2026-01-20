@@ -72,7 +72,7 @@ class Login:
         await app.database(
             "INSERT INTO %s (%s, %s, %s, %s) VALUES (?, ?, ?, ?);" % (app.sessions_column, app.user_id_key, app.cookie_key, app.expires_at_key, app.ip_key),
             user.get(app.user_id_key),
-            cookie := await app.database.unique_id("SELECT %s FROM %s WHERE %s = ? AND %s = ?" % (app.cookie_key, app.sessions_column, app.user_id_key, app.cookie_key), user.get(app.user_id_key), start = 32),
+            cookie := await app.database.unique_id("SELECT %s FROM %s WHERE %s = ?;" % (app.cookie_key, app.sessions_column, app.cookie_key), start = 32),
             (expires := (io.dt.now(io.UTC) + io.timedelta(**app.schema.session.expires_after))).isoformat(),
             r.ip_host,
         )
@@ -101,7 +101,7 @@ class Session:
             r.store[app.schema.session.key] = session
             return
 
-        if (session := await app.database("SELECT u.*, s.* FROM %s s JOIN %s u ON u.%s = u.%s WHERE s.%s = ? AND s.%s > ?;" % (app.sessions_column, app.users_column, app.user_id_key, app.user_id_key, app.cookie_key, app.expires_at_key), cookie, io.dt.now(io.UTC).isoformat())):
+        if (session := await app.database(s := "SELECT u.*, s.* FROM %s s JOIN %s u ON s.%s = u.%s WHERE s.%s = ? AND s.%s > ?;" % (app.sessions_column, app.users_column, app.user_id_key, app.user_id_key, app.cookie_key, app.expires_at_key), cookie, io.dt.now(io.UTC).isoformat())):
             r.store[app.schema.session.key] = session
             if app.session_cache:
                 app.session_cache.add(cookie, session)
@@ -143,7 +143,7 @@ class SessionCache:
                 return session
 
 class Authenticator(PasswordHasher, Register, Login, Session):
-    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths", "users_column", "user_id_key", "email_key", "username_key", "password_key", "sessions_column", "session_id_key", "cookie_key", "expires_at_key", "ip_key")
+    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths", "users_column", "user_id_key", "email_key", "username_key", "password_key", "sessions_column", "session_id_key", "cookie_key", "expires_at_key", "ip_key",)
     routes = io.Routemanager()
     def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip"):
         app.database, app.hashing_key = database, hashing_key

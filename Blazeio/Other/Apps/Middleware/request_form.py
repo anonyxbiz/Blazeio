@@ -1,6 +1,26 @@
 # ./Other/Apps/Middleware/request_form.py
 import Blazeio as io
 
+class Model:
+    __slots__ = ("model",)
+    def __init__(app, **model):
+        app.model = model
+
+    def form(app, data: dict):
+        form_data = io.ddict()
+        for key, form in app.model.items():
+            if not (value := data.get(key)) and (value := form.get("default", NotImplemented)) is NotImplemented:
+                raise io.Abort("%s is required but its missing" % key, 403)
+
+            try:
+                value = form["type"](value)
+            except:
+                raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
+
+            form_data[key] = value
+
+        return form_data
+
 class Request:
     __slots__ = ("model", "store_key", "form",)
     def __init__(app, model, store_key: str, **form):
@@ -33,11 +53,14 @@ class RequestModel:
         for key, form in model.form.items():
             if not (value := data.get(key)) and (value := form.get("default", NotImplemented)) is NotImplemented:
                 raise io.Abort("%s is required but its missing" % key, 403)
-
+            
             try:
                 value = form["type"](value)
             except:
                 raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
+
+            if form["type"] == list and (m := form.get("model")):
+                value = [m.form(i) for i in value]
 
             r.store[model.store_key][key] = value
 
