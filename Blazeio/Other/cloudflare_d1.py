@@ -132,7 +132,7 @@ class Client(Response):
             elif result.get("sql") != table.get("sql"):
                 for column, definition in table.get("columns").items():
                     if "%s %s" % (column, definition) not in result.get("sql"):
-                        queries.append("ALTER TABLE %s ADD COLUMN %s %s;" % (name, column, definition))
+                        queries.append("ALTER TABLE %s ADD COLUMN %s %s" % (name, column, definition))
         
         if queries and not (result := await app.checker(query := "; ".join(queries), raw_response = True)).get("success"):
             await io.plog.b_red(io.dumps(io.ddict(query = query, result = result)))
@@ -162,8 +162,7 @@ class Client(Response):
                     if raw_response: return data
 
                     if not (result := data.get("result")):
-                        if (errors := data.get("errors")) and errors[0].get("message") == "D1 DB storage operation exceeded timeout which caused object to be reset.":
-                            raise RetryError()
+                        if (errors := data.get("errors")) and errors[0].get("message") == "D1 DB storage operation exceeded timeout which caused object to be reset.": continue
 
                         return result
 
@@ -175,7 +174,7 @@ class Client(Response):
 
                     return results
 
-            except (io.ServerDisconnected, RetryError):
+            except io.ServerDisconnected:
                 continue
 
             break
