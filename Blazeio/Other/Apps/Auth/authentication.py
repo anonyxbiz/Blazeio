@@ -145,7 +145,7 @@ class SessionCache:
 class Authenticator(PasswordHasher, Register, Login, Session):
     __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths", "users_column", "user_id_key", "email_key", "username_key", "password_key", "sessions_column", "session_id_key", "cookie_key", "expires_at_key", "ip_key",)
     routes = io.Routemanager()
-    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip"):
+    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, paths: tuple = (), wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip"):
         app.database, app.hashing_key = database, hashing_key
         app.session_cache = session_cache
         app.wildcard_paths, app.users_column, app.user_id_key, app.email_key, app.username_key, app.password_key, app.sessions_column, app.session_id_key, app.cookie_key, app.expires_at_key, app.ip_key = wildcard_paths, users_column, user_id_key, email_key, username_key, password_key, sessions_column, session_id_key, cookie_key, expires_at_key, ip_key
@@ -155,6 +155,8 @@ class Authenticator(PasswordHasher, Register, Login, Session):
             logout = io.ddict(logout),
             session = io.ddict(session),
         )
+        for i in paths:
+            app.routes[i] = True
         io.Super(app).__init__()
 
     @property
