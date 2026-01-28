@@ -335,7 +335,7 @@ class Session(Pushtools, Pulltools, metaclass=SessionMethodSetter):
             body = dumps(json, indent=0).encode()
             normalized_headers["Content-type"] = "application/json"
 
-        if body:
+        if body is not None:
             normalized_headers["Content-length"] = str(len(body))
 
         if (content is not None or body is not None) and not "Content-length" in normalized_headers and not "Transfer-encoding" in normalized_headers and method not in {"GET", "HEAD", "OPTIONS", "CONNECT", "DELETE"}:

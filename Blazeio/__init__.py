@@ -591,6 +591,13 @@ class Callbacks:
                 await fn(*args, **kwargs)
             else:
                 await to_thread(fn, *args, **kwargs)
+    
+    async def run_on_start(app, coro):
+        await app
+        return await coro
+
+    def create_task_on_start(app, coro):
+        return app.loop.create_task(app.run_on_start(coro))
 
 class Protocol_methods(Serverctx):
     def __init__(app): ...

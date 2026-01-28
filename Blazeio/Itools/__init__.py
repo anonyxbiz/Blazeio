@@ -353,4 +353,7 @@ def co_var_name(func, typeof):
             if isinstance(typeof, annotation):
                 return i
 
+def list_to_dict(data: list, key):
+    return {i.get(key): i for i in data}
+
 if __name__ == "__main__": ...
