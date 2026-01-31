@@ -35,13 +35,18 @@ class Register:
 
         if await app.database("SELECT %s FROM %s WHERE %s = ?;" % (app.username_key, app.users_column, app.username_key), username):
             raise io.Abort("%s is taken" % app.username_key, 403)
+        
+        keys = [app.email_key, app.username_key, app.password_key, app.ip_key]
+        values = [email, username, app.password_hasher(password.encode()), r.ip_host]
+        
+        for key in app.form_fields:
+            if (value := data.get(key)):
+                keys.append(key)
+                values.append(value)
 
         await app.database(
-            "INSERT INTO %s (%s, %s, %s, %s) VALUES (?, ?, ?, ?);" % (app.users_column, app.email_key, app.username_key, app.password_key, app.ip_key),
-            email,
-            username,
-            app.password_hasher(password.encode()),
-            r.ip_host
+            "INSERT INTO %s (%s) VALUES (%s);" % (app.users_column, ", ".join(keys), ", ".join(["?" for i in range(len(keys))])),
+            *values
         )
 
         if not await app.database("SELECT %s FROM %s WHERE %s = ?;" % (app.username_key, app.users_column, app.username_key), username):
@@ -66,7 +71,7 @@ class Login:
         if not (username := data.get(app.username_key)) or not (password := data.get(app.password_key)):
             raise io.Abort("%s and %s are required" % (app.username_key, app.password_key), 403)
 
-        if not (user := await app.database("SELECT %s FROM %s WHERE %s = ? AND %s = ?;" % (app.user_id_key, app.users_column, app.username_key, app.password_key), username, app.password_hasher(password.encode()))):
+        if not (user := await app.database("SELECT %s FROM %s WHERE (%s = ? AND %s = ? OR %s = ? AND %s = ?);" % (app.user_id_key, app.users_column, app.username_key, app.password_key, app.email_key, app.password_key), username, pwd := app.password_hasher(password.encode()), username, pwd)):
             raise io.Abort("Invalid credentials", 403)
 
         await app.database(
@@ -143,12 +148,12 @@ class SessionCache:
                 return session
 
 class Authenticator(PasswordHasher, Register, Login, Session):
-    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths", "users_column", "user_id_key", "email_key", "username_key", "password_key", "sessions_column", "session_id_key", "cookie_key", "expires_at_key", "ip_key",)
+    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths", "users_column", "user_id_key", "email_key", "username_key", "password_key", "sessions_column", "session_id_key", "cookie_key", "expires_at_key", "ip_key", "form_fields")
     routes = io.Routemanager()
-    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, paths: tuple = (), wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip"):
+    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, paths: tuple = (), wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip", form_fields: tuple = ()):
         app.database, app.hashing_key = database, hashing_key
         app.session_cache = session_cache
-        app.wildcard_paths, app.users_column, app.user_id_key, app.email_key, app.username_key, app.password_key, app.sessions_column, app.session_id_key, app.cookie_key, app.expires_at_key, app.ip_key = wildcard_paths, users_column, user_id_key, email_key, username_key, password_key, sessions_column, session_id_key, cookie_key, expires_at_key, ip_key
+        app.wildcard_paths, app.users_column, app.user_id_key, app.email_key, app.username_key, app.password_key, app.sessions_column, app.session_id_key, app.cookie_key, app.expires_at_key, app.ip_key, app.form_fields = wildcard_paths, users_column, user_id_key, email_key, username_key, password_key, sessions_column, session_id_key, cookie_key, expires_at_key, ip_key, form_fields
         app.schema = io.ddict(
             register = io.ddict(register),
             login = io.ddict(login),
