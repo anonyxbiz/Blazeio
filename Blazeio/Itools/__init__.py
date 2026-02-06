@@ -356,4 +356,12 @@ def co_var_name(func, typeof):
 def list_to_dict(data: list, key):
     return {i.get(key): i for i in data}
 
+class AenterAexit:
+    __slots__ = ()
+    async def __aenter__(app):
+        return app
+
+    async def __aexit__(app, *args):
+        return False
+
 if __name__ == "__main__": ...
