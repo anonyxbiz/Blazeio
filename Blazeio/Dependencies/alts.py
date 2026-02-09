@@ -744,4 +744,8 @@ class URL:
 def anydumps(_dict, *args, **kwargs):
     return dumps(ensure_dumpable(_dict), *args, **kwargs)
 
+def Dotifile(filepath: str, *args, **kwargs):
+    with open(filepath, "rb", *args, **kwargs) as f:
+        return Dotify(loads(f.read()))
+
 if __name__ == "__main__": ...

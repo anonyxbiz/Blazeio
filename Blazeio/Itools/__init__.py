@@ -193,7 +193,7 @@ class Super:
 def Dotify(_dict_=None, **kwargs):
     if _dict_ is None:
         _dict_ = kwargs
-    
+
     if isinstance(_dict_, dict):
         result = DotDict()
         for key, val in _dict_.items():
