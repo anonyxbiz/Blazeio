@@ -10,15 +10,11 @@ class IP:
     def __call__(app, *args, **kwargs):
         return app.routes(*args, **kwargs)
 
-    async def _app_my_ip(app, r: io.BlazeioProtocol):
-        await r.prepare({"Content-type": io.Ctypes.text, "Transfer-encoding": "chunked"}, 200)
-        await r.write(r.ip_host.encode())
-
     async def before_middleware(app, r: io.BlazeioProtocol):
         if r.store is None:
             r.store = io.ddict()
 
-        if (ip_host := r.headers.get("Ip_host") or r.headers.get("True-client-ip")):
+        if (ip_host := r.headers.get(app.ip_headers[0]) or r.headers.get(app.ip_headers[1])):
             r.ip_host = ip_host
 
 if __name__ == "__main__": ...
