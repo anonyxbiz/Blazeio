@@ -133,17 +133,21 @@ class Session:
 
 class SessionCache:
     __slots__ = ("sessions", "max_size", "expires_at_key")
-    def __init__(app, max_size: int = 1000, expires_at_key: str = "expires_at"):
+    def __init__(app, max_size: int = 1000, expires_at_key: str = "expires_at",):
         app.sessions, app.max_size, app.expires_at_key = io.ddict(), max_size, expires_at_key
 
+    def remove(app, key):
+        return app.sessions.pop(key, None)
+
     def add(app, cookie: str, session):
-        if len(app.sessions) >= app.max_size: return
+        if len(app.sessions) >= app.max_size:
+            app.sessions.clear()
         app.sessions[cookie] = session
 
     def get(app, cookie: str):
         if (session := app.sessions.get(cookie)):
             if (expires_at := session.get(app.expires_at_key)) and (io.dt.now() > io.dt.fromisoformat(expires_at).replace(tzinfo=None)):
-                app.sessions.pop(cookie)
+                app.remove(cookie)
             else:
                 return session
 
