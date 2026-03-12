@@ -29,6 +29,25 @@ class Request:
     def __call__(app, fn):
         return app.model.routes(fn, model = app)
 
+class RequestDict(io.ddict):
+    def sqlize_insert(app, value_type: tuple):
+        keys, values = [], []
+        for i in app.keys():
+            if isinstance(value := app.get(i), value_type):
+                keys.append(i)
+                values.append(value)
+
+        return (", ".join(keys), ", ".join(["?" for i in range(len(keys))]), values)
+
+    def sqlize_update(app, value_type: tuple):
+        keys, values = [], []
+        for i in app.keys():
+            if isinstance(value := app.get(i), value_type):
+                keys.append(i)
+                values.append(value)
+
+        return (", ".join(["%s = ?" % key for key in keys]), values)
+
 class RequestModel:
     __slots__ = ()
     routes: io.Routemanager = io.Routemanager()
@@ -46,7 +65,7 @@ class RequestModel:
         if r.store is None:
             r.store = io.ddict()
 
-        r.store[model.store_key] = io.ddict()
+        r.store[model.store_key] = RequestDict()
 
         data = await r.body_or_params()
 
