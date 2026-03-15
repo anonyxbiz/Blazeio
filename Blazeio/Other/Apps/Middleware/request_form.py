@@ -6,29 +6,6 @@ class Model:
     def __init__(app, **model):
         app.model = model
 
-    def form(app, data: dict):
-        form_data = io.ddict()
-        for key, form in app.model.items():
-            if not (value := data.get(key)) and (value := form.get("default", NotImplemented)) is NotImplemented:
-                raise io.Abort("%s is required but its missing" % key, 403)
-
-            try:
-                value = form["type"](value)
-            except:
-                raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
-
-            form_data[key] = value
-
-        return form_data
-
-class Request:
-    __slots__ = ("model", "store_key", "form",)
-    def __init__(app, model, store_key: str, **form):
-        app.model, app.store_key, app.form = model, store_key, form
-
-    def __call__(app, fn):
-        return app.model.routes(fn, model = app)
-
 class RequestDict(io.ddict):
     def sqlize_insert(app, value_type: tuple):
         keys, values = [], []
@@ -48,6 +25,39 @@ class RequestDict(io.ddict):
 
         return (", ".join(["%s = ?" % key for key in keys]), values)
 
+class Request:
+    __slots__ = ("model", "store_key", "form",)
+    def __init__(app, model, store_key: str, **form):
+        app.model, app.store_key, app.form = model, store_key, form
+
+    def __call__(app, fn):
+        return app.model.routes(fn, model = app)
+
+    def construct_form(app, data: dict, model_form: (dict, None) = None):
+        form_data = RequestDict()
+        
+        if not model_form:
+            model_form = app.form
+
+        for key, form in model_form.items():
+            if not (value := data.get(key)) and (value := form.get("default", NotImplemented)) is NotImplemented:
+                raise io.Abort("%s is required but its missing" % key, 403)
+
+            try:
+                value = form["type"](value)
+            except:
+                raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
+
+            if form["type"] == list and (m := form.get("model")):
+                value = [app.construct_form(i, m.model) for i in value]
+
+            form_data[key] = value
+
+        return form_data
+
+    async def form_data(app, r: io.BlazeioProtocol):
+        r.store[app.store_key] = app.construct_form(await r.body_or_params())
+
 class RequestModel:
     __slots__ = ()
     routes: io.Routemanager = io.Routemanager()
@@ -65,22 +75,6 @@ class RequestModel:
         if r.store is None:
             r.store = io.ddict()
 
-        r.store[model.store_key] = RequestDict()
-
-        data = await r.body_or_params()
-
-        for key, form in model.form.items():
-            if not (value := data.get(key)) and (value := form.get("default", NotImplemented)) is NotImplemented:
-                raise io.Abort("%s is required but its missing" % key, 403)
-            
-            try:
-                value = form["type"](value)
-            except:
-                raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
-
-            if form["type"] == list and (m := form.get("model")):
-                value = [m.form(i) for i in value]
-
-            r.store[model.store_key][key] = value
+        await model.form_data(r)
 
 if __name__ == "__main__": ...
