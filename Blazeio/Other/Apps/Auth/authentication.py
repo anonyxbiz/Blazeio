@@ -14,9 +14,14 @@ class PasswordHasher:
 class Register:
     __slots__ = ()
     def __init__(app):
-        @app.add_route
-        def _register(r: io.BlazeioProtocol, route: str = app.schema.register.endpoint):
-            return app.register(r)
+        if app.schema.register:
+            @app.add_route
+            def _register(r: io.BlazeioProtocol, route: str = app.schema.register.endpoint):
+                return app.register(r)
+        else:
+            @app.add_route
+            def _register():
+                ...
 
     async def register(app, r: io.BlazeioProtocol):
         data = await r.body_or_params()
@@ -57,14 +62,23 @@ class Register:
 class Login:
     __slots__ = ()
     def __init__(app):
-        @app.add_route
-        def _login(r: io.BlazeioProtocol, route: str = app.schema.login.endpoint):
-            return app.login(r)
-
-        @app.add_route
-        @app.routes
-        def _logout(r: io.BlazeioProtocol, route: str = app.schema.logout.endpoint):
-            return app.logout(r)
+        if app.schema.login:
+            @app.add_route
+            def _login(r: io.BlazeioProtocol, route: str = app.schema.login.endpoint):
+                return app.login(r)
+        else:
+            @app.add_route
+            def _login():
+                ...
+        
+        if app.schema.logout:
+            @app.add_route
+            def _logout(r: io.BlazeioProtocol, route: str = app.schema.logout.endpoint):
+                return app.logout(r)
+        else:
+            @app.add_route
+            def _logout():
+                ...
 
     async def login(app, r: io.BlazeioProtocol):
         data = await r.body_or_params()
@@ -123,14 +137,6 @@ class Session:
 
         return r.store.session
 
-    async def before_middleware(app, r: io.BlazeioProtocol):
-        if not r.path in app.routes and not r.path.startswith(app.wildcard_paths): return
-
-        await app.auth_user(r)
-
-        if not r.store.session:
-            raise io.Abort(*app.schema.session.on_fail_raise)
-
 class SessionCache:
     __slots__ = ("sessions", "max_size", "expires_at_key")
     def __init__(app, max_size: int = 1000, expires_at_key: str = "expires_at",):
@@ -152,9 +158,8 @@ class SessionCache:
                 return session
 
 class Authenticator(PasswordHasher, Register, Login, Session):
-    __slots__ = ("database", "schema", "hashing_key", "_register", "_login", "_logout", "session_cache", "wildcard_paths", "users_column", "user_id_key", "email_key", "username_key", "password_key", "sessions_column", "session_id_key", "cookie_key", "expires_at_key", "ip_key", "form_fields")
     routes = io.Routemanager()
-    def __init__(app, database, hashing_key: str, register: dict, login: dict, logout: dict, session: dict, session_cache: (SessionCache, None) = None, paths: tuple = (), wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip", form_fields: tuple = ()):
+    def __init__(app, database, hashing_key: str, register: dict = {}, login: dict = {}, logout: dict = {}, session: dict = {}, session_cache: (SessionCache, None) = None, paths: tuple = (), wildcard_paths: tuple = (), users_column: str = "users", user_id_key: str = "user_id", email_key: str = "email", username_key: str = "username", password_key: str = "password", sessions_column: str = "sessions", session_id_key: str = "session_id", cookie_key: str = "cookie", expires_at_key: str = "expires_at", ip_key: str = "ip", form_fields: tuple = (), add_before_middleware = True):
         app.database, app.hashing_key = database, hashing_key
         app.session_cache = session_cache
         app.wildcard_paths, app.users_column, app.user_id_key, app.email_key, app.username_key, app.password_key, app.sessions_column, app.session_id_key, app.cookie_key, app.expires_at_key, app.ip_key, app.form_fields = wildcard_paths, users_column, user_id_key, email_key, username_key, password_key, sessions_column, session_id_key, cookie_key, expires_at_key, ip_key, form_fields
@@ -167,6 +172,16 @@ class Authenticator(PasswordHasher, Register, Login, Session):
         for i in paths:
             app.routes[i] = True
         io.Super(app).__init__()
+
+        if add_before_middleware:
+            @app.add_route
+            async def before_middleware(r: io.BlazeioProtocol):
+                if not r.path in app.routes and not r.path.startswith(app.wildcard_paths): return
+        
+                await app.auth_user(r)
+        
+                if not r.store.session:
+                    raise io.Abort(*app.schema.session.on_fail_raise)
 
     @property
     def __name__(app):
