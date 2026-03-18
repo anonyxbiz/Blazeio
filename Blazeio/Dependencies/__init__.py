@@ -200,7 +200,7 @@ class SharpEvent:
 
 class __Scope__:
     __slots__ = ("set_event", "framer", "obj", "added_keys")
-    def __init__(app, framer: str = "\x00", obj: any = main_thread, unique: bool = True):
+    def __init__(app, framer: str = "\x00", obj: any = main_thread, unique: bool = False):
         object.__setattr__(app, "obj", obj)
         object.__setattr__(app, "added_keys", [])
         object.__setattr__(app, "set_event", SharpEvent())
