@@ -200,11 +200,18 @@ class SharpEvent:
 
 class __Scope__:
     __slots__ = ("set_event", "framer", "obj", "added_keys")
-    def __init__(app, framer: str = "\x00", obj: any = main_thread):
+    def __init__(app, framer: str = "\x00", obj: any = main_thread, unique: bool = True):
         object.__setattr__(app, "obj", obj)
         object.__setattr__(app, "added_keys", [])
         object.__setattr__(app, "set_event", SharpEvent())
         object.__setattr__(app, "framer", framer)
+        if unique: app.verify_unique()
+
+    def verify_unique(app):
+        if getattr(app.obj(), object.__getattribute__(app, "framer"), None):
+            raise ModuleError(app.__name__, "%s must be unique" % object.__getattribute__(app, "framer"))
+        else:
+            setattr(app.obj(), object.__getattribute__(app, "framer"), True)
 
     @property
     def __name__(app): return "__Scope__"
@@ -493,9 +500,9 @@ ioConf.get_event_loop()
 
 Scope = __Scope__()
 InternalScope = __Scope__("\x01")
-Taskscope = __Scope__(obj = current_task)
+Taskscope = __Scope__(obj = current_task, unique = False)
 createScope = __Scope__
-createTaskscope = lambda: __Scope__(obj = current_task)
+createTaskscope = lambda: __Scope__(obj = current_task, unique = False)
 
 class __log__:
     known_exceptions = ()
