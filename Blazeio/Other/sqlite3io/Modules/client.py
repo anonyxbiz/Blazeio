@@ -98,6 +98,10 @@ class SqlSession:
 
         return data.pop(0) if len(data) == 1 and data_type != list else data
 
+    async def ajson(app, *args):
+        async for row in app.execute(*args):
+            yield io.ddict(io.loads(row.decode()))
+
     def stream_to(app, *args, **kwargs):
         return StreamTo(app, *args, **kwargs)
 
