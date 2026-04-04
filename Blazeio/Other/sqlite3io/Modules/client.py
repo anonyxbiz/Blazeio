@@ -18,9 +18,35 @@ class StreamTo:
 
         return await app.session.pipe_to(app.stream, cmd, *params, **kwargs)
 
+class Parser:
+    __slots__ = ("prot", "buff", "size")
+    delimiter: bytes = b"\x15"
+    def __init__(app, prot):
+        app.prot, app.buff, app.size = prot, bytearray(), None
+
+    def parse(app):
+        if app.size is None:
+            if (idx := app.buff.find(app.delimiter)) == -1: return
+
+            buff = app.buff[idx + len(app.delimiter):]
+
+            if (idx := buff.find(app.delimiter)) == -1: return
+
+            app.size, app.buff = int(buff[:idx], 16), buff[idx + len(app.delimiter):]
+
+        if len(app.buff) < app.size: return
+
+        chunk, app.buff, app.size = bytes(app.buff[:app.size]), app.buff[app.size:], None
+
+        return chunk
+
+    async def __aiter__(app):
+        async for chunk in app.prot:
+            app.buff.extend(chunk)
+            while (chunk := app.parse()): yield chunk
+
 class SqlSession:
     __slots__ = ("url", "conn", "schema", "signature_key", "sqlliteio_db_path", "table_checks_completion_event")
-    delimiter: bytes = b"\x15"
     def __init__(app, url: str, signature_key: str, sqlliteio_db_path: str, schema: dict = {}):
         io.set_from_args(app, locals(), (str, bool, dict))
         app.table_checks_completion_event = io.SharpEvent()
@@ -134,19 +160,7 @@ class SqlSession:
 
             if not resp.ok(): raise io.Abort(await resp.text(), resp.status_code)
 
-            buff, size = bytearray(), None
-            async for chunk in resp:
-                buff.extend(chunk)
-
-                if size is None:
-                    if (idx := buff.find(app.delimiter)) == -1: continue
-                    buff = buff[idx + len(app.delimiter):]
-                    size, buff = int(buff[:(idx := buff.find(app.delimiter))], 16), buff[idx + len(app.delimiter):]
-
-                if len(buff) < size: continue
-
-                chunk, buff, size = bytes(buff[:size]), buff[size:], None
-
+            async for chunk in Parser(resp):
                 yield chunk
 
     async def pipe_to(app, stream, *args, **kwargs):
