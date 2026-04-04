@@ -32,7 +32,7 @@ class Server:
                     conn.execute("PRAGMA journal_mode = WAL;")
                     conn.execute("PRAGMA synchronous = NORMAL;")
 
-        await r.prepare({"Transfer-encoding": "chunked"}, 200) # Crucial to respond first
+        await r.prepare({"Transfer-encoding": "chunked", "Content-type": "application/binary"}, 200) # Crucial to respond first
 
         delimiter = str(r.headers.get("Delimiter", "\x15")).encode()
 
