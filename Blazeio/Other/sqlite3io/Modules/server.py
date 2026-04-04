@@ -32,9 +32,9 @@ class Server:
                     conn.execute("PRAGMA journal_mode = WAL;")
                     conn.execute("PRAGMA synchronous = NORMAL;")
 
-        await r.prepare({ "Transfer-encoding": "chunked", "Content-type": "application/binary", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no" }, 200) # Crucial to respond first
+        await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200) # Proxies should not transform data
 
-        delimiter = str(r.headers.get("Delimiter", "\x15")).encode()
+        delimiter = str(r.headers.get("X-sqlliteio-delimiter", "\x15")).encode()
 
         args = [r.form.q]
         
