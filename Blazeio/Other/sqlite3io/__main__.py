@@ -42,6 +42,10 @@ if SO_REUSEPORT:
     io.Scope.Sql.web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
 
 if __name__ == "__main__":
+    if io.is_on_render():
+        from Blazeio.Modules.onrender import RenderFreeTierPatch
+        io.Scope.web.attach(RenderFreeTierPatch())
+
     with io.Scope.Sql.web as web:
         web.runner()
 else:
