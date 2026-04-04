@@ -44,7 +44,7 @@ if SO_REUSEPORT:
 if __name__ == "__main__":
     if io.is_on_render():
         from Blazeio.Modules.onrender import RenderFreeTierPatch
-        io.Scope.web.attach(RenderFreeTierPatch())
+        io.Scope.Sql.web.attach(RenderFreeTierPatch())
 
     with io.Scope.Sql.web as web:
         web.runner()
