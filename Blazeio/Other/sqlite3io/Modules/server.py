@@ -1,5 +1,6 @@
 # ./Other/sqlite3io/Modules/server.py
 import Blazeio as io
+from os import remove
 
 @io.Scope.Sql.web.attach
 class Server:
@@ -54,5 +55,29 @@ class Server:
 
         for row in cursor:
             await r.write(app.mux(delimiter, io.dumps(dict(zip(columns, row)))))
+
+    @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), file = io.ddict(type = str))
+    async def _backup(app, r: io.BlazeioProtocol):
+        if r.form.signature != io.Scope.Sql.App.signature_key:
+            raise io.Abort("Invalid signature", 401)
+
+        if not io.path.exists(r.form.file):
+            raise io.Abort("Not found", 403)
+        
+        async with io.Simpleserve(r, r.form.file) as f:
+            await r.prepare(f.headers, f.status)
+            async for chunk in f:
+                await r.write(chunk)
+
+    @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), url = io.ddict(type = str), file = io.ddict(type = str))
+    async def _upload(app, r: io.BlazeioProtocol):
+        if r.form.signature != io.Scope.Sql.App.signature_key:
+            raise io.Abort("Invalid signature", 401)
+
+        async with io.getSession.get(r.form.url, follow_redirects = True) as resp:
+            if not resp.ok(): raise io.Abort(await resp.text(), resp.status_code)
+            await resp.save(r.form.file)
+
+        await io.Deliver.text("Ok")
 
 if __name__ == "__main__": ...
