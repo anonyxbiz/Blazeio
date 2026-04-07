@@ -1,4 +1,10 @@
 import Blazeio as io
+
+try:
+    from socket import SO_REUSEPORT
+except ImportError:
+    SO_REUSEPORT = None
+    
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -43,6 +49,9 @@ async def __main_handler__(r: io.BlazeioProtocol):
 
 if __name__ == "__main__":
     web.with_keepalive()
+    
+    if SO_REUSEPORT:
+        web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
 
     with web:
         web.runner()
