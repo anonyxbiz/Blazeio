@@ -6,7 +6,7 @@ parser.add_argument("-payload", "--payload", type=int, default=1)
 args = parser.parse_args()
 payload = b'Hello world'*args.payload
 
-web = io.App("0.0.0.0", 8001, with_keepalive = True)
+web = io.App("0.0.0.0", 8002)
 
 io.ioConf.INBOUND_CHUNK_SIZE = 4096
 
@@ -42,5 +42,7 @@ async def __main_handler__(r: io.BlazeioProtocol):
     await r.writer(payload)
 
 if __name__ == "__main__":
+    web.with_keepalive()
+
     with web:
         web.runner()
