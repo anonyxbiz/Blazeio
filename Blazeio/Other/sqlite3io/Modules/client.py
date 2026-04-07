@@ -47,10 +47,11 @@ class Parser:
 
 class SqlSession:
     __slots__ = ("url", "conn", "schema", "signature_key", "sqlliteio_db_path", "table_checks_completion_event")
-    def __init__(app, url: str, signature_key: str, sqlliteio_db_path: str, schema: dict = {}):
-        io.set_from_args(app, locals(), (str, bool, dict))
+    def __init__(app, url: str, signature_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
+        io.set_from_args(app, locals(), (str, dict))
         app.table_checks_completion_event = io.SharpEvent()
         if app.schema: app.prepare_tables()
+        if initialize: io.create_task(app.initialize())
 
     def prepare_tables(app):
         for name, table in app.schema.get("tables").items():
