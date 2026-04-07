@@ -1,4 +1,10 @@
 import Blazeio as io
+
+try:
+    from socket import SO_REUSEPORT
+except ImportError:
+    SO_REUSEPORT = None
+
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -6,7 +12,8 @@ parser.add_argument("-payload", "--payload", type=int, default=1)
 args = parser.parse_args()
 payload = b'Hello world'*args.payload
 
-web = io.App("0.0.0.0", 8001)
+web = io.App("0.0.0.0", 8001, with_keepalive = True)
+
 io.ioConf.INBOUND_CHUNK_SIZE = 4096
 
 @web.add_route
@@ -41,6 +48,10 @@ async def __main_handler__(r: io.BlazeioProtocol):
     await r.writer(payload)
 
 if __name__ == "__main__":
-    web.with_keepalive()
+    io.TCPOptimizer(web)
+
+    if SO_REUSEPORT:
+        web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
+
     with web:
         web.runner()
