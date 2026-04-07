@@ -48,8 +48,6 @@ async def __main_handler__(r: io.BlazeioProtocol):
     await r.writer(payload)
 
 if __name__ == "__main__":
-    io.TCPOptimizer(web)
-
     if SO_REUSEPORT:
         web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
 
