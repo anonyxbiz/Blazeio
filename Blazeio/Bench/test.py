@@ -9,7 +9,10 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument("-payload", "--payload", type=int, default=1)
+parser.add_argument("-enable_parsing", "--enable_parsing", type=int, default=1)
+
 args = parser.parse_args()
+
 payload = b'Hello world'*args.payload
 
 web = io.App("0.0.0.0", 8002)
@@ -18,15 +21,19 @@ io.ioConf.INBOUND_CHUNK_SIZE = 4096
 
 @web.add_route
 async def __main_handler__(r: io.BlazeioProtocol):
-    # Buffer request headers
-    buff = bytearray()
-    while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in buff:
-        if len(buff) >= 102400:
-            raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
-        if (chunk := await r):
-            buff.extend(chunk)
-        else:
-            raise io.Abort("Bad Request", 400)
+    if args.enable_parsing:
+        # Buffer request headers
+        buff = bytearray()
+        while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in buff:
+            if len(buff) >= 102400:
+                raise io.Abort("You have sent too much data but you haven\"t told the server how to handle it.", 413)
+            if (chunk := await r):
+                buff.extend(chunk)
+            else:
+                raise io.Abort("Bad Request", 400)
+    else:
+        while not io.MinParsers.server.network_config.http.one_point_one.crlf in r.__buff__: # If not http crlf in zerocopy buffer, wait for it but drop chunks
+            await r
 
     await r.writer(
         b'HTTP/1.1 200 OK\r\n'
@@ -50,6 +57,8 @@ async def __main_handler__(r: io.BlazeioProtocol):
 if __name__ == "__main__":
     web.with_keepalive()
     
+    io.TCPOptimizer(web)
+
     if SO_REUSEPORT:
         web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
 
