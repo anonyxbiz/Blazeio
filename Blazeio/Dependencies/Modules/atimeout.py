@@ -21,9 +21,11 @@ class ClientTimeout:
         return False
 
 async def ayield(every = 0):
+    count: int = 0
     while True:
-        yield every
+        yield count
         await sleep(every)
+        count += 1
 
 if __name__ == "__main__":
     ...
