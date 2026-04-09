@@ -16,11 +16,11 @@ class PathAccess:
             raise io.ModuleError("PathAccess", "validator", "validation failed", "root is required")
         
         for key, value in app.prerequisites.items():
-            if not (prerequisite := app.auth.get(key)):
+            if (prerequisite := app.auth.get(key)) is None:
                 raise io.ModuleError("PathAccess", "validator", "validation failed", "auth.%s is required" % key)
 
             for i in value:
-                if not prerequisite.get(i):
+                if prerequisite.get(i) is None:
                     raise io.ModuleError("PathAccess", "validator", "validation failed", "auth.%s.%s is required" % (key, i))
 
     async def before_middleware(app, r: io.BlazeioProtocol):
@@ -29,10 +29,10 @@ class PathAccess:
         if not r.store:
             raise io.ModuleError("PathAccess", "Middleware", "r.store must be set")
 
-        if not (session := r.store.get(app.auth["session"]["key"])):
+        if (session := r.store.get(app.auth["session"]["key"])) is None:
             raise io.ModuleError("PathAccess", "Middleware", "session not found")
 
-        if not (access := session.get(app.auth["access"]["key"])):
+        if (access := session.get(app.auth["access"]["key"])) is None:
             raise io.ModuleError("PathAccess", "Middleware", "access not found")
 
         if access != app.auth["access"]["value"]:
