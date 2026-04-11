@@ -677,7 +677,7 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
 
         return funcname
 
-    def add_route(app, func: Callable, parent_func: (None, Callable) = None, route_name: (None, str) = None):
+    def add_route(app, func: Callable, parent_func: (None, Callable) = None, route_name: (None, str) = None, normalize_route_name: bool = True):
         with Ehandler():
             if parent_func is None: parent_func = func
             
@@ -694,7 +694,7 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
     
             if not route_name.endswith("_middleware"):
                 if (route := params.get("route")) is None:
-                    route_name = app.normalize_funcname(route_name)
+                    route_name = app.normalize_funcname(route_name) if normalize_route_name else route_name
                 else:
                     route_name = route
 
