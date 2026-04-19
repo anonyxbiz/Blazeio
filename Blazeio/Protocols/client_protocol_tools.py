@@ -211,17 +211,35 @@ class Formdata:
     multipart_line = "----WebKitFormBoundary"
     def __init__(app, filename: str, content_type: str, file_key: str = "file", **formdata):
         app.boundary = "%s%s" % (app.multipart_line, token_urlsafe(16)[:16])
-        app.formdata = (
+        app.formdata = [
             *(
                 'Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(val)) if not isinstance(val, tuple) else 'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (key, val[0], val[1])
                 for key, val in formdata.items()
             ),
             'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (file_key, filename, content_type) if (content_type is not None and file_key is not None) else '',
-        )
+        ]
+
         app.content_type = 'multipart/form-data; boundary=%s' % app.boundary
-        app.header = ("\r\n".join(("--%s\r\n%s" % (app.boundary, i) for i in app.formdata if i))).encode()
         app.eof_boundary = ("\r\n--%s--\r\n" % app.boundary).encode()
+        app.update()
+
+    def update(app):
+        app.header = ("\r\n".join(("--%s\r\n%s" % (app.boundary, i) for i in app.formdata if i))).encode()
         app.content_length = len(app.header + app.eof_boundary)
+
+    def append(app, key, value):
+        app.formdata.append('Content-Disposition: form-data; name="%s"\r\n\r\n%s' % (str(key), str(value)) if not isinstance(value, tuple) else 'Content-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n' % (key, value[0], value[1]))
+
+        app.update()
+
+    async def pipe(app, from_pipe, to_pipe):
+        await to_pipe(app.header)
+        
+        if from_pipe:
+            async for chunk in from_pipe:
+                await to_pipe(chunk)
+
+        return await to_pipe(app.eof_boundary)
 
 class AsyncHtml:
     __slots__ = ()
