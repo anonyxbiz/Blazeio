@@ -1,5 +1,6 @@
 # ./Other/sqlite3io/Modules/client.py
 import Blazeio as io
+from Blazeio.Other.notify import Notify
 
 class StreamTo:
     __slots__ = ("session", "stream", "headers", "status_code")
@@ -45,14 +46,24 @@ class Parser:
             app.buff.extend(chunk)
             while (chunk := app.parse()): yield chunk
 
-class SqlSession:
-    __slots__ = ("url", "conn", "schema", "signature_key", "sqlliteio_db_path", "table_checks_completion_event")
-    def __init__(app, url: str, signature_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
-        io.set_from_args(app, locals(), (str, dict))
-        app.table_checks_completion_event = io.SharpEvent()
-        if app.schema: app.prepare_tables()
-        if initialize: io.create_task(app.initialize())
+class Querylize:
+    __slots__ = ("included", "queries", "params")
+    def __init__(app, included: str = ""):
+        app.included, app.queries, app.params = included, [], []
 
+    def add(app, *args):
+        app.queries.extend(args)
+        return app.add_params
+
+    def add_params(app, *args):
+        app.params.extend(args)
+        return app
+
+    def query(app):
+        return app.included + " AND ".join(app.queries) if app.queries else ""
+
+class Migrators:
+    __slots__ = ()
     def prepare_tables(app):
         for name, table in app.schema.get("tables").items():
             if not table.get("sql"):
@@ -69,10 +80,8 @@ class SqlSession:
         if (drops := ["DROP TABLE IF EXISTS %s" % name for name, table in app.schema.get("tables").items() if table.get("drop")]):
             await io.gather(*[io.create_task(app.checker(i)) for i in drops])
 
-        if (results := await app.sync_tables()):
-            ...
-        else:
-            await io.plog.b_red("No tables found!")
+        if not (results := await app.sync_tables()):
+            await io.plog.b_yellow("No tables found!")
 
         queries, on_creation_queries_batch = [], []
 
@@ -89,11 +98,40 @@ class SqlSession:
                 for column, definition in table.get("columns").items():
                     if "%s %s" % (column, definition) not in result.get("sql"):
                         queries.append("ALTER TABLE %s ADD COLUMN %s %s" % (name, column, definition))
-        
+
         for batch in (queries, on_creation_queries_batch):
             for query in batch:
                 if (result := await app(query)):
-                    await io.plog.b_green(io.dumps(io.ddict(query = query, result = result)))
+                    await io.plog.b_green("Executed query...", io.dumps(io.ddict(query = query, result = result)))
+
+class Modules:
+    __slots__ = ()
+    def querylizer(app, *args, **kwargs):
+        return Querylize(*args, **kwargs)
+
+    def stream_to(app, *args, **kwargs):
+        return StreamTo(app, *args, **kwargs)
+
+    async def unique_token(app, q: str, *params, start: int = 1):
+        for i in range(1, 1000):
+            for o in range(start, 1*i):
+                if not await app(q, *params, token := io.token_urlsafe(o)[:o]):
+                    return token
+
+    async def unique_id(app, q: str, *params, start: int = 1):
+        for i in range(1, 1000):
+            for o in range(start, 1*i):
+                for a in range(o):
+                    if not await app(q, *params, token := str(io.uuid4())[:o]):
+                        return token
+
+class SqlSession(Modules, Migrators):
+    __slots__ = ("url", "conn", "schema", "signature_key", "sqlliteio_db_path", "table_checks_completion_event")
+    def __init__(app, url: str, signature_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
+        io.set_from_args(app, locals(), (str, dict))
+        app.table_checks_completion_event = io.SharpEvent()
+        if app.schema: app.prepare_tables()
+        if initialize: io.create_task(app.initialize())
 
     async def initialize(app):
         if not app.schema: return
@@ -128,22 +166,6 @@ class SqlSession:
     async def ajson(app, *args):
         async for row in app.execute(*args):
             yield io.ddict(io.loads(row.decode()))
-
-    def stream_to(app, *args, **kwargs):
-        return StreamTo(app, *args, **kwargs)
-
-    async def unique_token(app, q: str, *params, start: int = 1):
-        for i in range(1, 1000):
-            for o in range(start, 1*i):
-                if not await app(q, *params, token := io.token_urlsafe(o)[:o]):
-                    return token
-
-    async def unique_id(app, q: str, *params, start: int = 1):
-        for i in range(1, 1000):
-            for o in range(start, 1*i):
-                for a in range(o):
-                    if not await app(q, *params, token := str(io.uuid4())[:o]):
-                        return token
 
     async def execute(app, q, *parameters):
         async with io.getSession.post(app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256": app.signature_key, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
