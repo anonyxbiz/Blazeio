@@ -1,6 +1,5 @@
 # ./Other/sqlite3io/Modules/client.py
 import Blazeio as io
-from Blazeio.Other.notify import Notify
 
 class StreamTo:
     __slots__ = ("session", "stream", "headers", "status_code")
