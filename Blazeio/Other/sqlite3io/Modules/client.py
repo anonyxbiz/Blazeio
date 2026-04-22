@@ -41,9 +41,12 @@ class Parser:
         return chunk
 
     async def __aiter__(app):
-        async for chunk in app.prot:
-            app.buff.extend(chunk)
-            while (chunk := app.parse()): yield chunk
+        try:
+            async for chunk in app.prot:
+                app.buff.extend(chunk)
+                while (chunk := app.parse()): yield chunk
+        except GeneratorExit:
+            return
 
 class Querylize:
     __slots__ = ("included", "queries", "params")
