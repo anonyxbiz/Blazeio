@@ -605,6 +605,7 @@ class Protocol_methods(Serverctx):
     def __getattr__(app, name):
         if name == "route":
             app.route = Add_Route(app)
+            return app.route
         elif name == "event_loop":
             return app.loop
         elif name in app.ServerConfig.__dict__:
