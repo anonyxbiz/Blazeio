@@ -8,6 +8,7 @@ from .Parsers.min_http_parser import *
 
 from .Modules.streaming import *
 from .Modules.server_tools import *
+from .Modules.server_utilities import *
 from .Modules.request import *
 from .Modules.reasons import *
 from .Modules.templatify import *
@@ -93,6 +94,7 @@ class Handler(OOP_Route_Def):
         app.__main_handler__ = NotImplemented
         app.__default_handler__ = NotImplemented
         app.__default_parser__ = app.parse_default
+        app.__secondary_handler__ = None
 
     async def log_request(app, r):
         r.__perf_counter__ = perf_counter()
@@ -117,6 +119,10 @@ class Handler(OOP_Route_Def):
             return wrapper
 
         return decorator
+
+    def enable_wrm(app, *args, **kwargs):
+        app.__secondary_handler__ = WildcardRouteMatcher(app, *args, **kwargs).resolve
+        return app
 
     async def configure_server_handler(app):
         app.before_middleware = app.declared_routes.get("before_middleware")
@@ -154,14 +160,20 @@ class Handler(OOP_Route_Def):
 
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
-        if app.before_middleware: await app.before_middleware.get("func")(r)
+        if app.before_middleware:
+            await app.before_middleware.get("func")(r)
 
-        if route := app.declared_routes.get(r.path): await route.get("func")(r)
+        if route := app.declared_routes.get(r.path):
+            await route.get("func")(r)
+
+        elif app.__secondary_handler__ and (route := app.__secondary_handler__(r)):
+            await route.get("func")(r)
 
         elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
             await handle_all_middleware.get("func")(r)
 
-        else: raise Abort("Not Found", 404)
+        else:
+            raise Abort("Not Found", 404)
 
         if after_middleware := app.declared_routes.get("after_middleware"):
             await after_middleware.get("func")(r)
@@ -170,10 +182,14 @@ class Handler(OOP_Route_Def):
         if prepare: await app.__default_parser__(r, app)
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
-        if route := app.declared_routes.get(r.path): await route.get("func")(r)
+        if route := app.declared_routes.get(r): await route.get("func")(r)
 
-        else: raise Abort("Not Found", 404)
-    
+        elif app.__secondary_handler__ and (route := app.__secondary_handler__(r.path)):
+            await route.get("func")(r)
+
+        else:
+            raise Abort("Not Found", 404)
+
     async def handle_exception(app, r, e, logger, format_only=False):
         tb = e.__traceback__
         msg = "\n".join([*("Exception occured in %s.\nLine: %s.\nfunc: %s.\nCode Part: `%s`.\ntype: %s.\ntext: %s.\n" % (*extract_tb(tb)[-1], str(type(e))[8:-2], "".join([str(e)]))).split("\n")])
@@ -650,6 +666,9 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
 
         if kwargs.get("with_keepalive"):
             app.with_keepalive()
+        
+        if kwargs.get("enable_wrm"):
+            app.enable_wrm()
 
     def gen_server_name(app, name: str, id_split: str = " - "):
         try:
@@ -703,8 +722,9 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
                 "func": func,
                 "params": params,
                 "len": len(route_name),
+                "route_name": route_name
             }
-    
+
             if route_name in app.declared_routes:
                 if not isinstance(app.declared_routes[route_name], Multirouter):
                     app.declared_routes[route_name] = Multirouter(route_name, app.declared_routes[route_name])
