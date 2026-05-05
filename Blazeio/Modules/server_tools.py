@@ -10,7 +10,7 @@ class Simpleserve:
     compressable = ("text/html","text/css","text/javascript","text/x-python","application/javascript","application/json")
     headers_demux = ddict(content_type = "Content-Type", content_length = "Content-Length", content_disposition = "Content-Disposition", last_modified_str = "Last-Modified", etag = "Etag")
     rare_validation = ("image", "video",)
-    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "3600"}, status: int = 200, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, **kwargs):
+    def __init__(app, r = None, file: str = "", CHUNK_SIZE: int = 1024, headers: dict = {"Accept-ranges": "bytes"}, cache_control = {"max-age": "3600"}, status: int = 0, exclude_headers: tuple = (), inline: bool = 0, attachment: bool = 0, **kwargs):
         if r and file:
             app.r, app.file, app.CHUNK_SIZE, app.headers, app.cache_control, app.status, app.exclude_headers, app.inline, app.attachment = r, file, CHUNK_SIZE, dict(headers), cache_control, status, exclude_headers, inline, attachment
             if not path.exists(app.file): raise NotFoundErr("Not Found", 404)
@@ -95,11 +95,11 @@ class Simpleserve:
                 raise Abort("Range Not Satisfiable", 416, {"Content-Range": "bytes */%d" % app.file_size, "Content-Type": app.content_type})
 
             app.headers["Content-Range"] = "bytes %s-%s/%s" % (app.start, app.end, app.file_size)
-            app.status = 206
+            if not app.status: app.status = 206
         else:
             app.start, app.end, app.range_ = 0, app.file_size, range_
-            app.status = 200
-        
+            if not app.status: app.status = 200
+
         if not app.headers_demux.content_length in app.exclude_headers:
             app.headers[app.headers_demux.content_length] = str(app.end - app.start)
 
@@ -218,11 +218,15 @@ class StaticServer(HtmlTemplate):
     
     def path_if_exists(app, file_path: str):
         return file_path if path.exists(file_path) else None
-
-    async def handle_all_middleware(app, r: BlazeioProtocol):
+    
+    def resolve_path(app, r: BlazeioProtocol):
+        if path.exists(file_path := (app.path_if_exists(path.join(app.root_dir, route)) or path.join(app.root_dir, app.page_dir, route)) if app.ext_delimiter in (route := r.path[1:] or path.join(app.page_dir, app.home_page)) else path.join(app.root_dir, app.page_dir, route + app.html_ext)):
+            return file_path
+    
+    async def handler(app, r: BlazeioProtocol, file_path: (str, None) = None):
         if r.path[:len(app.root)] != app.root: return
 
-        if not path.exists(file_path := (app.path_if_exists(path.join(app.root_dir, route)) or path.join(app.root_dir, app.page_dir, route)) if app.ext_delimiter in (route := r.path[1:] or path.join(app.page_dir, app.home_page)) else path.join(app.root_dir, app.page_dir, route + app.html_ext)):
+        if not file_path and not (file_path := app.resolve_path(r)):
             raise Abort("Not found", 404)
 
         if file_path.endswith(app.html_ext) and app.html_template and (template := app.html_template.get(r.path) or app.match_template(r.path)):
@@ -232,6 +236,9 @@ class StaticServer(HtmlTemplate):
             await r.prepare(f.headers, f.status)
             async for chunk in f:
                 await r.write(chunk)
+
+    def handle_all_middleware(app, r: BlazeioProtocol):
+        return app.handler(r)
 
 class WildcardRouteMatcher:
     __slots__ = ("web", "delimiter", "max_del_count")
