@@ -156,27 +156,28 @@ class Handler(OOP_Route_Def):
         return r
 
     async def serve_route_with_middleware(app, r, prepare = True):
-        if prepare: await app.__default_parser__(r, app)
-
-        if app.ServerConfig.__log_requests__: await app.log_request(r)
-
-        if app.before_middleware:
-            await app.before_middleware.get("func")(r)
-
-        if route := app.declared_routes.get(r.path):
-            await route.get("func")(r)
-
-        elif app.__secondary_handler__ and (route := app.__secondary_handler__(r)):
-            await route.get("func")(r)
-
-        elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
-            await handle_all_middleware.get("func")(r)
-
-        else:
-            raise Abort("Not Found", 404)
-
-        if after_middleware := app.declared_routes.get("after_middleware"):
-            await after_middleware.get("func")(r)
+        try:
+            if prepare: await app.__default_parser__(r, app)
+    
+            if app.ServerConfig.__log_requests__: await app.log_request(r)
+    
+            if app.before_middleware:
+                await app.before_middleware.get("func")(r)
+    
+            if route := app.declared_routes.get(r.path):
+                await route.get("func")(r)
+    
+            elif app.__secondary_handler__ and (route := app.__secondary_handler__(r)):
+                await route.get("func")(r)
+    
+            elif handle_all_middleware := app.declared_routes.get("handle_all_middleware"):
+                await handle_all_middleware.get("func")(r)
+    
+            else:
+                raise Abort("Not Found", 404)
+        finally:
+            if after_middleware := app.declared_routes.get("after_middleware"):
+                await after_middleware.get("func")(r)
 
     async def serve_route_no_middleware(app, r, prepare = True):
         if prepare: await app.__default_parser__(r, app)
