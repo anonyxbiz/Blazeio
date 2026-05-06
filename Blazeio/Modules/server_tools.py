@@ -240,22 +240,4 @@ class StaticServer(HtmlTemplate):
     def handle_all_middleware(app, r: BlazeioProtocol):
         return app.handler(r)
 
-class WildcardRouteMatcher:
-    __slots__ = ("web", "delimiter", "max_del_count")
-    """
-        Implements O(1) wildcard route matching.
-        Example:
-            Matches path (/api/v2/dynamic_uuid, /api/v2/dynamic_uuid/dynamic_uuid, /api/v2/dynamic_uuid/dynamic_uuid/dynamic_uuid) to defined route route (/api/v2) or (/api/v2/)
-        
-        This does not affect Blazeio's O(1) routing as the .resolve method is only called when a direct route isnt defined, falling back to wildcard matching
-    """
-    def __init__(app, web, delimiter: str = "/", max_del_count: int = 20):
-        app.web, app.delimiter, app.max_del_count = web, delimiter, max_del_count
-
-    def resolve(app, ref):
-        del_count: int = 0
-        while (del_count := del_count + 1) <= app.max_del_count and (idx := ref.rfind(app.delimiter)) != -1 and (ref := ref[:idx]):
-            if (route := app.web.declared_routes.get(ref) or app.web.declared_routes.get(ref + app.delimiter)):
-                return route
-
 if __name__ == "__main__": ...
