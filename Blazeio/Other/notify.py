@@ -2,9 +2,9 @@
 import Blazeio as io
 
 class Notify:
-    __slots__ = ("update_event", "notifications", "ended", "max_len", "exit_exception", "exit_tuple", "message_type")
-    def __init__(app, max_len: int = 1, message_type: any = None):
-        app.update_event, app.ended, app.max_len, app.message_type, app.exit_tuple, app.notifications = io.SharpEvent(), False, max_len, message_type, None, io.deque()
+    __slots__ = ("update_event", "notifications", "ended", "max_len", "exit_exception", "exit_tuple", "message_type", "throw_exc")
+    def __init__(app, max_len: int = 1, message_type: any = None, throw_exc: bool = True):
+        app.update_event, app.ended, app.max_len, app.message_type, app.exit_tuple, app.notifications, app.throw_exc = io.SharpEvent(), False, max_len, message_type, None, io.deque(), throw_exc
 
     def __iadd__(app, message: any):
         while len(app.notifications) >= app.max_len:
@@ -42,7 +42,7 @@ class Notify:
             while app.notifications: yield app.notifications.popleft()
         if app.exit_tuple:
             exc_type, exc_value, traceback = app.exit_tuple
-            if exc_value: raise exc_value
+            if exc_value and app.throw_exc: raise exc_value
 
 class _getNotify:
     __slots__ = ()
