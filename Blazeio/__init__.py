@@ -259,6 +259,13 @@ class Add_Route:
     def __init__(app, web):
         app.web = web
 
+    @property
+    def __name__(app):
+        return "Add_Route"
+
+    def __call__(app, *args, **kwargs):
+        return app.add_route(*args, **kwargs, method="ALL")
+
     def __getattr__(app, name):
         if not name.upper() in app.methods:
             raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, name))
@@ -304,6 +311,20 @@ class Routemanager(ddict):
 
     def add(app, fn, *args, **kwargs):
         return app.__call__(fn, *args, **kwargs)
+
+    def add_route(app, route, *args, **kwargs):
+        def decor(fn):
+            params = {annotation: fn.__defaults__[i] for i, annotation in enumerate(list(fn.__annotations__.keys())[int(len(fn.__annotations__ or []) - len(fn.__defaults__ or [])):])} if str(type(fn)) == "<class 'function'>" else {}
+            app[route] = ddict(nargs = (fn, args, kwargs), **params)
+            return fn
+
+        return decor
+
+    def add_method(app, name, *args, **kwargs):
+        def decor(fn):
+            app[name] = fn
+            return fn
+        return decor
 
 class rawRoutemanager(Routemanager):
     @property
@@ -717,6 +738,12 @@ class App(Handler, Rproxy, Server, Taskmng, Deprecated, Callbacks, Protocol_meth
                     route_name = app.normalize_funcname(route_name) if normalize_route_name else route_name
                 else:
                     route_name = route
+
+            if route_name.endswith("before_middleware"):
+                route_name = "before_middleware"
+
+            elif route_name.endswith("after_middleware"):
+                route_name = "after_middleware"
 
             data = {
                 "func": func,
