@@ -1,4 +1,4 @@
-from secrets import token_urlsafe
+from secrets import token_urlsafe, token_hex
 from collections import deque, defaultdict, OrderedDict
 from asyncio import sleep
 from time import perf_counter

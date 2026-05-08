@@ -113,19 +113,26 @@ class Modules:
 
     def stream_to(app, *args, **kwargs):
         return StreamTo(app, *args, **kwargs)
+    
+    def idx_gen(app, start: int, end: int = 1000):
+        for i in range(1, end):
+            for idx in range(start, 1*i):
+                yield idx
 
     async def unique_token(app, q: str, *params, start: int = 1):
-        for i in range(1, 1000):
-            for o in range(start, 1*i):
-                if not await app(q, *params, token := io.token_urlsafe(o)[:o]):
-                    return token
+        for idx in app.idx_gen(start):
+            if not await app(q, *params, token := io.token_urlsafe(idx)[:idx]):
+                return token
 
     async def unique_id(app, q: str, *params, start: int = 1):
-        for i in range(1, 1000):
-            for o in range(start, 1*i):
-                for a in range(o):
-                    if not await app(q, *params, token := str(io.uuid4())[:o]):
-                        return token
+        for idx in app.idx_gen(start):
+            if not await app(q, *params, token := str(io.uuid4())[:idx]):
+                return token
+
+    async def unique_hex(app, q: str, *params, start: int = 1):
+        for idx in app.idx_gen(start):
+            if not await app(q, *params, token := io.token_hex(idx)[:idx]):
+                return token
 
 class SqlSession(Modules, Migrators):
     __slots__ = ("url", "conn", "schema", "signature_key", "sqlliteio_db_path", "table_checks_completion_event")
