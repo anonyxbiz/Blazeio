@@ -19,10 +19,10 @@ class StreamTo:
         return await app.session.pipe_to(app.stream, cmd, *params, **kwargs)
 
 class Parser:
-    __slots__ = ("prot", "buff", "size")
+    __slots__ = ("prot", "buff", "size", "row_count")
     delimiter: bytes = b"\x15"
     def __init__(app, prot):
-        app.prot, app.buff, app.size = prot, bytearray(), None
+        app.prot, app.buff, app.size, app.row_count = prot, bytearray(), None, 0
 
     def parse(app):
         if app.size is None:
@@ -37,6 +37,7 @@ class Parser:
         if len(app.buff) < app.size: return
 
         chunk, app.buff, app.size = bytes(app.buff[:app.size]), app.buff[app.size:], None
+        app.row_count += 1
 
         return chunk
 
