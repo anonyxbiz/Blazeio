@@ -2,10 +2,6 @@
 import Blazeio as io
 
 class Manager:
-    http = io.ddict(
-        request = b'GET / HTTP/1.1\r\nHost: 0.0.0.0\r\n\r\n'
-    )
-
     def __init__(app): ...
 
     async def client(app, task_id):
