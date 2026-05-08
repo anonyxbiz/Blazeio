@@ -198,4 +198,29 @@ class StreamJson:
         finally:
             await app.r.write(b'\n]')
 
+class StreamPeek:
+    __slots__ = ("r", "size", "prepend", "buff", "pointer", "extra")
+    def __init__(app, size: int, prepend: bool = True):
+        app.r, app.size, app.prepend = Context._r(), size, prepend
+        app.buff, app.pointer, app.extra = bytearray(app.size), 0, b''
+
+    def __await__(app):
+        peek = yield from app.peeker().__await__()
+        return peek
+
+    async def peeker(app):
+        while (chunk := await app.r):
+            if (new := len(chunk)) >= (available := len(app.buff) - app.pointer):
+                chunk, app.extra = chunk[:available], chunk[available:]
+            app.buff[app.pointer:new], app.pointer = memoryview(chunk), app.pointer + len(chunk)
+
+            if app.pointer >= len(app.buff): break
+
+        data = app.buff[:app.pointer]
+
+        if app.prepend:
+            app.r.prepend(data + app.extra)
+
+        return data
+
 if __name__ == "__main__": ...
