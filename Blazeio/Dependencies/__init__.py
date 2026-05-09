@@ -181,8 +181,9 @@ class SharpEvent:
         return await app.get_fut()
 
     async def wait_clear(app):
-        await app.wait()
-        return app.clear()
+        result = await app.wait()
+        app.clear()
+        return result
 
     def clear(app):
         app._set = False
