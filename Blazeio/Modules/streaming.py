@@ -200,8 +200,8 @@ class StreamJson:
 
 class StreamPeek:
     __slots__ = ("r", "size", "prepend", "buff", "pointer", "extra")
-    def __init__(app, size: int, prepend: bool = True):
-        app.r, app.size, app.prepend = Context._r(), size, prepend
+    def __init__(app, r, size: int, prepend: bool = True):
+        app.r, app.size, app.prepend = r, size, prepend
         app.buff, app.pointer, app.extra = bytearray(app.size), 0, b''
 
     def __await__(app):
