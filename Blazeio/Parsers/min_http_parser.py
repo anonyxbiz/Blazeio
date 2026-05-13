@@ -89,7 +89,11 @@ class MinParser(HTTP):
     def parse(app, r: BlazeioProtocol, buff: bytes):
         idx = buff.find(app.network_config.http.one_point_one.dcrlf)
         header, body = buff[:idx], buff[idx + len(app.network_config.http.one_point_one.dcrlf):]
-        app.set_method(r, header)
+
+        try:
+            app.set_method(r, header)
+        except UnicodeDecodeError:
+            raise Abort("Bad Request", 400)
         return body
 
 class MinParserClient(HTTP):
