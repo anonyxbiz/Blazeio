@@ -1,6 +1,5 @@
 # ./Other/sqlite3io/Modules/server.py
 import Blazeio as io
-from os import remove
 
 @io.Scope.Sql.web.attach
 class Server:

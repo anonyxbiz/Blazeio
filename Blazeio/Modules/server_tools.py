@@ -229,6 +229,9 @@ class StaticServer(HtmlTemplate):
         if not file_path and not (file_path := app.resolve_path(r)):
             raise Abort("Not found", 404)
 
+        if not path.abspath(file_path).startswith(path.abspath(app.root_dir)):
+            raise io.Abort("Access denied", 403)
+
         if file_path.endswith(app.html_ext) and app.html_template and (template := app.html_template.get(r.path) or app.match_template(r.path)):
             return await app.html_template_handler(r, file_path, template)
 
