@@ -1,9 +1,8 @@
 # ./Other/sqlite3io/Modules/security.py
-import Blazeio as io
 from hmac import new as hmac_new, compare_digest
 from hashlib import sha256
 
-class Signature:
+class SignatureClient:
     __slots__ = ("key",)
     def __init__(app, key: str):
         app.key = key.encode()

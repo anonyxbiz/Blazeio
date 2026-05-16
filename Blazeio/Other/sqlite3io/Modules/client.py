@@ -1,5 +1,6 @@
 # ./Other/sqlite3io/Modules/client.py
 import Blazeio as io
+from .security import SignatureClient
 
 class StreamTo:
     __slots__ = ("session", "stream", "headers", "status_code")
@@ -136,9 +137,10 @@ class Modules:
                 return token
 
 class SqlSession(Modules, Migrators):
-    __slots__ = ("url", "conn", "schema", "signature_key", "sqlliteio_db_path", "table_checks_completion_event")
-    def __init__(app, url: str, signature_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
+    __slots__ = ("url", "conn", "schema", "secret_key", "sqlliteio_db_path", "table_checks_completion_event", "signature_client")
+    def __init__(app, url: str, secret_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
         io.set_from_args(app, locals(), (str, dict))
+        app.signature_client = SignatureClient(app.secret_key)
         app.table_checks_completion_event = io.SharpEvent()
         if app.schema: app.prepare_tables()
         if initialize: io.create_task(app.initialize())
@@ -178,20 +180,23 @@ class SqlSession(Modules, Migrators):
             yield io.ddict(io.loads(row.decode()))
 
     async def execute(app, q, *parameters):
-        async with io.getSession.post(app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256": app.signature_key, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
-            payload = io.ddict(q = q, parameters = [])
-            for i in parameters:
-                if i is None:
-                    i = "NULL"
-                elif isinstance(i, bool):
-                    i = int(i)
-                payload.parameters.append(str(i))
+        data = io.ddict(q = q, parameters = [])
+        for i in parameters:
+            if i is None:
+                i = "NULL"
+            elif isinstance(i, bool):
+                i = int(i)
+            data.parameters.append(str(i))
 
-            await resp.eof(io.dumps(payload).encode())
+        payload = io.dumps(data, indent=0).encode()
+
+        async with io.getSession.post(app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": app.signature_client.sign(payload), "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+            await resp.eof(payload)
 
             await resp.prepare_http()
 
-            if not resp.ok(): raise io.Abort(await resp.text(), resp.status_code)
+            if not resp.ok():
+                raise io.Abort(await resp.text(), resp.status_code)
 
             async for chunk in Parser(resp):
                 yield chunk
