@@ -189,8 +189,9 @@ class SqlSession(Modules, Migrators):
             data.parameters.append(str(i))
 
         payload = io.dumps(data, indent=0).encode()
+        signature_hash = app.signature_client.sign(payload)
 
-        async with io.getSession.post(app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": app.signature_client.sign(payload), "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+        async with io.getSession.post(app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
             await resp.eof(payload)
 
             await resp.prepare_http()

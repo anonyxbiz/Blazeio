@@ -182,7 +182,7 @@ class Handler(OOP_Route_Def):
         if prepare: await app.__default_parser__(r, app)
         if app.ServerConfig.__log_requests__: await app.log_request(r)
 
-        if route := app.declared_routes.get(r): await route.get("func")(r)
+        if route := app.declared_routes.get(r.path): await route.get("func")(r)
 
         elif app.__secondary_handler__ and (route := app.__secondary_handler__(r.path)):
             await route.get("func")(r)
