@@ -554,7 +554,7 @@ class Server:
             if port: app.ServerConfig.port = port
 
             if not kwargs.get("backlog"):
-                kwargs["backlog"] = 5000
+                kwargs["backlog"] = 50000
 
             if app.ServerConfig.sock:
                 app.ServerConfig.sock.bind((app.ServerConfig.host, app.ServerConfig.port))
