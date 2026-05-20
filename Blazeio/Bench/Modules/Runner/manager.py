@@ -4,7 +4,7 @@ import Blazeio as io
 class Manager:
     def __init__(app):
         app.runner_notified = False
-        if not app.server_only:
+        if app.benchmark:
             io.getLoop.create_task(app.runner())
 
     async def runner(app):
