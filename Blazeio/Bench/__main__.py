@@ -37,7 +37,7 @@ class Main(Client.Manager, Utils.Manager, Runner.Manager):
 
     def add_servers(app):
         if app.rawsrv:
-            io.Scope.web.attach(Server.PayloadServer(app.payload_size, app.writes))
+            io.Scope.web.attach(Server.RawServer(app.payload_size, app.writes))
 
         else:
             io.Scope.web.attach(Server.PayloadServer(app.payload_size, app.writes))
