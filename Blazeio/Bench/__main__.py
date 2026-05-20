@@ -49,6 +49,8 @@ class Main(Client.Manager, Utils.Manager, Runner.Manager):
             io.Scope.web.attach(Server.FileServer(*app.serve_files.split(io.Scope.App.formats.serve_files.delimiters.rrf)))
 
 if __name__ == "__main__":
+    io.TCPOptimizer(io.Scope.web)
+
     with io.Scope.web:
         Main(**class_parser.Parser(Main, io.Utype).args())
         io.Scope.web.runner()
