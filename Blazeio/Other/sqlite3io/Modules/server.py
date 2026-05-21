@@ -34,7 +34,7 @@ class Events:
 
     def add_event(app, form: io.ddict, cursor):
         if not int(cursor.rowcount): return
-        app.events.writes.set(io.ddict(q = form.q, changed_rows = cursor.rowcount, lastrowid = cursor.lastrowid))
+        app.events.writes.set(io.ddict(q = form.q, parameters = form.parameters, changed_rows = cursor.rowcount, lastrowid = cursor.lastrowid))
 
     @io.Scope.Sql.Auth.require("/events/await")
     async def _events_await(app, r: io.BlazeioProtocol):
@@ -45,7 +45,7 @@ class Events:
             while 1:
                 event = await app.events.writes.wait_clear()
 
-                if not event.q.startswith(form.q): continue
+                if not event or not isinstance(event, dict) or not event.q.startswith(form.q): continue
 
                 await parser.write(io.dumps(event, indent=0))
 
