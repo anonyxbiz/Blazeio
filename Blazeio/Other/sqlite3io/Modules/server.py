@@ -171,7 +171,7 @@ class Server:
         for row in cursor:
             await r.write(app.mux(delimiter, io.dumps(dict(zip(columns, row)))))
 
-        # io.Scope.Sql.Events.add_event(form, cursor)
+        io.Scope.Sql.Events.add_event(form, cursor)
 
     @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), file = io.ddict(type = str))
     async def _backup(app, r: io.BlazeioProtocol):
