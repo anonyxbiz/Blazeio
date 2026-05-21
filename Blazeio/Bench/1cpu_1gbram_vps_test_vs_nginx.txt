@@ -1,0 +1,117 @@
+Blazeio vs Nginx Performance Benchmarks
+Vps: Kamatera $4/mo (1Cpu, 1Gb ram, 10Gb ssd) Vps.
+
+```clear && py -m Blazeio.Versioning -update && clear && py -m Blazeio.Bench -serve_files "/::." -rawsrv
+<(<OOP_Route_Def.attach>) -> [20:59:02:87]>:  Added __main_handler__ => __main_handler__.
+<(<App.add_route>) -> [20:59:02:87]>:  Added route(1) => /.
+<(<App.add_route>) -> [20:59:02:87]>:  Added middleware(2) => handle_all_middleware.
+<(<Server.run> - Blazeio (Version: 4.1.6)) -> [20:59:02:87]>:
+  PID: 919213
+    System: posix
+      Cpu_count: 1
+        Server [io.Scope.web] listening on http://0.0.0.0:8005
+          Request Logging is disabled.
+```
+
+```Blazeio -m head "http://localhost:8005/" && Blazeio -m head "http://localhost:8006/"
+<(<App.run> - <head@localhost/> completed request) -> [20:59:45:86]>:
+  {
+    "request": {
+        "host": "localhost",
+        "path": "/",
+        "headers": {
+            "content-type": "text/plain",
+            "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+            "x-frame-options": "DENY",
+            "x-content-type-options": "nosniff",
+            "x-xss-protection": "1; mode=block",
+            "referrer-policy": "no-referrer-when-downgrade",
+            "permissions-policy": "geolocation=(self), microphone=(), camera=()",                                                                                       "feature-policy": "accelerometer \"none\"; camera \"none\"; geolocation \"self\"; microphone \"none\"; usb \"none\"",
+            "content-security-policy": "default-src \"self\"; script-src \"self\"; object-src \"none\"; style-src \"self\";",
+            "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            "pragma": "no-cache",
+            "expires": "0",
+            "server": "Blazeio",
+            "content-length": "1024"                                                  },
+        "status_code": 200
+    },
+    "metrics": {
+        "elapsed": 0.002553097903728485,
+        "rps": 391.6810234890026
+    }
+}
+
+<(<App.run> - <head@localhost/> completed request) -> [20:59:46:49]>:           {
+    "request": {                                    "host": "localhost",
+        "path": "/",
+        "headers": {
+            "server": "nginx/1.24.0 (Ubuntu)",
+            "date": "Wed, 20 May 2026 20:59:46 GMT",
+            "content-type": "text/plain",
+            "content-length": "864",
+            "connection": "keep-alive"
+        },
+        "status_code": 200
+    },
+    "metrics": {
+        "elapsed": 0.0023589003831148148,
+        "rps": 423.92633752492253
+    }
+}
+
+```
+
+Benchmarks
+```wrk -t1 -d10s -c10 "http://localhost:8005/" && wrk -t1 -d10s -c100 "http://localhost:8005/" && wrk -t1 -d10s -c10 "http://localhost:8005/sqlite3io.__main__.py.txt" && wrk -t1 -d10s -c100 "http://localhost:8005/sqlite3io.__main__.py.txt" && wrk -t1 -d10s -c10 "http://localhost:8006/" && wrk -t1 -d10s -c100 "http://localhost:8006/" && wrk -t1 -d10s -c10 "http://localhost:8006/sqlite3io.__main__.py.txt" && wrk -t1 -d10s -c100 "http://localhost:8006/sqlite3io.__main__.py.txt"
+
+Running 10s test @ http://localhost:8005/                                                 1 threads and 10 connections                                                            Thread Stats   Avg      Stdev     Max   +/- Stdev                                         Latency   323.20us  109.32us   2.42ms   81.93%                                          Req/Sec    29.99k     1.64k   31.61k    88.12%                                        301432 requests in 10.10s, 484.96MB read
+Requests/sec:  29846.26                                                                 Transfer/sec:     48.02MB                                                               Running 10s test @ http://localhost:8005/                                                 1 threads and 100 connections                                                           Thread Stats   Avg      Stdev     Max   +/- Stdev                                         Latency     3.31ms    1.81ms  77.18ms   96.72%
+    Req/Sec    29.70k     0.94k   31.65k    77.00%
+  295578 requests in 10.01s, 475.54MB read
+Requests/sec:  29529.16
+Transfer/sec:     47.51MB
+Running 10s test @ http://localhost:8005/sqlite3io.__main__.py.txt                        1 threads and 10 connections                                                            Thread Stats   Avg      Stdev     Max   +/- Stdev                                         Latency     1.63ms  271.80us   6.67ms   79.99%                                          Req/Sec     6.12k   173.94     6.48k    77.00%
+  60870 requests in 10.00s, 157.74MB read
+Requests/sec:   6086.55
+Transfer/sec:     15.77MB
+Running 10s test @ http://localhost:8005/sqlite3io.__main__.py.txt
+  1 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    16.12ms    2.16ms  74.71ms   89.59%
+    Req/Sec     6.18k   413.11     7.07k    73.00%
+  61596 requests in 10.02s, 159.73MB read
+Requests/sec:   6150.29
+Transfer/sec:     15.95MB
+Running 10s test @ http://localhost:8006/
+  1 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   109.51us   53.54us   3.13ms   81.79%
+    Req/Sec    77.59k     3.80k   83.37k    74.26%
+  779359 requests in 10.10s, 759.60MB read
+Requests/sec:  77165.50
+Transfer/sec:     75.21MB
+Running 10s test @ http://localhost:8006/
+  1 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.07ms  360.79us   5.81ms   75.96%
+    Req/Sec    78.22k     5.48k   84.06k    84.00%
+  777538 requests in 10.00s, 757.83MB read
+Requests/sec:  77733.48
+Transfer/sec:     75.76MB
+Running 10s test @ http://localhost:8006/sqlite3io.__main__.py.txt
+  1 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   179.91us  141.38us   5.16ms   97.62%
+    Req/Sec    53.89k     3.24k   56.80k    90.10%
+  541700 requests in 10.10s, 148.26MB read
+Requests/sec:  53635.53
+Transfer/sec:     14.68MB
+Running 10s test @ http://localhost:8006/sqlite3io.__main__.py.txt
+  1 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.73ms  677.63us  31.15ms   67.21%
+    Req/Sec    53.77k     3.50k   57.06k    87.00%
+  535246 requests in 10.01s, 146.50MB read
+Requests/sec:  53489.66
+Transfer/sec:  14.58MB
+```

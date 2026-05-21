@@ -1,6 +1,7 @@
 # ./Other/sqlite3io/Modules/client.py
 import Blazeio as io
 from .security import SignatureClient
+from .protocol import Parser, Sqlite3ioEvent
 
 class StreamTo:
     __slots__ = ("session", "stream", "headers", "status_code")
@@ -18,37 +19,6 @@ class StreamTo:
             await app.stream.prepare(app.headers, app.status_code)
 
         return await app.session.pipe_to(app.stream, cmd, *params, **kwargs)
-
-class Parser:
-    __slots__ = ("prot", "buff", "size", "row_count")
-    delimiter: bytes = b"\x15"
-    def __init__(app, prot):
-        app.prot, app.buff, app.size, app.row_count = prot, bytearray(), None, 0
-
-    def parse(app):
-        if app.size is None:
-            if (idx := app.buff.find(app.delimiter)) == -1: return
-
-            buff = app.buff[idx + len(app.delimiter):]
-
-            if (idx := buff.find(app.delimiter)) == -1: return
-
-            app.size, app.buff = int(buff[:idx], 16), buff[idx + len(app.delimiter):]
-
-        if len(app.buff) < app.size: return
-
-        chunk, app.buff, app.size = bytes(app.buff[:app.size]), app.buff[app.size:], None
-        app.row_count += 1
-
-        return chunk
-
-    async def __aiter__(app):
-        try:
-            async for chunk in app.prot:
-                app.buff.extend(chunk)
-                while (chunk := app.parse()): yield chunk
-        except GeneratorExit:
-            return
 
 class Querylize:
     __slots__ = ("included", "queries", "params")
@@ -115,7 +85,10 @@ class Modules:
 
     def stream_to(app, *args, **kwargs):
         return StreamTo(app, *args, **kwargs)
-    
+
+    def events(app, *args, **kwargs):
+        return Sqlite3ioEvent(app, *args, **kwargs)
+
     def idx_gen(app, start: int, end: int = 1000):
         for i in range(1, end):
             for idx in range(start, 1*i):
@@ -140,10 +113,20 @@ class SqlSession(Modules, Migrators):
     __slots__ = ("url", "conn", "schema", "secret_key", "sqlliteio_db_path", "table_checks_completion_event", "signature_client")
     def __init__(app, url: str, secret_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
         io.set_from_args(app, locals(), (str, dict))
+        app.sanitize_url()
         app.signature_client = SignatureClient(app.secret_key)
         app.table_checks_completion_event = io.SharpEvent()
         if app.schema: app.prepare_tables()
         if initialize: io.create_task(app.initialize())
+    
+    def sanitize_url(app):
+        pointer: int = 0
+        if (idx := app.url[pointer:].find("//")) != -1:
+            pointer += (idx + 2)
+
+        if (idx := app.url[pointer:].find("/")) == -1: return
+
+        app.url = app.url[:pointer + idx]
 
     async def initialize(app):
         if not app.schema: return
@@ -191,7 +174,7 @@ class SqlSession(Modules, Migrators):
         payload = io.dumps(data, indent=0).encode()
         signature_hash = app.signature_client.sign(payload)
 
-        async with io.getSession.post(app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+        async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
             await resp.eof(payload)
 
             await resp.prepare_http()

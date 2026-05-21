@@ -21,7 +21,7 @@ from mimetypes import guess_type, add_type as mimetypes_add_type
 from os import stat, kill, getpid, path, environ, name as os_name, getcwd
 
 from os import path as os_path, mkdir, remove
-from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep
+from time import perf_counter, gmtime, strftime, strptime, sleep as timedotsleep, time
 
 from threading import Thread, Lock as T_lock, Event as Tevent, main_thread
 
