@@ -9,6 +9,8 @@ class SignatureClient:
         app.key = key.encode()
 
     def sign(app, payload: (str, bytes)):
+        if not app.key: return app.key
+
         if not isinstance(payload, bytes):
             if not isinstance(payload, str):
                 payload = str(payload)
@@ -17,6 +19,8 @@ class SignatureClient:
         return hmac_new(app.key, payload, sha256).hexdigest()
 
     def verify(app, sign: str, payload: bytes):
+        if not app.key: return True
+
         return compare_digest(hmac_new(app.key, payload, sha256).hexdigest(), sign)
 
     def get_current_timestamp(app, window_seconds: int = (5*60)):

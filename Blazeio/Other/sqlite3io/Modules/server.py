@@ -105,7 +105,7 @@ class Server:
         if r.method not in app.accept_methods:
             raise io.Abort("Unacceptable request method", 403)
 
-        if not (signature_hash := r.headers.get(app.Sql.App.signature_hash_header)):
+        if (signature_hash := r.headers.get(app.Sql.App.signature_hash_header, None)) is None:
             raise io.Abort("signature hash is required but its missing", 401)
 
         payload = bytearray()
