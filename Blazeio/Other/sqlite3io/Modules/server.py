@@ -6,8 +6,7 @@ class Auth:
     __slots__ = ("routes",)
     def __init__(app):
         app.routes = io.ddict()
-        io.Scope.Sql.web.attach(app)
-    
+
     def require(app, route: str):
         def wrapper(fn):
             return fn
@@ -39,6 +38,7 @@ class Events:
 
     @io.Scope.Sql.Auth.require("/events/await")
     async def _events_await(app, r: io.BlazeioProtocol):
+        await io.Scope.Sql.Auth.before_middleware(r)
         if not (form := await r.json()).get("q"): raise io.Abort("q is required but its missing", 403)
 
         async with io.Scope.Sql.ServerParser(r) as parser:
