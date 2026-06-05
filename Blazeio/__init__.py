@@ -159,10 +159,7 @@ class Handler(OOP_Route_Def):
         if prepare: await app.__default_parser__(r, app)
     
         if app.ServerConfig.__log_requests__: await app.log_request(r)
-    
-        if app.before_middleware:
-            await app.before_middleware.get("func")(r)
-    
+
         if route := app.declared_routes.get(r.path):
             ...
     
@@ -171,8 +168,11 @@ class Handler(OOP_Route_Def):
 
         elif route := app.declared_routes.get("handle_all_middleware"):
             ...
-        
+
         try:
+            if app.before_middleware:
+                await app.before_middleware.get("func")(r)
+
             if route:
                 await route.get("func")(r)
             else:
