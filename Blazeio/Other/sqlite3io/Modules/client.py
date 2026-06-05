@@ -182,8 +182,11 @@ class SqlSession(Modules, Migrators):
             if not resp.ok():
                 raise io.Abort(await resp.text(), resp.status_code)
 
-            async for chunk in Parser(resp):
-                yield chunk
+            try:
+                async for chunk in Parser(resp):
+                    yield chunk
+            except GeneratorExit:
+                return
 
     async def pipe_to(app, stream, *args, **kwargs):
         row_count = 0
