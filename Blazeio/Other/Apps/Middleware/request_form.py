@@ -77,23 +77,4 @@ class RequestModel:
 
         await model.form_data(r)
 
-class ModelInspector:
-    __slots__ = ("model",)
-    def __init__(app, model):
-        app.model = model
-        if not isinstance(app.model, Request):
-            raise io.ModuleError("ModelInspector", "model must be of Request type", "got '%s' type" % str(type(app.model)))
-
-    def format_form(app, form):
-        return {
-            "type": form["type"].__name__,
-            "default": (form["default"] if "default" in form else str(form["type"])) if form["type"] != list else [{key: app.format_form(value) for key, value in form["model"].model.items()}],
-            "required": bool("default" in form)
-        }
-
-    def docs(app):
-        return {
-            key: app.format_form(form) for key, form in app.model.form.items()
-        }
-
 if __name__ == "__main__": ...
