@@ -12,7 +12,7 @@ class Main(app.Client):
     serializer = io.ioCondition()
     sync_serializer = io.ioCondition()
     conns, analytics = [], []
-    request_metrics, metric_types = ("prepare", "http_parsing", "ttfb_io", "ttfb", "body_io", "latency"), ("elapsed", "rps")
+    request_metrics, metric_types = ("latency",), ("elapsed", "rps")
     def __init__(app, d: (int, io.Utype, class_parser.Positional) = None, c: (int, io.Utype, class_parser.Positional) = None, url: (str, io.Utype, class_parser.Positional) = None, m: (str, io.Utype) = "get"):
         io.set_from_args(app, locals(), (io.Utype,))
         io.Super(app).__init__()
