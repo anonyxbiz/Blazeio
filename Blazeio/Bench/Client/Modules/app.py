@@ -70,20 +70,14 @@ class Client(Utils):
 
         app.analytics.append(analytics)
         
-        async with io.Session(app.url, app.m, prepare_http = False) as conn:
+        if not app.runner_notified:
+            app.runner_notified = True
+            app.serializer.notify_all()
 
-            while app.session_active():
-                if not app.runner_notified:
-                    app.runner_notified = True
-                    app.serializer.notify_all()
-    
-                analytics.requests.append(request := io.ddict(transferred_bytes = 0, request_info = io.ddict(), duration = io.perf_timing(), latency = io.perf_timing()))
+        while app.session_active():
+            analytics.requests.append(request := io.ddict(transferred_bytes = 0, request_info = io.ddict(), duration = io.perf_timing(), latency = io.perf_timing()))
             
-                
-                r = await conn._connector(app.url, app.m, prepare_http = False)
-
-                await r.prepare_http()
-
+            async with io.getSession(app.url, app.m) as r:
                 request.request_info.path, request.request_info.server_software = r.path, r.headers.get("server")
 
                 async for chunk in r:
