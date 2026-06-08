@@ -35,8 +35,6 @@ class Client(Utils):
                 app.conns.append(io.getLoop.create_task(app.client(i)))
 
             await app.serializer.wait()
-            
-            io.getLoop.create_task(app.log_timing())
 
         app.perf_counter = io.perf_counter()
 
