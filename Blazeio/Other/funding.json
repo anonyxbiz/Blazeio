@@ -13,63 +13,58 @@
             "wellKnown": ""
         }
     },
-    "projects": [
-        {
-            "guid": "blazeio",
-            "name": "Blazeio",
-            "description": "A high-performance, zero-copy Python web framework. Features include a transport-layer HTTP server, built-in SQLite3io database server, reverse proxy, real-time events (SharpEvent), and a DOM engine for streaming HTML. Built to enable absolutely everything on the network.",
-            "webpageUrl": {
-                "url": "https://github.com/anonyxbiz/blazeio",
-                "wellKnown": ""
-            },
-            "repositoryUrl": {
-                "url": "https://github.com/anonyxbiz/blazeio",
-                "wellKnown": ""
-            },
-            "licenses": [
-                "spdx:MIT"
-            ],
-            "tags": [
-                "python",
-                "web-framework",
-                "high-performance",
-                "networking",
-                "database",
-                "zero-copy",
-                "async",
-                "developer-tools"
-            ]
-        }
-    ],
+    "projects": [{
+        "guid": "blazeio",
+        "name": "Blazeio",
+        "description": "A high-performance, zero-copy Python web framework. Features include a transport-layer HTTP server, built-in SQLite3io database server, reverse proxy, real-time events (SharpEvent), and a DOM engine for streaming HTML. Built to enable absolutely everything on the network.",
+        "webpageUrl": {
+            "url": "https://github.com/anonyxbiz/blazeio",
+            "wellKnown": ""
+        },
+        "repositoryUrl": {
+            "url": "https://github.com/anonyxbiz/blazeio",
+            "wellKnown": ""
+        },
+        "licenses": [
+            "spdx:MIT"
+        ],
+        "tags": [
+            "python",
+            "web-framework",
+            "high-performance",
+            "networking",
+            "database",
+            "zero-copy",
+            "async",
+            "developer-tools"
+        ]
+    }],
     "funding": {
-        "channels": [
-            {
-                "guid": "github-sponsors",
-                "type": "payment-provider",
-                "address": "https://github.com/sponsors/anonyxbiz",
-                "description": "Support via GitHub Sponsors"
-            },
+        "channels": [{
+            "guid": "github-sponsors",
+            "type": "payment-provider",
+            "address": "https://github.com/sponsors/anonyxbiz",
+            "description": "Support via GitHub Sponsors"
+        },
             {
                 "guid": "paypal",
                 "type": "payment-provider",
                 "address": "ghost@anonyxghost.com",
                 "description": "Support via PayPal"
-            }
-        ],
-        "plans": [
-            {
-                "guid": "core-support",
-                "status": "active",
-                "name": "Core Support Plan",
-                "description": "For individuals and companies who rely on Blazeio and want to ensure its continued development and maintenance.",
-                "amount": 0,
-                "currency": "USD",
-                "frequency": "monthly",
-                "channels": [
-                    "github-sponsors",
-                    "paypal"
-                ]
-            },
+            }],
+        "plans": [{
+            "guid": "core-support",
+            "status": "active",
+            "name": "Core Support Plan",
+            "description": "For individuals and companies who rely on Blazeio and want to ensure its continued development and maintenance.",
+            "amount": 0,
+            "currency": "USD",
+            "frequency": "monthly",
+            "channels": [
+                "github-sponsors",
+                "paypal"
+            ]
+        },
             {
                 "guid": "enterprise-support",
                 "status": "active",
@@ -82,17 +77,14 @@
                     "github-sponsors",
                     "paypal"
                 ]
-            }
-        ],
-        "history": [
-            {
-                "year": 2025,
-                "income": 0,
-                "expenses": 0,
-                "taxes": 0,
-                "currency": "USD",
-                "description": "Blazeio is a passion project. All development is self-funded through AnonyxGhost revenue."
-            }
-        ]
+            }],
+        "history": [{
+            "year": 2025,
+            "income": 0,
+            "expenses": 0,
+            "taxes": 0,
+            "currency": "USD",
+            "description": "Blazeio is a passion project. All development is self-funded through AnonyxGhost revenue."
+        }]
     }
 }
