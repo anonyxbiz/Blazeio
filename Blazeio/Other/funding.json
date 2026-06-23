@@ -1,0 +1,28 @@
+{
+  "$schema": "https://fundingjson.org",
+  "name": "Blazeio Framework",
+  "description": "A high-performance, asynchronous Python web framework optimized for extreme hardware efficiency, delivering 10,000+ RPS on low-cost VPS instances.",
+  "license": "MIT",
+  "repository": "https://github.com",
+  "website": "https://anonyxghost.com",
+  "funding_goals": [
+    {
+      "amount": 5000,
+      "currency": "USD",
+      "purpose": "Core infrastructure benchmarking, optimization of async networking modules, and open-source documentation expansion.",
+      "type": "one-time"
+    }
+  ],
+  "financial_metrics": {
+    "monthly_operational_costs": 4.00,
+    "current_burn_rate": 0.00
+  },
+  "production_proof": {
+    "commercial_implementation": "AnonyxGhost B2B SaaS Ecosystem",
+    "production_metrics": "Handles 10K+ RPS average across 200+ microservice endpoints"
+  },
+  "contact": {
+    "email": "ghost@anonyxghost.com",
+    "notes": "Maintained by a privacy-first core engineering team. Communications are strictly text-based and asynchronous."
+  }
+}
