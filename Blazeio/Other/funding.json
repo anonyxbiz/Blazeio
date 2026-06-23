@@ -1,28 +1,98 @@
 {
-  "$schema": "https://fundingjson.org",
-  "name": "Blazeio Framework",
-  "description": "A high-performance, asynchronous Python web framework optimized for extreme hardware efficiency, delivering 10,000+ RPS on low-cost VPS instances.",
-  "license": "MIT",
-  "repository": "https://github.com",
-  "website": "https://anonyxghost.com",
-  "funding_goals": [
-    {
-      "amount": 5000,
-      "currency": "USD",
-      "purpose": "Core infrastructure benchmarking, optimization of async networking modules, and open-source documentation expansion.",
-      "type": "one-time"
+    "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+    "version": "v1.1.0",
+    "entity": {
+        "type": "individual",
+        "role": "owner",
+        "name": "anonyxbiz",
+        "email": "ghost@anonyxghost.com",
+        "phone": "",
+        "description": "Creator of Blazeio, a high-performance Python web framework, and AnonyxGhost, a white-label music distribution platform built on it. Passionate about building efficient, scalable, and secure open-source infrastructure.",
+        "webpageUrl": {
+            "url": "https://github.com/anonyxbiz/blazeio",
+            "wellKnown": ""
+        }
+    },
+    "projects": [
+        {
+            "guid": "blazeio",
+            "name": "Blazeio",
+            "description": "A high-performance, zero-copy Python web framework. Features include a transport-layer HTTP server, built-in SQLite3io database server, reverse proxy, real-time events (SharpEvent), and a DOM engine for streaming HTML. Built to enable absolutely everything on the network.",
+            "webpageUrl": {
+                "url": "https://github.com/anonyxbiz/blazeio",
+                "wellKnown": ""
+            },
+            "repositoryUrl": {
+                "url": "https://github.com/anonyxbiz/blazeio",
+                "wellKnown": ""
+            },
+            "licenses": [
+                "spdx:MIT"
+            ],
+            "tags": [
+                "python",
+                "web-framework",
+                "high-performance",
+                "networking",
+                "database",
+                "zero-copy",
+                "async",
+                "developer-tools"
+            ]
+        }
+    ],
+    "funding": {
+        "channels": [
+            {
+                "guid": "github-sponsors",
+                "type": "payment-provider",
+                "address": "https://github.com/sponsors/anonyxbiz",
+                "description": "Support via GitHub Sponsors"
+            },
+            {
+                "guid": "paypal",
+                "type": "payment-provider",
+                "address": "ghost@anonyxghost.com",
+                "description": "Support via PayPal"
+            }
+        ],
+        "plans": [
+            {
+                "guid": "core-support",
+                "status": "active",
+                "name": "Core Support Plan",
+                "description": "For individuals and companies who rely on Blazeio and want to ensure its continued development and maintenance.",
+                "amount": 0,
+                "currency": "USD",
+                "frequency": "monthly",
+                "channels": [
+                    "github-sponsors",
+                    "paypal"
+                ]
+            },
+            {
+                "guid": "enterprise-support",
+                "status": "active",
+                "name": "Enterprise Support Plan",
+                "description": "For businesses using Blazeio in production. Includes priority support and direct consulting.",
+                "amount": 0,
+                "currency": "USD",
+                "frequency": "monthly",
+                "channels": [
+                    "github-sponsors",
+                    "paypal"
+                ]
+            }
+        ],
+        "history": [
+            {
+                "year": 2025,
+                "income": 0,
+                "expenses": 0,
+                "taxes": 0,
+                "currency": "USD",
+                "description": "Blazeio is a passion project. All development is self-funded through AnonyxGhost revenue."
+            }
+        ]
     }
-  ],
-  "financial_metrics": {
-    "monthly_operational_costs": 4.00,
-    "current_burn_rate": 0.00
-  },
-  "production_proof": {
-    "commercial_implementation": "AnonyxGhost B2B SaaS Ecosystem",
-    "production_metrics": "Handles 10K+ RPS average across 200+ microservice endpoints"
-  },
-  "contact": {
-    "email": "ghost@anonyxghost.com",
-    "notes": "Maintained by a privacy-first core engineering team. Communications are strictly text-based and asynchronous."
-  }
 }
