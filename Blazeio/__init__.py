@@ -304,11 +304,16 @@ class Routemanager(ddict):
         return "Routemanager"
 
     def __call__(app, fn, *args, **kwargs):
-        params = {annotation: fn.__defaults__[i] for i, annotation in enumerate(list(fn.__annotations__.keys())[int(len(fn.__annotations__ or []) - len(fn.__defaults__ or [])):])} if str(type(fn)) == "<class 'function'>" else {}
+        params = app.extract_fn_params(fn)
 
         app[app.normalize_funcname(params.get("route") or fn.__name__)] = ddict(nargs = (fn, args, kwargs), **params)
         return fn
 
+    @classmethod
+    def extract_fn_params(app, fn):
+        return {annotation: fn.__defaults__[i] for i, annotation in enumerate(list(fn.__annotations__.keys())[int(len(fn.__annotations__ or []) - len(fn.__defaults__ or [])):])} if str(type(fn)) == "<class 'function'>" else {}
+
+    @classmethod
     def normalize_funcname(app, funcname: str):
         for i, x in ioConf.default_http_server_config["funcname_normalizers"].items():
             funcname = funcname.replace(i, x)
