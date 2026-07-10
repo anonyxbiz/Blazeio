@@ -23,6 +23,8 @@ class Element:
     
     def write(app, data: (str, bytes)):
         if not isinstance(data, bytes):
+            if not isinstance(data, (str,)):
+                data = str(data)
             data = data.encode()
         return app.r.write(data)
 
