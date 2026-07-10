@@ -45,6 +45,8 @@ class Element:
             elif isinstance(app.textContent, io.AsyncIterable):
                 async for chunk in app.textContent:
                     await app.write(chunk)
+            else:
+                await app.write(str(app.textContent).encode())
 
         return app
 
