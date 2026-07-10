@@ -646,6 +646,10 @@ class Callbacks:
     def create_task_on_start(app, coro):
         return app.loop.create_task(app.run_on_start(coro))
 
+    def create_task_on_start_from_coro(app, fn):
+        app.create_task_on_start(fn())
+        return fn
+
 class Protocol_methods(Serverctx):
     def __init__(app): ...
 
