@@ -162,6 +162,12 @@ class SqlSession(Modules, Migrators):
         async for row in app.execute(*args):
             yield io.ddict(io.loads(row.decode()))
 
+    async def aenumerate(app, *args):
+        row_count = 0
+        async for row in app.ajson(*args):
+            yield (row_count, row)
+            row_count += 1
+
     async def execute(app, q, *parameters):
         data = io.ddict(q = q, parameters = [])
         for i in parameters:
