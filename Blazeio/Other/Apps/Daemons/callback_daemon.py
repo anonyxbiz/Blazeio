@@ -14,6 +14,6 @@ class CbDaemon:
     
                 await io.sleep(app.asleep) # Sleep in between to avoid rapid wakeups
             except Exception as e:
-                await io.plog.b_red("callback_daemon.daemon", "An error occured", *io.traceback_logger(e, frmt_only = True)
+                await io.plog.b_red("callback_daemon.daemon", "An error occured", *io.traceback_logger(e, frmt_only = True))
 
 if __name__ == "__main__": ...
