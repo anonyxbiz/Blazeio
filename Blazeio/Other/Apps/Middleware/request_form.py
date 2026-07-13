@@ -51,9 +51,12 @@ class Request:
             except:
                 raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
 
-            if isinstance(m := form.get("model"), (BaseRequestModel,)):
+            if (m := form.get("model")):
                 if form["type"] == list:
                     value = [app.construct_form(i, m.model) for i in value]
+
+                elif form["type"] == dict:
+                    value = app.construct_form(value, m.model)
 
             form_data[key] = value
 
