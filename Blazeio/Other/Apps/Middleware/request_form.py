@@ -55,9 +55,6 @@ class Request:
                 if form["type"] == list:
                     value = [app.construct_form(i, m.model) for i in value]
 
-                elif form["type"] == dict:
-                    value = app.construct_form(io.ddict(value), m.model)
-
             form_data[key] = value
 
         return form_data
