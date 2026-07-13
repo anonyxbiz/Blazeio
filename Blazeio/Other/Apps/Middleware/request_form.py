@@ -6,6 +6,9 @@ class Model:
     def __init__(app, **model):
         app.model = model
 
+class BaseRequestModel:
+    __slots__ = ()
+
 class RequestDict(io.ddict):
     def sqlize_insert(app, value_type: tuple):
         keys, values = [], []
@@ -48,8 +51,12 @@ class Request:
             except:
                 raise io.Abort("%s must be of type (%s)" % (key, str(form["type"])), 403)
 
-            if form["type"] == list and (m := form.get("model")):
-                value = [app.construct_form(i, m.model) for i in value]
+            if isinstance(m := form.get("model"), (BaseRequestModel,)):
+                if form["type"] == list:
+                    value = [app.construct_form(i, m.model) for i in value]
+
+                elif form["type"] == dict:
+                    value = app.construct_form(value, m.model)
 
             form_data[key] = value
 
@@ -58,7 +65,7 @@ class Request:
     async def form_data(app, r: io.BlazeioProtocol):
         r.store[app.store_key] = app.construct_form(await r.body_or_params())
 
-class RequestModel:
+class RequestModel(BaseRequestModel):
     __slots__ = ()
     routes: io.Routemanager = io.Routemanager()
     def __init__(app):
