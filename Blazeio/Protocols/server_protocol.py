@@ -55,8 +55,8 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
             app.cancel()
         raise ClientDisconnected(origin = "abort_connection")
 
-    def state(app):
-        return {key: str(value)[:500] if not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
+    def state(app, truncante: bool = True):
+        return {key: str(value)[:500] if truncante and not isinstance(value := getattr(app, key, ""), (int, str)) else value for key in app.__class__.__slots__}
 
     def request(app, *args, **kwargs):
         return app.__aiter__(*args, **kwargs)
