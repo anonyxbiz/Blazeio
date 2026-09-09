@@ -58,8 +58,8 @@ class BlazeioServerProtocol(BlazeioProtocol, BufferedProtocol, BlazeioPayloadUti
     def state(app, truncante: bool = True):
         s = {key: str(value)[:500] if truncante and not isinstance(value, (int, str)) else value for key in app.__class__.__slots__ if (value := getattr(app, key, "")) or 1}
         
-        if isinstance(s.get("store"), dict):
-            s.update(s.store)
+        if isinstance(store := s.get("store"), dict):
+            s.update(store)
 
         return s
 
