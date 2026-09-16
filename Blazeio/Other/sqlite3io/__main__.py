@@ -20,8 +20,8 @@ import sqlite3
 io.Scope.Sql.add_imports(globals())
 
 class App:
-    __slots__ = ("secret_key", "server_port", "server_buffer_size", "max_request_body_size", "middleware", "secret_key_header", "sqlliteio_db_path_header", "signature_hash_header", "sqlliteio_delimiter_header", "root_dir")
-    def __init__(app, secret_key: (str, io.Utype, class_parser.Positional) = None, server_port: (int, io.Utype) = 7015, server_buffer_size: (int, io.Utype) = 1024*100, max_request_body_size: (int, io.Utype) = (1024**2)*100, secret_key_header: (str, io.Utype) = "X-sqlliteio-hmac-sha256", signature_hash_header: (str, io.Utype) = "X-sqlliteio-hmac-sha256-hash", sqlliteio_db_path_header: (str, io.Utype) = "X-sqlliteio-db-path", sqlliteio_delimiter_header: (str, io.Utype) = "X-sqlliteio-delimiter", root_dir: (str, io.Utype) = io.getcwd()):
+    __slots__ = ("secret_key", "server_port", "server_buffer_size", "commit_frequency", "max_request_body_size", "middleware", "secret_key_header", "sqlliteio_db_path_header", "signature_hash_header", "sqlliteio_delimiter_header", "root_dir")
+    def __init__(app, secret_key: (str, io.Utype, class_parser.Positional) = None, server_port: (int, io.Utype) = 7015, server_buffer_size: (int, io.Utype) = 1024*100, commit_frequency: (int, io.Utype) = (60*30), max_request_body_size: (int, io.Utype) = (1024**2)*100, secret_key_header: (str, io.Utype) = "X-sqlliteio-hmac-sha256", signature_hash_header: (str, io.Utype) = "X-sqlliteio-hmac-sha256-hash", sqlliteio_db_path_header: (str, io.Utype) = "X-sqlliteio-db-path", sqlliteio_delimiter_header: (str, io.Utype) = "X-sqlliteio-delimiter", root_dir: (str, io.Utype) = io.getcwd()):
         io.set_from_args(app, locals(), io.Utype)
         app.init_server()
 

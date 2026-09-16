@@ -53,6 +53,7 @@ class Events:
 class Server:
     __slots__ = ("Sql", "conns", "cond", "signature_client")
     accept_methods: tuple = ("POST", "PUT")
+    commit_frequency: int = (60*30)
     def __init__(app):
         app.Sql = io.Scope.Sql
         app.conns = io.ddict()
@@ -60,6 +61,16 @@ class Server:
         app.signature_client = app.Sql.SignatureClient(app.Sql.App.secret_key)
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
         io.Scope.Sql.web.attach(app)
+        io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
+
+    async def commit_conns(app):
+        async with app.cond:
+            for conn in list(app.conns.values()):
+                conn.commit()
+
+    async def commit_daemon(app):
+        async for i in io.ayield(io.Scope.Sql.App.commit_frequency):
+            await app.commit_conns()
 
     async def on_exit(app, conns: list = []):
         await io.plog.b_green("sqlite3io", "exiting safely...")
@@ -105,7 +116,7 @@ class Server:
         if r.method not in app.accept_methods:
             raise io.Abort("Unacceptable request method", 403)
 
-        if (signature_hash := r.headers.get(app.Sql.App.signature_hash_header, None)) is None:
+        if (signature_hash := r.headers.get(app.Sql.App.signature_hash_header, None)) is None: 
             raise io.Abort("signature hash is required but its missing", 401)
 
         payload = bytearray()
@@ -119,10 +130,28 @@ class Server:
             raise io.Abort("Signature hash did not match computed hash", 401)
 
         try:
-            return io.ddict(io.loads(payload.decode("utf-8")))
+            if not (form := io.ddict(io.loads(payload.decode("utf-8")))).get("q"):
+                raise io.Abort("q is required but its missing", 403)
+
+            elif not isinstance(form.get("parameters"), list):
+                raise io.Abort("parameters must be a list", 403)
+
+            query = io.ddict(form = form)
+
+            if not (sqlliteio_db_path := r.headers.get(app.Sql.App.sqlliteio_db_path_header)):
+                raise io.Abort("sqlliteio_db_path header is required but its missing", 401)
+
+            if not (conn := app.conns.get(sqlliteio_db_path)):
+                conn = await app.get_or_create_conn(sqlliteio_db_path)
+
+            query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
+            query.args.append(form.parameters)
+            
+            return query
+
         except io.JSONDecodeError:
             raise io.Abort("No valid JSON found in the stream.", 403)
-    
+
     async def get_or_create_conn(app, sqlliteio_db_path: str):
         async with app.cond:
             if (conn := app.conns.get(sqlliteio_db_path)):
@@ -135,43 +164,44 @@ class Server:
         return conn
 
     async def _execute(app, r: io.BlazeioProtocol):
-        if not (form := await app.get_json(r)).get("q"):
-            raise io.Abort("q is required but its missing", 403)
+        query = await app.get_json(r)
 
-        elif not isinstance(form.get("parameters"), list):
-            raise io.Abort("parameters must be a list", 403)
-
-        if not (sqlliteio_db_path := r.headers.get(app.Sql.App.sqlliteio_db_path_header)):
-            raise io.Abort("sqlliteio_db_path header is required but its missing", 401)
-
-        if not (conn := app.conns.get(sqlliteio_db_path)):
-            conn = await app.get_or_create_conn(sqlliteio_db_path)
-
-        await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200) # Proxies should not transform data
-
-        delimiter = str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
-
-        args = [form.q]
-
-        if form.parameters:
-            args.append(form.parameters)
+        await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
 
         try:
-            cursor = conn.cursor()
-            cursor.execute(*tuple(args))
+            query.cursor.execute(*tuple(query.args))
         except Exception as e:
-            raise io.Eof(await r.write(app.mux(delimiter, io.dumps(io.ddict(error = str(e))))))
+            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
 
-        if not cursor.description:
-            conn.commit()
-            raise io.Eof(await r.write(app.mux(delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(form, cursor))
+        if not query.cursor.description:
+            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
-        columns = [col[0] for col in cursor.description]
+        columns = [col[0] for col in query.cursor.description]
 
-        for row in cursor:
-            await r.write(app.mux(delimiter, io.dumps(dict(zip(columns, row)))))
+        for row in query.cursor:
+            await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
 
-        io.Scope.Sql.Events.add_event(form, cursor)
+        io.Scope.Sql.Events.add_event(query.form, query.cursor)
+
+    async def _executemany(app, r: io.BlazeioProtocol):
+        query = await app.get_json(r)
+
+        await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
+
+        try:
+            query.cursor.executemany(*tuple(query.args))
+        except Exception as e:
+            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
+
+        if not query.cursor.description:
+            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
+
+        columns = [col[0] for col in query.cursor.description]
+
+        for row in query.cursor:
+            await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
+
+        io.Scope.Sql.Events.add_event(query.form, query.cursor)
 
     @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), file = io.ddict(type = str))
     async def _backup(app, r: io.BlazeioProtocol):

@@ -127,6 +127,15 @@ class SqlSession(Modules, Migrators):
         if (idx := app.url[pointer:].find("/")) == -1: return
 
         app.url = app.url[:pointer + idx]
+    
+    def sanitize_value(app, value):
+        if value is None:
+            value = "NULL"
+
+        elif isinstance(value, bool):
+            value = int(value)
+
+        return str(value)
 
     async def initialize(app):
         if not app.schema: return
@@ -171,11 +180,7 @@ class SqlSession(Modules, Migrators):
     async def execute(app, q, *parameters):
         data = io.ddict(q = q, parameters = [])
         for i in parameters:
-            if i is None:
-                i = "NULL"
-            elif isinstance(i, bool):
-                i = int(i)
-            data.parameters.append(str(i))
+            data.parameters.append(app.sanitize_value(i))
 
         payload = io.dumps(data, indent=0).encode()
         signature_hash = app.signature_client.sign(payload)
@@ -183,6 +188,38 @@ class SqlSession(Modules, Migrators):
 
         try:
             async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+                await resp.eof(payload)
+    
+                await resp.prepare_http()
+    
+                if not resp.ok():
+                    raise io.Abort(await resp.text(), resp.status_code)
+    
+                try:
+                    async for chunk in Parser(resp):
+                        yield chunk
+                except GeneratorExit:
+                    return
+        except OSError:
+            sqlite3io_unavailable = 1
+
+        if sqlite3io_unavailable:
+            raise io.ServerDisconnected("The sqlite3io server is unavailable", "Blazeio.Other.sqlite3io.Modules.client::SqlSession.execute")
+
+    async def executemany(app, q, *parameters):
+        data = io.ddict(q = q, parameters = [])
+        for i in parameters:
+            if not isinstance(i, (tuple, list)):
+                raise io.Err("Blazeio.Other.sqlite3io.Modules.client::SqlSession.executemany", "parameter value must be a tuple or list")
+
+            data.parameters.append(tuple([app.sanitize_value(value) for value in i]))
+
+        payload = io.dumps(data, indent=0).encode()
+        signature_hash = app.signature_client.sign(payload)
+        sqlite3io_unavailable = False
+
+        try:
+            async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
                 await resp.eof(payload)
     
                 await resp.prepare_http()
