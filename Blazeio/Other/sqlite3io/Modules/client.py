@@ -167,6 +167,9 @@ class SqlSession(Modules, Migrators):
 
         return data.pop(0) if len(data) == 1 and data_type != list else data
 
+    async def pipe_json(app, source):
+        return [i if isinstance(i, dict) else io.ddict(io.loads(i.decode())) async for i in source]
+
     async def ajson(app, *args):
         async for row in app.execute(*args):
             yield io.ddict(io.loads(row.decode()))
