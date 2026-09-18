@@ -213,7 +213,7 @@ class SqlSession(Modules, Migrators):
         data = io.ddict(q = q, parameters = [])
         for i in parameters:
             if not isinstance(i, (tuple, list)):
-                raise io.Err("Blazeio.Other.sqlite3io.Modules.client::SqlSession.executemany", "parameter value must be a tuple or list")
+                raise io.Err("Blazeio.Other.sqlite3io.Modules.client::SqlSession.executemany", "parameter value must be a tuple or list, got: %s" % str(i))
 
             data.parameters.append(tuple([app.sanitize_value(value) for value in i]))
 
