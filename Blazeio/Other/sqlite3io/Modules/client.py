@@ -220,6 +220,7 @@ class SqlSession(Modules, Migrators):
         payload = io.dumps(data, indent=0).encode()
         signature_hash = app.signature_client.sign(payload)
         sqlite3io_unavailable = False
+        results = []
 
         try:
             async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
@@ -232,14 +233,16 @@ class SqlSession(Modules, Migrators):
     
                 try:
                     async for chunk in Parser(resp):
-                        yield chunk
+                        results.append(io.ddict(io.loads(chunk.decode())))
                 except GeneratorExit:
-                    return
+                    ...
         except OSError:
             sqlite3io_unavailable = 1
 
         if sqlite3io_unavailable:
             raise io.ServerDisconnected("The sqlite3io server is unavailable", "Blazeio.Other.sqlite3io.Modules.client::SqlSession.execute")
+
+        return results
 
     async def pipe_to(app, stream, *args, **kwargs):
         row_count = 0
