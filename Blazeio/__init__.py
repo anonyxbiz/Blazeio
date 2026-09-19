@@ -211,7 +211,10 @@ class Handler(OOP_Route_Def):
 
     async def handle_client(app, r):
         try:
-            r.ip_host, r.ip_port = r.transport.get_extra_info('peername')
+            if not (peername := r.transport.get_extra_info('peername')):
+                raise Eof()
+                
+            r.ip_host, r.ip_port = peername
 
             if app.ServerConfig.__log_requests__:
                 r.__perf_counter__ = perf_counter()
