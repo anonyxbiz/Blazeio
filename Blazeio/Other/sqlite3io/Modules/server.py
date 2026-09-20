@@ -168,14 +168,15 @@ class Server:
 
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
         
-        with query.conn:
+        async with app.cond:
             try:
                 query.cursor.execute(*tuple(query.args))
             except Exception as e:
                 raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
-    
-        if not query.cursor.description:
-            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
+        
+            if not query.cursor.description:
+                query.conn.commit()
+                raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
         columns = [col[0] for col in query.cursor.description]
 
@@ -189,14 +190,15 @@ class Server:
 
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
         
-        with query.conn:
+        async with app.cond:
             try:
                 query.cursor.executemany(*tuple(query.args))
             except Exception as e:
                 raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
-
-        if not query.cursor.description:
-            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
+    
+            if not query.cursor.description:
+                query.conn.commit()
+                raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
         columns = [col[0] for col in query.cursor.description]
 
