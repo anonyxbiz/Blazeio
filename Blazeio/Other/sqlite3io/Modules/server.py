@@ -61,7 +61,7 @@ class Server:
         app.signature_client = app.Sql.SignatureClient(app.Sql.App.secret_key)
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
         io.Scope.Sql.web.attach(app)
-        io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
+        # io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
 
     async def commit_conns(app):
         async with app.cond:
@@ -167,12 +167,13 @@ class Server:
         query = await app.get_json(r)
 
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
-
-        try:
-            query.cursor.execute(*tuple(query.args))
-        except Exception as e:
-            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
-
+        
+        with query.conn:
+            try:
+                query.cursor.execute(*tuple(query.args))
+            except Exception as e:
+                raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
+    
         if not query.cursor.description:
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
@@ -187,11 +188,12 @@ class Server:
         query = await app.get_json(r)
 
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
-
-        try:
-            query.cursor.executemany(*tuple(query.args))
-        except Exception as e:
-            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
+        
+        with query.conn:
+            try:
+                query.cursor.executemany(*tuple(query.args))
+            except Exception as e:
+                raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
 
         if not query.cursor.description:
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
