@@ -61,7 +61,7 @@ class Server:
         app.signature_client = app.Sql.SignatureClient(app.Sql.App.secret_key)
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
         io.Scope.Sql.web.attach(app)
-        # io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
+        io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
 
     async def commit_conns(app):
         async with app.cond:
@@ -175,7 +175,6 @@ class Server:
                 raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
         
             if not query.cursor.description:
-                query.conn.commit()
                 raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
         columns = [col[0] for col in query.cursor.description]
@@ -197,7 +196,6 @@ class Server:
                 raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
     
             if not query.cursor.description:
-                query.conn.commit()
                 raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
         columns = [col[0] for col in query.cursor.description]
