@@ -169,7 +169,7 @@ class Server:
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
 
         try:
-            if query.args[0][:query.args[0].find(" ")].upper() in ("INSERT", "UPDATE", "DELETE"):
+            if query.args[0][:query.args[0].find(" ")].upper() in ("INSERT", "UPDATE", "DELETE",):
                 async with app.cond:
                     query.cursor.execute(*tuple(query.args))
             else:
