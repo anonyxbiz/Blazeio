@@ -51,9 +51,9 @@ class Events:
 
 @io.Scope.Sql.instantiate
 class Server:
-    __slots__ = ("Sql", "conns", "cond", "signature_client")
+    __slots__ = ("Sql", "conns", "cond", "signature_client",)
     accept_methods: tuple = ("POST", "PUT")
-    commit_frequency: int = (60*30)
+    commit_frequency: int = (60**2)
     def __init__(app):
         app.Sql = io.Scope.Sql
         app.conns = io.ddict()
@@ -165,20 +165,19 @@ class Server:
 
     async def _execute(app, r: io.BlazeioProtocol):
         query = await app.get_json(r)
+        
+        async with app.cond:
+            ...
 
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
 
         try:
-            if query.args[0][:query.args[0].find(" ")].upper() in ("INSERT", "UPDATE", "DELETE",):
-                async with app.cond:
-                    query.cursor.execute(*tuple(query.args))
-            else:
-                query.cursor.execute(*tuple(query.args))
-
+            query.cursor.execute(*tuple(query.args))
         except Exception as e:
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
-        
+ 
         if not query.cursor.description:
+            io.Scope.Sql.Events.add_event(query.form, query.cursor)
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
         columns = [col[0] for col in query.cursor.description]
@@ -186,28 +185,27 @@ class Server:
         for row in query.cursor:
             await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
 
-        io.Scope.Sql.Events.add_event(query.form, query.cursor)
-
     async def _executemany(app, r: io.BlazeioProtocol):
         query = await app.get_json(r)
 
+        async with app.cond:
+            ...
+
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
         
-        async with app.cond:
-            try:
-                query.cursor.executemany(*tuple(query.args))
-            except Exception as e:
-                raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
+        try:
+            query.cursor.executemany(*tuple(query.args))
+        except Exception as e:
+            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
     
-            if not query.cursor.description:
-                raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
+        if not query.cursor.description:
+            io.Scope.Sql.Events.add_event(query.form, query.cursor)
+            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
 
         columns = [col[0] for col in query.cursor.description]
 
         for row in query.cursor:
             await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
-
-        io.Scope.Sql.Events.add_event(query.form, query.cursor)
 
     @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), file = io.ddict(type = str))
     async def _backup(app, r: io.BlazeioProtocol):
