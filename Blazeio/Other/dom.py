@@ -37,7 +37,7 @@ class Element:
 
         if app.textContent:
             if isinstance(app.textContent, str):
-                await app.write(app.textContent.encode())
+                await app.write(io.escape(app.textContent).encode())
 
             elif isinstance(app.textContent, bytes):
                 await app.write(app.textContent)
@@ -46,7 +46,7 @@ class Element:
                 async for chunk in app.textContent:
                     await app.write(chunk)
             else:
-                await app.write(str(app.textContent).encode())
+                await app.write(io.escape(str(app.textContent)).encode())
 
         return app
 
