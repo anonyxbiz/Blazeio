@@ -62,8 +62,12 @@ class Migrators:
         for name, table in app.schema.get("tables").items():
             if not (result := results.get(name)):
                 queries.append(table.get("sql"))
+                if (covering_index := table.get("covering_index")):
+                    queries.append("CREATE INDEX idx_%s_covering ON %s (%s)" % (name, name, covering_index))
+
                 if table.get("create_index"):
-                    queries.append("CREATE INDEX idx_%s ON %s (%s)" % (name, name, ", ".join(list(table.get("columns").keys()))))
+                    if (tbl_columns := list(table.get("columns").keys())):
+                        queries.extend(["CREATE INDEX IF NOT EXISTS idx_%s_%s ON %s (%s)" % (name, i, name, i) for i in tbl_columns])
 
                 if (on_creation_queries := table.get("on_creation_queries")):
                     on_creation_queries_batch.extend(on_creation_queries) if isinstance(on_creation_queries, list) else on_creation_queries_batch.append(on_creation_queries)
