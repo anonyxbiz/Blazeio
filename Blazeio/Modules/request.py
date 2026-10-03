@@ -196,7 +196,7 @@ class Request(Depreciated):
             async for chunk in r.pull(): payload.extend(chunk)
 
         try: return ddict(loads(payload.decode("utf-8")))
-        except JSONDecodeError: raise Err("No valid JSON found in the stream.")
+        except JSONDecodeError: raise Abort("No valid JSON found in the stream.", 403)
 
     @classmethod
     def url_decode(app, *args, **kwargs):
