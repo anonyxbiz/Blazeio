@@ -63,7 +63,11 @@ class Migrators:
             if not (result := results.get(name)):
                 queries.append(table.get("sql"))
                 if (covering_index := table.get("covering_index")):
-                    queries.append("CREATE INDEX idx_%s_covering ON %s (%s)" % (name, name, covering_index))
+                    if not isinstance(covering_index, (list,)):
+                        covering_index = [covering_index]
+
+                    for i, idx in enumerate(covering_index):
+                        queries.append("CREATE INDEX idx_%s_covering%s ON %s (%s)" % (name, ("_%s" % i) if i else "_", name, idx))
 
                 if table.get("create_index"):
                     if (tbl_columns := list(table.get("columns").keys())):

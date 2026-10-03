@@ -28,6 +28,14 @@ class RequestDict(io.ddict):
 
         return (", ".join(["%s = ?" % key for key in keys]), values)
 
+    def sqlizei(app, *args, **kwargs):
+        keys, values, params = app.sqlize_insert(*args, **kwargs)
+        return io.ddict(formkeys = keys, formvalues = values, formparams = params)
+
+    def sqlizeu(app, *args, **kwargs):
+        keys, params = app.sqlize_update(*args, **kwargs)
+        return io.ddict(formkeys = keys, formparams = params)
+
 class Request:
     __slots__ = ("model", "store_key", "form",)
     def __init__(app, model, store_key: str, **form):
