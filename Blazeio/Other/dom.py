@@ -2,10 +2,10 @@
 import Blazeio as io
 
 class Element:
-    __slots__ = ("r", "element", "textContent", "on_enter", "on_exit", "attributes")
+    __slots__ = ("r", "element", "textContent", "on_enter", "on_exit", "innerHTML", "attributes")
     non_closing_elements = ( b'meta', b'link', b'img', b'video', b'audio', b'br', b'hr', b'input', b'area', b'base', b'col', b'embed', b'source', b'track', b'wbr', b'param', b'keygen', b'command')
-    def __init__(app, r: io.BlazeioProtocol, element: bytes, textContent: (None, bytes, str, io.AsyncIterable) = None, on_enter: (None, tuple) = None, on_exit: (None, tuple) = None, className: (None, str) = None, **attributes):
-        app.r, app.element, app.textContent, app.on_enter, app.on_exit, app.attributes = r, element, textContent, on_enter, on_exit, attributes
+    def __init__(app, r: io.BlazeioProtocol, element: bytes, textContent: (None, bytes, str, io.AsyncIterable) = None, on_enter: (None, tuple) = None, on_exit: (None, tuple) = None, className: (None, str) = None, innerHTML: (None, bytes, str, io.AsyncIterable) = None, **attributes):
+        app.r, app.element, app.textContent, app.on_enter, app.on_exit, app.innerHTML, app.attributes = r, element, textContent, on_enter, on_exit, innerHTML, attributes
         if className:
             app.attributes["class"] = className
 
@@ -36,17 +36,18 @@ class Element:
                 await cb(app)
 
         if app.textContent:
-            if isinstance(app.textContent, str):
-                await app.write(io.escape(app.textContent).encode())
-
-            elif isinstance(app.textContent, bytes):
-                await app.write(app.textContent)
-
-            elif isinstance(app.textContent, io.AsyncIterable):
+            if isinstance(app.textContent, io.AsyncIterable):
                 async for chunk in app.textContent:
                     await app.write(chunk)
             else:
-                await app.write(io.escape(str(app.textContent)).encode())
+                await app.write(io.escape(app.textContent.decode() if isinstance(app.textContent, (bytes,)) else str(app.textContent)))
+
+        if app.innerHTML:
+            if isinstance(app.innerHTML, io.AsyncIterable):
+                async for chunk in app.textContent:
+                    await app.write(chunk)
+            else:
+                await app.write(app.innerHTML)
 
         return app
 
