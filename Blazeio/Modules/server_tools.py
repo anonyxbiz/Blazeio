@@ -37,9 +37,7 @@ class Simpleserve:
             app.is_match()
 
     def validate_method(app):
-        if app.r.method == "GET": ...
-        elif app.r.method == "HEAD": ...
-        else: raise Abort("Method %s is not allowed for this resource" % app.r.method, 405, ddict(Allow = "GET, HEAD"))
+        ...
 
     def __await__(app):
         yield from app.prepare_metadata().__await__()
