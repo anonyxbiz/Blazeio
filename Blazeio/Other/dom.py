@@ -31,7 +31,7 @@ class Element:
         return app.r.write(data)
 
     async def __aenter__(app):
-        await app.write(b'\n<%b%b>' % (app.element, (' %s' % ' '.join(['%s="%s"' % (key, value if key not in app.unsafe_attributes else io.escape(value.decode() if isinstance(value, (bytes,)) else str(value))) for key, value in app.attributes.items() if key not in app.known_attributes])).encode() if app.attributes else b''))
+        await app.write(b'\n<%b%b>' % (app.element, ('%s%s' % (' ' if (attrs := ' '.join(['%s="%s"' % (key, value if key not in app.unsafe_attributes else io.escape(value.decode() if isinstance(value, (bytes,)) else str(value))) for key, value in app.attributes.items() if key not in app.known_attributes])) else '', attrs)).encode() if app.attributes else b''))
 
         if (innerHTML := app.attributes.get('innerHTML')):
             await app.write(innerHTML)
