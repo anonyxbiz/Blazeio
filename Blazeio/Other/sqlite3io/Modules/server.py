@@ -160,7 +160,9 @@ class Server:
             app.conns[sqlliteio_db_path] = (conn := app.Sql.sqlite3.connect(sqlliteio_db_path))
             conn.execute("PRAGMA journal_mode = WAL;")
             conn.execute("PRAGMA synchronous = NORMAL;")
-            
+            conn.execute("PRAGMA busy_timeout = 30000;")
+            conn.execute("PRAGMA temp_store = MEMORY;")
+
             if app.Sql.App.connection_commands:
                 for i in app.Sql.App.connection_commands.split(";"):
                     conn.execute("%s;" % i)
