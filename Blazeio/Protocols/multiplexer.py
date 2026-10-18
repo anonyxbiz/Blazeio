@@ -28,51 +28,6 @@ class Utils:
             where += _len
         return view
 
-class BlazeioMultiplexerDep:
-    __slots__ = ()
-    def __prepend__(app, data, wakeup = False, clear = True):
-        if not data: return
-        if clear:
-            app.__buff.clear()
-
-        app.__prepends__.appendleft(data)
-        if wakeup: app.protocol.__evt__.set()
-
-    async def __pull__(app):
-        while True:
-            if not app.__prepends__:
-                await app.protocol.ensure_reading()
-
-            while app.protocol.__stream__:
-                chunk = app.protocol.__stream__.popleft()
-                if app.__prepends__:
-                    chunk = b"".join([i for i in app.__prepends__]) + chunk
-                    app.__prepends__.clear()
-                yield chunk
-                app.protocol.transport.resume_reading()
-
-            else:
-                if app.__prepends__:
-                    chunk = b"".join([i for i in app.__prepends__])
-                    app.__prepends__.clear()
-                    
-                    if len(chunk) <= 100:
-                        app.protocol.transport.resume_reading()
-
-                    yield chunk
-                else:
-                    app.protocol.transport.resume_reading()
-
-                if app.protocol.transport.is_closing(): raise app.protocol.__stream_closed_exception__()
-
-    async def mux(app):
-        for i in range(10):
-            async with io.Ehandler(exit_on_err = False, ignore = (io.CancelledError, app.protocol.__stream_closed_exception__)):
-                app.clear_state()
-                async for chunk in app.__pull__():
-                    if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
-                    await app._chunk_received(chunk)
-
 class BlazeioMultiplexer:
     __slots__ = ("__streams__", "__tasks__", "__busy_write__", "__received_size", "__expected_size", "__current_stream_id", "__current_stream", "protocol", "__buff", "__prepends__", "__stream_id_count__", "socket", "__stream_opts", "loop", "_write_buffer_limits", "encrypt_streams", "__io_create_lock__", "__stream_update", "perf_analytics", "analytics", "__current_sid", "__sync__", "__on_closed")
     _data_bounds_ = (
@@ -350,7 +305,7 @@ class BlazeioMultiplexer:
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task", "__overflow_evt__")
 
-    _chunk_size_base_ = 1024*10
+    _chunk_size_base_ = 1024*100
     def __init__(app, _id: (bytes, bytearray), protocol):
         app.clear_state()
         app.protocol = protocol
@@ -362,7 +317,7 @@ class Stream:
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
-        app.inflight_window = 1
+        app.inflight_window = 3
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()
