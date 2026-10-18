@@ -508,9 +508,9 @@ class Stream:
     
     async def wfa_all(app, waits: list):
         if not waits: return
-        for wait in waits:
-            await wait
-            waits.remove(wait)
+        while waits:
+            coro, args = waits.pop(0)
+            await coro(*args)
 
     async def __writer__(app, data: (bytes, bytearray), add: bool = True, wait: bool = True, __stream_opts: (bytes, bytearray, None) = None):
         if not data: return
@@ -525,7 +525,7 @@ class Stream:
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait)
 
             if wait:
-                app.inflight_waits.append(app.wfa(sid))
+                app.inflight_waits.append((app.wfa, (sid,),))
                 if (len(app.inflight_waits) >= app.inflight_window) or app.__initial_handshake: await app.wfa_all(app.inflight_waits)
 
         if wait:
