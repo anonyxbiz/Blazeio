@@ -297,15 +297,12 @@ class BlazeioMultiplexer:
             app.clear_state()
             async for chunk in app.protocol:
                 if app.perf_analytics: app.analytics.transfer_rate.bytes_transferred += len(chunk)
-                try:
-                    await app._chunk_received(chunk)
-                except ValueError:
-                    ...
+                await app._chunk_received(chunk)
 
 class Stream:
     __slots__ = ("protocol", "id", "id_str", "__stream__", "__evt__", "expected_size", "received_size", "eof_received", "_used", "eof_sent", "_close_on_eof", "__prepends__", "transport", "pull", "writer", "chunk_size", "__stream_closed__", "__wait_closed__", "sent_size", "__stream_ack__", "__stream_acks__", "__busy_stream__", "__callbacks__", "__callback_added__", "callback_manager", "__idf__", "__initial_handshake", "__stream_opts__", "sids", "inflight_waits", "inflight_window", "parent_task", "__overflow_evt__")
 
-    _chunk_size_base_ = 1024*100
+    _chunk_size_base_ = 1024*10
     def __init__(app, _id: (bytes, bytearray), protocol):
         app.clear_state()
         app.protocol = protocol
@@ -561,6 +558,10 @@ def BlazeioMuxProtocol(base_class=object):
 
         def connection_lost(app, exc):
             app.cancel()
+
+        def abort_connection(app):
+            app.cancel()
+            raise io.ClientDisconnected(origin = "abort_connection")
 
     return _BlazeioMuxProtocol
 
