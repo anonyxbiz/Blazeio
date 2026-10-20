@@ -54,8 +54,6 @@ class Server:
     __slots__ = ("Sql", "conns", "cond", "signature_client",)
     accept_methods: tuple = ("POST", "PUT")
     commit_frequency: int = (60**2)
-    conn_id = 0
-    max_conns = 10
     def __init__(app):
         app.Sql = io.Scope.Sql
         app.conns = io.ddict()
@@ -64,13 +62,6 @@ class Server:
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
         io.Scope.Sql.web.attach(app)
         io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
-    
-    def get_conn_id(app):
-        if app.conn_id >= app.max_conns:
-            app.conn_id = 0
-
-        app.conn_id += 1
-        return app.conn_id
 
     async def commit_conns(app):
         async with app.cond:
@@ -150,7 +141,7 @@ class Server:
             if not (sqlliteio_db_path := r.headers.get(app.Sql.App.sqlliteio_db_path_header)):
                 raise io.Abort("sqlliteio_db_path header is required but its missing", 401)
             
-            if not (conn := app.conns.get("%s:%s" % (app.get_conn_id(), sqlliteio_db_path))):
+            if not (conn := app.conns.get(sqlliteio_db_path)):
                 conn = await app.get_or_create_conn(r, sqlliteio_db_path)
 
             query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, await conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
@@ -163,7 +154,7 @@ class Server:
 
     async def get_or_create_conn(app, r: io.BlazeioProtocol, sqlliteio_db_path: str):
         async with app.cond:
-            if (conn := app.conns.get("%s:%s" % (app.get_conn_id(), sqlliteio_db_path))):
+            if (conn := app.conns.get(sqlliteio_db_path)):
                 return conn
 
             app.conns[sqlliteio_db_path] = (conn := app.Sql.asqlite3.connect(sqlliteio_db_path))
