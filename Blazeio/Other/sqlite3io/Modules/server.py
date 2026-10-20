@@ -140,9 +140,8 @@ class Server:
 
             if not (sqlliteio_db_path := r.headers.get(app.Sql.App.sqlliteio_db_path_header)):
                 raise io.Abort("sqlliteio_db_path header is required but its missing", 401)
-
-            if not (conn := app.conns.get(sqlliteio_db_path)):
-                conn = await app.get_or_create_conn(sqlliteio_db_path)
+            
+            conn = await app.get_or_create_conn(r, sqlliteio_db_path)
 
             query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
             query.args.append(form.parameters)
@@ -152,9 +151,9 @@ class Server:
         except io.JSONDecodeError:
             raise io.Abort("No valid JSON found in the stream.", 403)
 
-    async def get_or_create_conn(app, sqlliteio_db_path: str):
+    async def get_or_create_conn(app, r: io.BlazeioProtocol, sqlliteio_db_path: str):
         async with app.cond:
-            if (conn := app.conns.get(sqlliteio_db_path)):
+            if (conn := app.conns.get("%s%s" % (sqlliteio_db_path, (":%s" % connection_id) if (connection_id := r.headers.get("Connection_id")) else ""))):
                 return conn
 
             app.conns[sqlliteio_db_path] = (conn := app.Sql.sqlite3.connect(sqlliteio_db_path))

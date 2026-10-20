@@ -2,6 +2,7 @@
 import Blazeio as io
 from .security import SignatureClient
 from .protocol import Parser, Sqlite3ioEvent
+from random import randint
 
 class StreamTo:
     __slots__ = ("session", "stream", "headers", "status_code")
@@ -118,15 +119,19 @@ class Modules:
                 return token
 
 class SqlSession(Modules, Migrators):
-    __slots__ = ("url", "conn", "schema", "secret_key", "sqlliteio_db_path", "table_checks_completion_event", "signature_client")
+    __slots__ = ("url", "conn", "schema", "secret_key", "sqlliteio_db_path", "table_checks_completion_event", "signature_client", "connections")
     def __init__(app, url: str, secret_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
         io.set_from_args(app, locals(), (str, dict))
         app.sanitize_url()
         app.signature_client = SignatureClient(app.secret_key)
         app.table_checks_completion_event = io.SharpEvent()
+        app.connections = []
         if app.schema: app.prepare_tables()
         if initialize: io.create_task(app.initialize())
-    
+
+    def connection_id(app):
+        return randint(1, 10)
+
     def sanitize_url(app):
         pointer: int = 0
         if (idx := app.url[pointer:].find("//")) != -1:
@@ -198,7 +203,7 @@ class SqlSession(Modules, Migrators):
         sqlite3io_unavailable = False
 
         try:
-            async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+            async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json", "connection_id": app.connection_id()}) as resp:
                 await resp.eof(payload)
     
                 await resp.prepare_http()
@@ -231,7 +236,7 @@ class SqlSession(Modules, Migrators):
         results = []
 
         try:
-            async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+            async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json", "connection_id": app.connection_id()}) as resp:
                 await resp.eof(payload)
     
                 await resp.prepare_http()

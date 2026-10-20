@@ -498,12 +498,13 @@ class __SessionPool__:
 
         return instance
 
-    def get_instance(app, instances):
+    def get_instance(app, instances, incr = 1):
         for instance in instances:
             if instance.available.is_set():
                 if (not app.max_contexts) and instance.context.waiter_count >= 1: continue
-                instance.acquires += 1
-                instance.available.clear()
+                if incr:
+                    instance.acquires += 1
+                    instance.available.clear()
                 return instance
 
     async def get(app, url, method, *args, **kwargs):
