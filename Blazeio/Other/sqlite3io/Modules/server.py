@@ -141,7 +141,8 @@ class Server:
             if not (sqlliteio_db_path := r.headers.get(app.Sql.App.sqlliteio_db_path_header)):
                 raise io.Abort("sqlliteio_db_path header is required but its missing", 401)
             
-            conn = await app.get_or_create_conn(r, sqlliteio_db_path)
+            if not (conn := app.conns.get("%s%s" % (sqlliteio_db_path, (":%s" % connection_id) if (connection_id := r.headers.get("Connection_id")) else ""))):
+                conn = await app.get_or_create_conn(r, sqlliteio_db_path)
 
             query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
             query.args.append(form.parameters)
