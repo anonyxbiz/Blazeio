@@ -84,21 +84,21 @@ class Server:
                 await io.plog.b_green("sqlite3io", "saving and closing database (%s)..." % db_path)
             
                 try:
-                    await conn.commit()
+                    conn.commit()
                 except:
                     pass
 
                 try:
-                    cursor = await conn.cursor()
-                    await cursor.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    cursor = conn.cursor()
+                    cursor.execute("PRAGMA wal_checkpoint(TRUNCATE);")
 
                     await io.plog.b_green("sqlite3io", "Checkpoint(%s) result: %s" % (db_path, cursor.fetchone()))
                     
-                    await cursor.execute("PRAGMA synchronous = FULL;")
-                    await cursor.execute("PRAGMA optimize;")
-                    await conn.commit()
-                    await cursor.execute("PRAGMA wal_checkpoint;")
-                    await conn.close()
+                    cursor.execute("PRAGMA synchronous = FULL;")
+                    cursor.execute("PRAGMA optimize;")
+                    conn.commit()
+                    cursor.execute("PRAGMA wal_checkpoint;")
+                    conn.close()
                 except io.Scope.Sql.sqlite3.Error as e:
                     await io.plog.b_red("sqlite3io", "an error occurred", e)
                     pending_conns.append(conn)
@@ -144,7 +144,7 @@ class Server:
             if not (conn := app.conns.get(sqlliteio_db_path)):
                 conn = await app.get_or_create_conn(r, sqlliteio_db_path)
 
-            query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, await conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
+            query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
             query.args.append(form.parameters)
             
             return query
@@ -157,15 +157,15 @@ class Server:
             if (conn := app.conns.get(sqlliteio_db_path)):
                 return conn
 
-            app.conns[sqlliteio_db_path] = (conn := app.Sql.asqlite3.connect(sqlliteio_db_path))
-            await conn.execute("PRAGMA journal_mode = WAL;")
-            await conn.execute("PRAGMA synchronous = NORMAL;")
-            await conn.execute("PRAGMA busy_timeout = 30000;")
-            await conn.execute("PRAGMA temp_store = MEMORY;")
+            app.conns[sqlliteio_db_path] = (conn := app.Sql.sqlite3.connect(sqlliteio_db_path))
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+            conn.execute("PRAGMA busy_timeout = 30000;")
+            conn.execute("PRAGMA temp_store = MEMORY;")
 
             if app.Sql.App.connection_commands:
                 for i in app.Sql.App.connection_commands.split(";"):
-                    await conn.execute("%s;" % i)
+                    conn.execute("%s;" % i)
 
         return conn
 
@@ -178,7 +178,7 @@ class Server:
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
 
         try:
-            await query.cursor.execute(*tuple(query.args))
+            query.cursor.execute(*tuple(query.args))
         except Exception as e:
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
  
@@ -188,7 +188,7 @@ class Server:
 
         columns = [col[0] for col in query.cursor.description]
 
-        async for row in query.cursor:
+        for row in query.cursor:
             await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
 
     async def _executemany(app, r: io.BlazeioProtocol):
@@ -200,7 +200,7 @@ class Server:
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
         
         try:
-            await query.cursor.executemany(*tuple(query.args))
+            query.cursor.executemany(*tuple(query.args))
         except Exception as e:
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
     
@@ -210,7 +210,7 @@ class Server:
 
         columns = [col[0] for col in query.cursor.description]
 
-        async for row in query.cursor:
+        for row in query.cursor:
             await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
 
     @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), file = io.ddict(type = str))
