@@ -166,7 +166,7 @@ class Server:
             if (conn := app.conns.get(app.get_conn_key(sqlliteio_db_path))):
                 return conn
 
-            app.conns[sqlliteio_db_path] = (conn := app.Sql.asqlite3.connect(sqlliteio_db_path))
+            app.conns[app.get_conn_key(sqlliteio_db_path)] = (conn := app.Sql.asqlite3.connect(sqlliteio_db_path))
             await conn.execute("PRAGMA journal_mode = WAL;")
             await conn.execute("PRAGMA synchronous = NORMAL;")
             await conn.execute("PRAGMA busy_timeout = 30000;")
