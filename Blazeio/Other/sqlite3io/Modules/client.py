@@ -2,7 +2,6 @@
 import Blazeio as io
 from .security import SignatureClient
 from .protocol import Parser, Sqlite3ioEvent
-from random import randint
 
 class StreamTo:
     __slots__ = ("session", "stream", "headers", "status_code")
@@ -119,18 +118,24 @@ class Modules:
                 return token
 
 class SqlSession(Modules, Migrators):
-    __slots__ = ("url", "conn", "schema", "secret_key", "sqlliteio_db_path", "table_checks_completion_event", "signature_client", "connections")
+    __slots__ = ("url", "conn", "schema", "secret_key", "sqlliteio_db_path", "table_checks_completion_event", "signature_client", "connection_ids")
+    max_connection_id = 20
     def __init__(app, url: str, secret_key: str, sqlliteio_db_path: str, schema: dict = {}, initialize: bool = False):
         io.set_from_args(app, locals(), (str, dict))
         app.sanitize_url()
         app.signature_client = SignatureClient(app.secret_key)
         app.table_checks_completion_event = io.SharpEvent()
-        app.connections = []
+        app.connection_ids = 0
         if app.schema: app.prepare_tables()
         if initialize: io.create_task(app.initialize())
 
     def connection_id(app):
-        return randint(1, 10)
+        if app.connection_ids >= app.max_connection_id:
+            app.connection_ids = 0
+
+        app.connection_ids += 1
+
+        return app.connection_ids
 
     def sanitize_url(app):
         pointer: int = 0
