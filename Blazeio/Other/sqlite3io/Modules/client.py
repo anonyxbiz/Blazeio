@@ -208,7 +208,7 @@ class SqlSession(Modules, Migrators):
         sqlite3io_unavailable = False
 
         try:
-            async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json", "connection_id": app.connection_id()}) as resp:
+            async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
                 await resp.eof(payload)
     
                 await resp.prepare_http()
@@ -241,7 +241,7 @@ class SqlSession(Modules, Migrators):
         results = []
 
         try:
-            async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json", "connection_id": app.connection_id()}) as resp:
+            async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
                 await resp.eof(payload)
     
                 await resp.prepare_http()
