@@ -66,6 +66,7 @@ class Server:
         io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
     
     def get_conn_key(app, sqlliteio_db_path):
+        return sqlliteio_db_path
         if app.conn_ids >= app.max_conns:
             app.conn_ids = 0
         
