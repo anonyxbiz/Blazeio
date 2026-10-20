@@ -15,7 +15,7 @@ from .Modules.security import SignatureClient
 from .Modules.client import SqlSession
 from .Modules.protocol import ServerParser
 
-import sqlite3
+import asqlite3
 
 io.Scope.Sql.add_imports(globals())
 
