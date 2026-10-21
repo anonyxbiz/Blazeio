@@ -1,6 +1,10 @@
 # Blazeio.Bench.__main__.py
 import Blazeio as io
 import Blazeio.Other.class_parser as class_parser
+try:
+    from socket import SO_REUSEPORT
+except ImportError:
+    SO_REUSEPORT = None
 
 from .Modules import Utils, Server, Client, Runner
 
@@ -50,6 +54,8 @@ class Main(Client.Manager, Utils.Manager, Runner.Manager):
 
 if __name__ == "__main__":
     io.TCPOptimizer(io.Scope.web)
+    if SO_REUSEPORT:
+        io.Scope.web.sock().setsockopt(io.SOL_SOCKET, SO_REUSEPORT, 1)
 
     with io.Scope.web:
         Main(**class_parser.Parser(Main, io.Utype).args())
