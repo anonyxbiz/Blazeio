@@ -7,9 +7,7 @@ class RawServer:
         io.set_from_args(app, locals(), (int,))
         app.payload = b"." * app.payload_size
 
-    async def __main_handler__(app, r: io.BlazeioProtocol):
-        await r
-
+    async def _(app, r: io.BlazeioProtocol):
         await r.writer(
             b'HTTP/1.1 200 OK\r\n'
             b'Content-Type: text/plain\r\n'
@@ -39,8 +37,7 @@ class PayloadServer:
     async def _(app, r: io.BlazeioProtocol):
         await r.prepare({"Content-Type": r.headers.get("Content-type"), "Content-Length": str((len(app.payload)*app.writes))}, 200)
 
-        for i in range(app.writes):
-            await r.writer(app.payload)
+        await r.writer(app.payload*app.writes)
 
 class FileServer:
     __slots__ = ("root", "root_dir")
