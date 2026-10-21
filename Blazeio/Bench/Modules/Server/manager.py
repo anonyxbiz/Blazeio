@@ -7,7 +7,9 @@ class RawServer:
         io.set_from_args(app, locals(), (int,))
         app.payload = b"." * app.payload_size
 
-    async def _(app, r: io.BlazeioProtocol):
+    async def __main_handler__(app, r: io.BlazeioProtocol):
+        await r
+
         await r.writer(
             b'HTTP/1.1 200 OK\r\n'
             b'Content-Type: text/plain\r\n'
