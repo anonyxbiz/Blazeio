@@ -51,7 +51,7 @@ class Request:
             model_form = app.form
 
         for key, form in model_form.items():
-            if not (value := data.get(key)) and (value := form.get("default", NotImplemented)) is NotImplemented:
+            if (value := data.get(key, NotImplemented)) is NotImplemented and (value := form.get("default", NotImplemented)) is NotImplemented:
                 raise io.Abort("%s is required but its missing" % key, 403)
 
             try:
