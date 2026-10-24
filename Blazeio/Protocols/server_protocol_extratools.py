@@ -63,6 +63,9 @@ class Rutils(ContentDecoders):
         ...
 
     def __getattr__(app, *_args):
+        if getattr(Request, _args[0], None) is None:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, _args[0]))
+
         def method(*args, **kwargs):
             func = getattr(Request, _args[0], None)
             if not func: raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, _args[0]))
@@ -183,6 +186,9 @@ class ExtraToolset:
     def __getattr__(app, *_args):
         if isinstance(app.store, (dict,)) and (value := app.store.get(_args[0], None)) is not None:
             return value
+        
+        if getattr(app.utils, _args[0], None) is None:
+            raise AttributeError("'%s' object has no attribute '%s'" % (app.__class__.__name__, _args[0]))
 
         def method(*args, **kwargs):
             func = getattr(app.utils, *_args)
