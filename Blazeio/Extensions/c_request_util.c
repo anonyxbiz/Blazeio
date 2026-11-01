@@ -31,6 +31,11 @@ static PyObject* url_decode_sync(PyObject* self, PyObject* args) {
     const char* end = input + input_len;
 
     while (in_ptr < end) {
+        if (out_ptr >= output + MAX_URL_LEN) {
+            PyErr_SetString(PyExc_ValueError, "decoded URL exceeds MAX_URL_LEN");
+            return NULL;
+        }
+
         if (*in_ptr == '%' && in_ptr + 2 < end && 
             is_hex_char(in_ptr[1]) && is_hex_char(in_ptr[2])) {
             // Decode percent-encoded sequence
@@ -71,6 +76,12 @@ static PyObject* url_encode_sync(PyObject* self, PyObject* args) {
     const char* end = input + input_len;
 
     while (in_ptr < end) {
+        size_t need = should_encode(*in_ptr) ? 3 : 1;
+        if ((size_t)(output + sizeof output - out_ptr) < need) {
+            PyErr_SetString(PyExc_ValueError, "encoded URL exceeds MAX_URL_LEN*3");
+            return NULL;
+        }
+
         if (should_encode(*in_ptr)) {
             encode_char(*in_ptr, out_ptr);
             out_ptr += 3;
@@ -160,6 +171,13 @@ static PyObject* get_params_sync(PyObject* self, PyObject* args, PyObject* kwarg
         // URL decode and store in dict
         PyObject* decoded_key = url_decode_sync(self, PyTuple_Pack(1, key));
         PyObject* decoded_value = url_decode_sync(self, PyTuple_Pack(1, value));
+
+        if (!decoded_key || !decoded_value) {
+            Py_XDECREF(decoded_key);
+            Py_XDECREF(decoded_value);
+            Py_DECREF(dict);
+            return NULL;
+        }
         
         PyDict_SetItem(dict, decoded_key, decoded_value);
         
