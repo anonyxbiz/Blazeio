@@ -234,7 +234,7 @@ class Handler(OOP_Route_Def):
         except (ConnectionResetError, BrokenPipeError, CancelledError):
             ...
         except Exception as e:
-            await traceback_logger(e, frame = 4)
+            await traceback_logger(e, r.path, r.tail, frame = 4)
 
         if app.ServerConfig.__log_requests__:
             await Log.debug(r, "Completed with status %s in %s seconds" % (str(r.__status__), round(perf_counter() - r.__perf_counter__, 4)))
