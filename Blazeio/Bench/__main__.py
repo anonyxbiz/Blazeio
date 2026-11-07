@@ -40,14 +40,14 @@ class Main(Client.Manager, Utils.Manager, Runner.Manager):
         app.add_servers()
 
     def add_servers(app):
-        if app.baremetalsrv:
-            io.Scope.web.attach(Server.BareMetalServer(app.payload_size, app.writes))
+        if app.payloadsrv:
+            io.Scope.web.attach(Server.PayloadServer(app.payload_size, app.writes))
 
-        elif app.rawsrv:
+        if app.rawsrv:
             io.Scope.web.attach(Server.RawServer(app.payload_size, app.writes))
 
         else:
-            io.Scope.web.attach(Server.PayloadServer(app.payload_size, app.writes))
+            io.Scope.web.attach(Server.BareMetalServer(app.payload_size, app.writes))
 
         if app.serve_files:
             if app.serve_files.find(io.Scope.App.formats.serve_files.delimiters.rrf) == -1:
