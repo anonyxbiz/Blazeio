@@ -8,7 +8,10 @@ class BareMetalServer:
         app.payload = b"." * app.payload_size
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
-        while await r:
+        while 1:
+            while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in r.__buff__:
+                await r
+
             await r.writer(
                 b'HTTP/1.1 200 OK\r\n'
                 b'Content-Type: text/plain\r\n'
