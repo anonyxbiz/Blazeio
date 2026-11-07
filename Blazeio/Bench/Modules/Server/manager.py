@@ -6,15 +6,24 @@ class BareMetalServer:
     def __init__(app, payload_size: int, writes: int):
         io.set_from_args(app, locals(), (int,))
         app.payload = b"." * app.payload_size
+    
+    def minimal_parser(app, r: io.BlazeioProtocol):
+        # Just extract the request
+        if (protocol_start := r.__buff__.find(io.MinParsers.server.network_config.http.one_point_one.protocol)) == -1 or (protocol_end := r.__buff__.find(io.MinParsers.server.network_config.http.one_point_one.dcrlf)) == -1:
+            raise io.Abort("Bad request", 403)
+
+        return r.__buff__[protocol_start:protocol_end] # This is the http request
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
         while 1:
-            while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in r.__buff__:
-                await r
+            while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in r.__buff__: # Check if the http dcrlf is in the stream buffer
+                await r # await some data
+
+            app.minimal_parser(r)
 
             await r.writer(
                 b'HTTP/1.1 200 OK\r\n'
-                b'Content-Type: text/plain\r\n'
+                b'Content-Type: application/json\r\n'
                 b'Connection: keepalive\r\n'
                 b'Server: Blazeio\r\n'
                 b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
