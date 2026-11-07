@@ -311,12 +311,12 @@ class BlazeioMultiplexer:
         app.__received_size += len(chunk)
 
         if app.__received_size >= app.__expected_size:
+            if app.__current_stream:
+                app.update_stream(app.__current_stream, chunk)
+
             if app.__current_stream and not app.__current_stream.__stream_closed__ and app.__current_sid:
                 app.__current_stream.add_callback(app.__current_stream.__send_ack__(app.__current_sid))
                 app.__stream_update.set()
-
-            if app.__current_stream:
-                app.update_stream(app.__current_stream, chunk)
 
             app.clear_state()
         else:
@@ -356,12 +356,14 @@ class BlazeioMultiplexer:
                         _, chunk = app.__buff.extend(chunk[app.__expected_size:]), chunk[:app.__expected_size]
 
                     if chunk == app._data_bounds_[5]:
-                        await io.plog.b_green((chunk, app.__current_stream, app.__current_stream_id, sid))
+                        # await io.plog.b_green((chunk, app.__current_stream, app.__current_stream_id, sid))
                         __current_stream = app.__current_stream
+
                         app.clear_state()
 
                         __current_stream.__stream_acks__[sid] = True
                         __current_stream.__stream_ack__.set()
+
                         continue
 
                     elif chunk == app._data_bounds_[2]:
@@ -378,7 +380,7 @@ class BlazeioMultiplexer:
                         app.clear_state()
                         continue
 
-                await io.plog.b_yellow("", (app.__current_stream, chunk, app.__expected_size, len(chunk), app.__buff))
+                # await io.plog.b_yellow("", (app.__current_stream, chunk, app.__expected_size, len(chunk), app.__buff))
 
                 await app._chunk_received(chunk)
 
@@ -400,7 +402,7 @@ class Stream:
         app.__initial_handshake = app.protocol._data_bounds_[6]
         app.sids = 0
         app.inflight_waits = []
-        app.inflight_window = 1
+        app.inflight_window = 5
         app.pull = app.__pull__
         app.writer = app.__writer__
         app.chunk_size = app.calculate_chunk_size()
@@ -535,7 +537,7 @@ class Stream:
 
         yield data
 
-    async def wfa(app, sid: bytes):
+    async def wfa(app, sid: bytes, data: bytes):
         while not sid in app.__stream_acks__:
             await app.__stream_ack__.wait_clear()
 
@@ -563,7 +565,7 @@ class Stream:
                 sid = app.write_mux(chunk, __stream_opts, gen_sid = wait, sid = sid)
 
             if wait:
-                app.inflight_waits.append((app.wfa, (sid,),))
+                app.inflight_waits.append((app.wfa, (sid, data,),))
                 if (len(app.inflight_waits) >= app.inflight_window) or app.__initial_handshake: await app.wfa_all(app.inflight_waits)
 
         if wait:
@@ -579,10 +581,13 @@ class Stream:
         return _.decode() if decode else _
 
     async def __send_ack__(app, sid: bytes):
+        await io.plog.grey("sending ack...", sid, app.__stream_acks__)
+
         if app.__stream_closed__: return
-        async with app.__busy_stream__: ...
 
         if app.can_write(): await app.__writer__(app.protocol._data_bounds_[5], False, False, sid = sid)
+
+        await io.plog.blue("sent ack...", sid, app.__stream_acks__)
 
     async def __eof__(app, data: (None, bytes, bytearray) = None):
         if data and app.can_write(): await app.__writer__(data)
@@ -591,7 +596,7 @@ class Stream:
 
         if app.can_write():
             app.eof_sent = True
-            return await app.__writer__(app.protocol._data_bounds_[2], False, False, None)
+            return await app.__writer__(app.protocol._data_bounds_[2], False, False, app.protocol._data_bounds_[2])
 
     async def __close__(app, __stream_closed__: bool = False):
         if not __stream_closed__ and app.can_write():

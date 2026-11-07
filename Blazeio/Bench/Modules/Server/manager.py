@@ -1,6 +1,25 @@
 # Blazeio.Bench.Modules.Server.manager.py
 import Blazeio as io
 
+class BareMetalServer:
+    __slots__ = ("payload_size", "writes", "payload")
+    def __init__(app, payload_size: int, writes: int):
+        io.set_from_args(app, locals(), (int,))
+        app.payload = b"." * app.payload_size
+
+    async def __main_handler__(app, r: io.BlazeioProtocol):
+        while await r:
+            await r.writer(
+                b'HTTP/1.1 200 OK\r\n'
+                b'Content-Type: text/plain\r\n'
+                b'Connection: keepalive\r\n'
+                b'Server: Blazeio\r\n'
+                b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
+            )
+
+            for i in range(app.writes):
+                await r.writer(app.payload)
+
 class RawServer:
     __slots__ = ("payload_size", "writes", "payload")
     def __init__(app, payload_size: int, writes: int):
@@ -11,22 +30,13 @@ class RawServer:
         await r.writer(
             b'HTTP/1.1 200 OK\r\n'
             b'Content-Type: text/plain\r\n'
-            b'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload\r\n'
-            b'X-Frame-Options: DENY\r\n'
-            b'X-Content-Type-Options: nosniff\r\n'
-            b'X-XSS-Protection: 1; mode=block\r\n'
-            b'Referrer-Policy: no-referrer-when-downgrade\r\n'
-            b'Permissions-Policy: geolocation=(self), microphone=(), camera=()\r\n'
-            b'Feature-Policy: accelerometer "none"; camera "none"; geolocation "self"; microphone "none"; usb "none"\r\n'
-            b'Content-Security-Policy: default-src "self"; script-src "self"; object-src "none"; style-src "self";\r\n'
-            b'Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate\r\n'
-            b'Pragma: no-cache\r\n'
-            b'Expires: 0\r\n'
+            b'Connection: keepalive\r\n'
             b'Server: Blazeio\r\n'
             b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
         )
 
-        await r.writer(app.payload*app.writes)
+        for i in app.writes:
+            await r.writer(app.payload)
 
 class PayloadServer:
     __slots__ = ("payload_size", "writes", "payload")
@@ -36,8 +46,9 @@ class PayloadServer:
 
     async def _(app, r: io.BlazeioProtocol):
         await r.prepare({"Content-Type": r.headers.get("Content-type"), "Content-Length": str((len(app.payload)*app.writes))}, 200)
-
-        await r.writer(app.payload*app.writes)
+        
+        for i in app.writes:
+            await r.writer(app.payload)
 
 class FileServer:
     __slots__ = ("root", "root_dir")
