@@ -23,7 +23,7 @@ class BareMetalServer:
 
             await r.writer(
                 b'HTTP/1.1 200 OK\r\n'
-                b'Content-Type: application/json\r\n'
+                b'Content-Type: text/plain\r\n'
                 b'Connection: keepalive\r\n'
                 b'Server: Blazeio\r\n'
                 b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes

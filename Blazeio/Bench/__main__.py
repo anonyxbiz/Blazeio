@@ -12,7 +12,7 @@ from os import walk
 
 io.Scope.add_imports(globals())
 
-io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*100, 1024*100
+io.ioConf.OUTBOUND_CHUNK_SIZE, io.ioConf.INBOUND_CHUNK_SIZE = 1024*64, 1024*64
 
 io.Scope.web = io.App("0.0.0.0", 8005, name = "io.Scope.web", with_keepalive = True)
 
