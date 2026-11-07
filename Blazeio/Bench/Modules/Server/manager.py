@@ -33,7 +33,7 @@ class OptimalServer:
             b'Content-Type: text/plain\r\n'
             b'Connection: keepalive\r\n'
             b'Server: Blazeio\r\n'
-            b'Content-length: %d\r\n\r\n' % len(data := "%s:%s" % (r.ip_host, r.ip_port))
+            b'Content-length: %d\r\n\r\n' % len(data := r.ip_host)
         )
 
         await r.writer(data.encode())
