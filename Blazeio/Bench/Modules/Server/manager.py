@@ -1,6 +1,29 @@
 # Blazeio.Bench.Modules.Server.manager.py
 import Blazeio as io
 
+class BrutalServer:
+    __slots__ = ("payload_size", "writes", "payload")
+    def __init__(app, payload_size: int, writes: int):
+        io.set_from_args(app, locals(), (int,))
+        app.payload = b"." * app.payload_size
+
+    async def __main_handler__(app, r: io.BlazeioProtocol):
+        while 1:
+            r.__stream__.clear()
+
+            await r
+
+            await r.writer(
+                b'HTTP/1.1 200 OK\r\n'
+                b'Content-Type: text/plain\r\n'
+                b'Connection: keepalive\r\n'
+                b'Server: Blazeio\r\n'
+                b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
+            )
+    
+            for i in range(app.writes):
+                await r.writer(app.payload)
+
 class OptimalServer:
     __slots__ = ("payload_size", "writes", "payload", "handlers")
     def __init__(app, payload_size: int, writes: int):
