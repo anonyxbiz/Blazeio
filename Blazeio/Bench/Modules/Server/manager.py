@@ -9,9 +9,9 @@ class BrutalServer:
 
     async def __main_handler__(app, r: io.BlazeioProtocol):
         while 1:
-            r.__stream__.clear()
-
             await r
+            while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in r.__buff__: # Check if the http dcrlf is in the stream buffer
+                await r # await some data
 
             await r.writer(
                 b'HTTP/1.1 200 OK\r\n'
@@ -21,8 +21,7 @@ class BrutalServer:
                 b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
             )
     
-            for i in range(app.writes):
-                await r.writer(app.payload)
+            await r.writer(app.payload*app.writes)
 
 class OptimalServer:
     __slots__ = ("payload_size", "writes", "payload", "handlers")
