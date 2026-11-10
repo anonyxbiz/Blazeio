@@ -38,30 +38,30 @@ class MinParser(HTTP):
     def __init__(app): ...
 
     def header_make(app, r: BlazeioProtocol, header: bytes):
-        if (idx := header.find(app.network_config.http.one_point_one.headers.delimiter)) != -1:
+        if (idx := header.find(b': ')) != -1:
             if (key := header[:idx].decode().capitalize()) in r.headers:
                 if not isinstance(r.headers[key], (list,)):
                     r.headers[key] = [r.headers[key]]
-                r.headers[key].append(header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode())
+                r.headers[key].append(header[idx + 2:].decode())
             else:
-                r.headers[key] = header[idx + len(app.network_config.http.one_point_one.headers.delimiter):].decode()
+                r.headers[key] = header[idx + 2:].decode()
 
     def header_parser(app, r: BlazeioProtocol, header: bytes):
         r.headers = ddict()
         while header:
-            if (idx := header.find(app.network_config.http.one_point_one.crlf)) == -1:
+            if (idx := header.find(b"\r\n")) == -1:
                 app.header_make(r, header)
                 break
             else:
-                _, header = app.header_make(r, header[:idx]), header[idx + len(app.network_config.http.one_point_one.crlf):]
+                _, header = app.header_make(r, header[:idx]), header[idx + 2:]
 
     def set_method(app, r: BlazeioProtocol, header: bytes):
-        if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1:
+        if (idx := header.find(b' ')) == -1:
             raise Abort("Request has no headers", 400)
 
         r.method, header = header[:idx].decode("utf-8"), header[idx + 1:]
 
-        if (idx := header.find(app.network_config.http.one_point_one.initial_delimiter)) == -1:
+        if (idx := header.find(b' ')) == -1:
             raise Abort("Request has no method", 400)
 
         tail, header = header[:idx].decode("utf-8"), header[idx + 1:]
@@ -87,13 +87,14 @@ class MinParser(HTTP):
         return r
 
     def parse(app, r: BlazeioProtocol, buff: bytes):
-        idx = buff.find(app.network_config.http.one_point_one.dcrlf)
-        header, body = buff[:idx], buff[idx + len(app.network_config.http.one_point_one.dcrlf):]
+        idx = buff.find(b"\r\n\r\n")
+        header, body = buff[:idx], buff[idx + 4:]
 
         try:
             app.set_method(r, header)
         except UnicodeDecodeError:
             raise Abort("Bad Request", 400)
+
         return body
 
 class MinParserClient(HTTP):

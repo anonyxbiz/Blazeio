@@ -139,7 +139,7 @@ class Handler(OOP_Route_Def):
         if app.__main_handler__ is NotImplemented:
             app.__main_handler__ = app.__default_handler__
 
-    async def parse_default(app, r, *args, **kwargs):
+    async def parse_old_default(app, r, *args, **kwargs):
         buff = bytearray()
         while not MinParsers.server.network_config.http.one_point_one.dcrlf in buff:
             if len(buff) >= app.__server_config__["__http_request_max_buff_size__"]:
@@ -152,6 +152,27 @@ class Handler(OOP_Route_Def):
 
         if (body := MinParsers.server.parse(r, buff)):
             r.prepend(body)
+
+        return r
+
+    async def parse_default(app, r, *args, **kwargs):
+        size, buff = 0, bytearray()
+        while (idx := buff.find(b"\r\n\r\n")) == -1:
+            if (chunk := await r):
+                if (size := size + len(chunk)) > 102400:
+                    raise Abort("Payload too large", 413)
+                buff.extend(chunk)
+            else:
+                raise Abort("Bad Request", 400)
+
+        headers, body = buff[:idx], buff[idx + 4:]
+
+        try:
+            MinParsers.server.set_method(r, headers)
+        except UnicodeDecodeError:
+            raise Abort("Bad Request", 400)
+
+        if body: r.prepend(body)
 
         return r
 

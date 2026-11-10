@@ -114,7 +114,8 @@ class Httpkeepalive:
                 exc = e
             finally:
                 if r.__is_prepared__:
-                    await r.eof()
+                    if r.__status__:
+                        await r.eof()
                 else:
                     await Abort("Server Got In Trouble", 500).text(r)
 

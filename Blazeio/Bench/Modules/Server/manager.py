@@ -78,6 +78,24 @@ class RawServer:
         io.set_from_args(app, locals(), (int,))
         app.payload = b"." * app.payload_size
 
+    async def _my_ip_raw(app, r: io.BlazeioProtocol):
+        data = r.ip_host
+        await r.writer(
+            b'HTTP/1.1 200 OK\r\n'
+            b'Content-Type: text/plain\r\n'
+            b'Connection: keepalive\r\n'
+            b'Server: Blazeio\r\n'
+            b'Content-length: %d\r\n\r\n' % len(data)
+        )
+
+        await r.writer(data.encode())
+
+    async def _my_ip(app, r: io.BlazeioProtocol):
+        data = r.ip_host
+        await r.prepare({"Content-Type": "text/plain", "Content-Length": str(len(data))}, 200)
+
+        await r.writer(data.encode())
+
     async def _(app, r: io.BlazeioProtocol):
         await r.writer(
             b'HTTP/1.1 200 OK\r\n'
@@ -87,7 +105,7 @@ class RawServer:
             b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
         )
 
-        for i in app.writes:
+        for i in range(app.writes):
             await r.writer(app.payload)
 
 class PayloadServer:
@@ -99,7 +117,7 @@ class PayloadServer:
     async def _(app, r: io.BlazeioProtocol):
         await r.prepare({"Content-Type": r.headers.get("Content-type"), "Content-Length": str((len(app.payload)*app.writes))}, 200)
         
-        for i in app.writes:
+        for i in range(app.writes):
             await r.writer(app.payload)
 
 class FileServer:
