@@ -1,112 +1,17 @@
 # Blazeio.Bench.Modules.Server.manager.py
 import Blazeio as io
 
-class BrutalServer:
-    __slots__ = ("payload_size", "writes", "payload")
-    def __init__(app, payload_size: int, writes: int):
-        io.set_from_args(app, locals(), (int,))
-        app.payload = b"." * app.payload_size
-
-    async def __main_handler__(app, r: io.BlazeioProtocol):
-        while 1:
-            await r
-            while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in r.__buff__: # Check if the http dcrlf is in the stream buffer
-                await r # await some data
-
-            await r.writer(
-                b'HTTP/1.1 200 OK\r\n'
-                b'Content-Type: text/plain\r\n'
-                b'Connection: keepalive\r\n'
-                b'Server: Blazeio\r\n'
-                b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
-            )
-    
-            await r.writer(app.payload*app.writes)
-
-class OptimalServer:
-    __slots__ = ("payload_size", "writes", "payload", "handlers")
-    def __init__(app, payload_size: int, writes: int):
-        io.set_from_args(app, locals(), (int,))
-        app.payload = b"." * app.payload_size
-        app.handlers = {"/": app.payloadhandler, "/my/ip": app.myiphandler}
-
-    def minimal_parser(app, r: io.BlazeioProtocol):
-        # Just extract the request
-        if (protocol_start := r.__buff__.find(io.MinParsers.server.network_config.http.one_point_one.protocol)) == -1 or (protocol_end := r.__buff__.find(io.MinParsers.server.network_config.http.one_point_one.dcrlf)) == -1:
-            raise io.Abort("Bad request", 403)
-
-        return ((mp := (request := r.__buff__[:protocol_end])[:protocol_start - 1])[:(idx := mp.find(b" "))].decode(), mp[idx + 1:].decode(), request[protocol_start + len(io.MinParsers.server.network_config.http.one_point_one.protocol):]) # method, path, headers
-
-    async def payloadhandler(app, r: io.BlazeioProtocol, *args):
-        await r.writer(
-            b'HTTP/1.1 200 OK\r\n'
-            b'Content-Type: text/plain\r\n'
-            b'Connection: keepalive\r\n'
-            b'Server: Blazeio\r\n'
-            b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
-        )
-
-        for i in range(app.writes):
-            await r.writer(app.payload)
-
-    async def myiphandler(app, r: io.BlazeioProtocol, *args):
-        await r.writer(
-            b'HTTP/1.1 200 OK\r\n'
-            b'Content-Type: text/plain\r\n'
-            b'Connection: keepalive\r\n'
-            b'Server: Blazeio\r\n'
-            b'Content-length: %d\r\n\r\n' % len(data := r.ip_host)
-        )
-
-        await r.writer(data.encode())
-
-    async def __main_handler__(app, r: io.BlazeioProtocol):
-        while 1:
-            while not io.MinParsers.server.network_config.http.one_point_one.dcrlf in r.__buff__: # Check if the http dcrlf is in the stream buffer
-                await r # await some data
-
-            request = app.minimal_parser(r)
-            
-            if not (handler := app.handlers.get(request[1])):
-                raise io.Abort("Not found", 404)
-            
-            await handler(r, request)
-
 class RawServer:
     __slots__ = ("payload_size", "writes", "payload")
     def __init__(app, payload_size: int, writes: int):
         io.set_from_args(app, locals(), (int,))
         app.payload = b"." * app.payload_size
 
-    async def _my_ip_raw(app, r: io.BlazeioProtocol):
-        data = r.ip_host
-        await r.writer(
-            b'HTTP/1.1 200 OK\r\n'
-            b'Content-Type: text/plain\r\n'
-            b'Connection: keepalive\r\n'
-            b'Server: Blazeio\r\n'
-            b'Content-length: %d\r\n\r\n' % len(data)
-        )
-
-        await r.writer(data.encode())
-
     async def _my_ip(app, r: io.BlazeioProtocol):
-        data = r.ip_host
-        await r.prepare({"Content-Type": "text/plain", "Content-Length": str(len(data))}, 200)
-
-        await r.writer(data.encode())
+        await r.writer(b'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nServer: Blazeio\r\nContent-length: %d\r\n\r\n%b' % (len(data := r.ip_host), data.encode()))
 
     async def _(app, r: io.BlazeioProtocol):
-        await r.writer(
-            b'HTTP/1.1 200 OK\r\n'
-            b'Content-Type: text/plain\r\n'
-            b'Connection: keepalive\r\n'
-            b'Server: Blazeio\r\n'
-            b'Content-length: %d\r\n\r\n' % len(app.payload)*app.writes
-        )
-
-        for i in range(app.writes):
-            await r.writer(app.payload)
+        await r.writer(b'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nServer: Blazeio\r\nContent-length: %d\r\n\r\n%b' % (len(data := app.payload*app.writes), data))
 
 class PayloadServer:
     __slots__ = ("payload_size", "writes", "payload")
