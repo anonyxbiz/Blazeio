@@ -32,6 +32,7 @@ class HTTP:
     status_codes = ddict(
         redirection = (300, 301, 302, 303, 307, 308)
     )
+    max_payload_size: int = 1024*100
 
 class MinParser(HTTP):
     __slots__ = ()
@@ -96,6 +97,27 @@ class MinParser(HTTP):
             raise Abort("Bad Request", 400)
 
         return body
+
+    async def parse_request(app, r: BlazeioProtocol, *args, **kwargs):
+        size, buff = 0, bytearray()
+        while (idx := buff.find(b"\r\n\r\n")) == -1:
+            if (chunk := await r):
+                if (size := size + len(chunk)) > app.max_payload_size:
+                    raise Abort("Payload too large", 413)
+                buff.extend(chunk)
+            else:
+                raise Abort("Bad Request", 400)
+
+        headers, body = buff[:idx], buff[idx + 4:]
+
+        try:
+            app.set_method(r, headers)
+        except UnicodeDecodeError:
+            raise Abort("Bad Request", 400)
+
+        if body: r.prepend(body)
+
+        return r
 
 class MinParserClient(HTTP):
     __slots__ = ("max_buff_size",)
