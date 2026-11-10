@@ -16,7 +16,7 @@ except ImportError:
 
 class TCPOptimizer:
     __slots__ = ("srv", "socket")
-    def __init__(app, srv, KEEPIDLE: int = 30, KEEPINTVL: int = 10, KEEPCNT: int = 3):
+    def __init__(app, srv, KEEPIDLE: int = 30, KEEPINTVL: int = 10, KEEPCNT: int = 3, so_reuseport: bool = False):
         app.srv = srv
         app.socket = srv.sock()
 
@@ -31,6 +31,13 @@ class TCPOptimizer:
         app.socket.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, KEEPIDLE)
         app.socket.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, KEEPINTVL)
         app.socket.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, KEEPCNT)
+        
+        if so_reuseport:
+            try:
+                from socket import SO_REUSEPORT
+                app.socket.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+            except ImportError:
+                ...
 
 if __name__ == "__main__":
     ...
