@@ -61,7 +61,7 @@ class Server:
         app.signature_client = app.Sql.SignatureClient(app.Sql.App.secret_key)
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
         io.Scope.Sql.web.attach(app)
-        io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
+        # io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
 
     async def commit_conns(app):
         async with app.cond:
@@ -75,8 +75,6 @@ class Server:
     async def on_exit(app, conns: list = []):
         await io.plog.b_green("sqlite3io", "exiting safely...")
         async with app.cond:
-            pending_conns = []
-
             for db_path in (conns or list(app.conns.keys())):
                 if not (conn := app.conns.pop(db_path, None)): 
                     continue
@@ -101,11 +99,6 @@ class Server:
                     conn.close()
                 except io.Scope.Sql.sqlite3.Error as e:
                     await io.plog.b_red("sqlite3io", "an error occurred", e)
-                    pending_conns.append(conn)
-
-            if pending_conns:
-                await io.sleep(0.5)
-                return await app.on_exit(pending_conns)
 
         await io.plog.b_green("sqlite3io", "exited safely...")
 
@@ -171,9 +164,6 @@ class Server:
 
     async def _execute(app, r: io.BlazeioProtocol):
         query = await app.get_json(r)
-        
-        async with app.cond:
-            ...
 
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
 
@@ -194,9 +184,6 @@ class Server:
     async def _executemany(app, r: io.BlazeioProtocol):
         query = await app.get_json(r)
 
-        async with app.cond:
-            ...
-
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
         
         try:
@@ -212,29 +199,5 @@ class Server:
 
         for row in query.cursor:
             await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
-
-    @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), file = io.ddict(type = str))
-    async def _backup(app, r: io.BlazeioProtocol):
-        if r.form.signature != app.Sql.App.secret_key:
-            raise io.Abort("Invalid secret key", 401)
-
-        if not io.path.exists(r.form.file):
-            raise io.Abort("Not found", 403)
-
-        async with io.Simpleserve(r, r.form.file) as f:
-            await r.prepare(f.headers, f.status)
-            async for chunk in f:
-                await r.write(chunk)
-
-    @io.Scope.Sql.App.middleware.request_form("form", signature = io.ddict(type = str), url = io.ddict(type = str), file = io.ddict(type = str))
-    async def _upload(app, r: io.BlazeioProtocol):
-        if r.form.signature != app.Sql.App.secret_key:
-            raise io.Abort("Invalid signature", 401)
-
-        async with io.getSession.get(r.form.url, follow_redirects = True) as resp:
-            if not resp.ok(): raise io.Abort(await resp.text(), resp.status_code)
-            await resp.save(r.form.file)
-
-        await io.Deliver.text("Ok")
 
 if __name__ == "__main__": ...
