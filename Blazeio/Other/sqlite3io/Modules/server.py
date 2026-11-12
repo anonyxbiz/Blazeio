@@ -61,7 +61,6 @@ class Server:
         app.signature_client = app.Sql.SignatureClient(app.Sql.App.secret_key)
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
         io.Scope.Sql.web.attach(app)
-        # io.Scope.Sql.web.create_task_on_start(app.commit_daemon())
 
     async def commit_conns(app):
         async with app.cond:
@@ -105,6 +104,23 @@ class Server:
     def mux(app, delimiter, data):
         return b"%b%X%b%b" % (delimiter, len(data), delimiter, data.encode())
 
+    async def get_or_create_conn(app, r: io.BlazeioProtocol, sqlliteio_db_path: str):
+        async with app.cond:
+            if (conn := app.conns.get(sqlliteio_db_path)):
+                return conn
+
+            app.conns[sqlliteio_db_path] = (conn := app.Sql.sqlite3.connect(sqlliteio_db_path, check_same_thread = False))
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+            conn.execute("PRAGMA busy_timeout = 30000;")
+            conn.execute("PRAGMA temp_store = MEMORY;")
+
+            if app.Sql.App.connection_commands:
+                for i in app.Sql.App.connection_commands.split(";"):
+                    conn.execute("%s;" % i)
+
+        return conn
+
     async def get_json(app, r: io.BlazeioProtocol):
         if r.method not in app.accept_methods:
             raise io.Abort("Unacceptable request method", 403)
@@ -118,7 +134,7 @@ class Server:
             payload.extend(chunk)
             if len(payload) >= app.Sql.App.max_request_body_size:
                 raise io.Abort("request payload exceeded the set maximum", 403)
-        
+
         if not app.signature_client.verify(signature_hash, payload):
             raise io.Abort("Signature hash did not match computed hash", 401)
 
@@ -139,28 +155,13 @@ class Server:
 
             query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
             query.args.append(form.parameters)
-            
+
+            query.executor = query.cursor.executemany if query.form.get("mode") == "executemany" else query.cursor.execute
+
             return query
 
         except io.JSONDecodeError:
             raise io.Abort("No valid JSON found in the stream.", 403)
-
-    async def get_or_create_conn(app, r: io.BlazeioProtocol, sqlliteio_db_path: str):
-        async with app.cond:
-            if (conn := app.conns.get(sqlliteio_db_path)):
-                return conn
-
-            app.conns[sqlliteio_db_path] = (conn := app.Sql.sqlite3.connect(sqlliteio_db_path))
-            conn.execute("PRAGMA journal_mode = WAL;")
-            conn.execute("PRAGMA synchronous = NORMAL;")
-            conn.execute("PRAGMA busy_timeout = 30000;")
-            conn.execute("PRAGMA temp_store = MEMORY;")
-
-            if app.Sql.App.connection_commands:
-                for i in app.Sql.App.connection_commands.split(";"):
-                    conn.execute("%s;" % i)
-
-        return conn
 
     async def _execute(app, r: io.BlazeioProtocol):
         query = await app.get_json(r)
@@ -168,29 +169,14 @@ class Server:
         await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
 
         try:
-            query.cursor.execute(*tuple(query.args))
+            if query.form.get("to_thread"):
+                await io.to_thread(query.executor, *tuple(query.args))
+            else:
+                query.executor(*tuple(query.args))
+
         except Exception as e:
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
  
-        if not query.cursor.description:
-            io.Scope.Sql.Events.add_event(query.form, query.cursor)
-            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))
-
-        columns = [col[0] for col in query.cursor.description]
-
-        for row in query.cursor:
-            await r.write(app.mux(query.delimiter, io.dumps(dict(zip(columns, row)))))
-
-    async def _executemany(app, r: io.BlazeioProtocol):
-        query = await app.get_json(r)
-
-        await r.prepare({"Transfer-encoding": "chunked", "Content-type": "video/mp4", "Cache-Control": "no-store, no-cache, must-revalidate, private", "Cloudflare-CDN-Cache-Control": "no-store, no-cache", "Pragma": "no-cache", "X-Accel-Buffering": "no"}, 200)
-        
-        try:
-            query.cursor.executemany(*tuple(query.args))
-        except Exception as e:
-            raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(error = str(e))))))
-    
         if not query.cursor.description:
             io.Scope.Sql.Events.add_event(query.form, query.cursor)
             raise io.Eof(await r.write(app.mux(query.delimiter, io.dumps(io.ddict(success = True)))), io.Scope.Sql.Events.add_event(query.form, query.cursor))

@@ -180,26 +180,26 @@ class SqlSession(Modules, Migrators):
     def sql(app, *args, **kwargs):
         return app.json(*args, **kwargs)
 
-    async def json(app, *args, data_type = dict):
-        data = [i if isinstance(i, dict) else io.ddict(io.loads(i.decode())) async for i in app.execute(*args)]
+    async def json(app, *args, data_type = dict, **kwargs):
+        data = [i if isinstance(i, dict) else io.ddict(io.loads(i.decode())) async for i in app.execute(*args, **kwargs)]
 
         return data.pop(0) if len(data) == 1 and data_type != list else data
 
     async def pipe_json(app, source):
         return [i if isinstance(i, dict) else io.ddict(io.loads(i.decode())) async for i in source]
 
-    async def ajson(app, *args):
-        async for row in app.execute(*args):
+    async def ajson(app, *args, **kwargs):
+        async for row in app.execute(*args, **kwargs):
             yield io.ddict(io.loads(row.decode()))
 
-    async def aenumerate(app, *args):
+    async def aenumerate(app, *args, **kwargs):
         row_count = 0
-        async for row in app.ajson(*args):
+        async for row in app.ajson(*args, **kwargs):
             yield (row_count, row)
             row_count += 1
 
-    async def execute(app, q, *parameters):
-        data = io.ddict(q = q, parameters = [])
+    async def execute(app, q, *parameters, **kwargs):
+        data = io.ddict(q = q, parameters = [], mode = "execute", **kwargs)
         for i in parameters:
             data.parameters.append(app.sanitize_value(i))
 
@@ -227,8 +227,9 @@ class SqlSession(Modules, Migrators):
         if sqlite3io_unavailable:
             raise io.ServerDisconnected("The sqlite3io server is unavailable", "Blazeio.Other.sqlite3io.Modules.client::SqlSession.execute")
 
-    async def executemany(app, q, *parameters):
-        data = io.ddict(q = q, parameters = [])
+    async def executemany(app, q, *parameters, **kwargs):
+        data = io.ddict(q = q, parameters = [], mode = "executemany", **kwargs)
+
         for i in parameters:
             if not isinstance(i, (tuple, list)):
                 raise io.ModuleError("Blazeio.Other.sqlite3io.Modules.client::SqlSession.executemany", "parameter value must be a tuple or list, got: %s" % io.dumps(io.ddict(value = i, q = q, parameters = parameters)))
@@ -241,7 +242,7 @@ class SqlSession(Modules, Migrators):
         results = []
 
         try:
-            async with io.getSession.post("%s/executemany" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
+            async with io.getSession.post("%s/execute" % app.url, {"Transfer-encoding": "chunked", "X-sqlliteio-hmac-sha256-hash": signature_hash, "X-sqlliteio-db-path": app.sqlliteio_db_path, "Content-type": "application/json"}) as resp:
                 await resp.eof(payload)
     
                 await resp.prepare_http()
