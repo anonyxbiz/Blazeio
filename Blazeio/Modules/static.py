@@ -9,7 +9,7 @@ class StaticFileHandler:
     @classmethod
     async def prepare(app, r: Packdata, file_path, headers={}, CHUNK_SIZE=None):
 
-        if not exists(file_path):
+        if not path.exists(file_path) or not path.isfile(file_path):
             raise Abort("File Not Found", 404, reason="Not Found")
 
         r.StaticFileHandler = await Packdata.add(file_path=file_path, headers=headers, CHUNK_SIZE=CHUNK_SIZE or app.CHUNK_SIZE)
