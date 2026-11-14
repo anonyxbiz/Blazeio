@@ -51,13 +51,13 @@ class Events:
 
 @io.Scope.Sql.instantiate
 class Server:
-    __slots__ = ("Sql", "conns", "cond", "signature_client", "locks",)
+    __slots__ = ("Sql", "conns", "cond", "signature_client", "states",)
     accept_methods: tuple = ("POST", "PUT")
     commit_frequency: int = (60**2)
     def __init__(app):
         app.Sql = io.Scope.Sql
         app.conns = io.ddict()
-        app.locks = io.ddict()
+        app.states = io.ddict()
         app.cond = io.ioCondition()
         app.signature_client = app.Sql.SignatureClient(app.Sql.App.secret_key)
         io.Scope.Sql.web.on_exit_middleware(app.on_exit)
@@ -105,19 +105,15 @@ class Server:
     def mux(app, delimiter, data):
         return b"%b%X%b%b" % (delimiter, len(data), delimiter, data.encode())
     
-    def get_lock(app, key: str):
-        if not (lock := app.locks.get(key)):
-            app.locks[key] = (lock := io.ioCondition())
-
-        return lock
-
     async def get_or_create_conn(app, r: io.BlazeioProtocol, sqlliteio_db_path: str):
         async with app.cond:
             if (conn := app.conns.get(sqlliteio_db_path)):
                 return conn
 
             app.conns[sqlliteio_db_path] = (conn := app.Sql.sqlite3.connect(sqlliteio_db_path, check_same_thread = False))
-            app.locks[sqlliteio_db_path] = io.ioCondition()
+
+            state = app.states[sqlliteio_db_path] = io.ddict(lock = io.ioCondition(), executor = io.Scope.Sql.ThreadPoolExecutor(max_workers=1))
+
             conn.execute("PRAGMA journal_mode = WAL;")
             conn.execute("PRAGMA synchronous = NORMAL;")
             conn.execute("PRAGMA busy_timeout = 30000;")
@@ -161,7 +157,7 @@ class Server:
             if not (conn := app.conns.get(sqlliteio_db_path)):
                 conn = await app.get_or_create_conn(r, sqlliteio_db_path)
 
-            query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter, query.lock = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode(), app.get_lock(sqlliteio_db_path)
+            query.args, query.sqlliteio_db_path, query.conn, query.cursor, query.delimiter = [form.q], sqlliteio_db_path, conn, conn.cursor(), str(r.headers.get(app.Sql.App.sqlliteio_delimiter_header, "\x15")).encode()
 
             query.args.append(form.parameters)
 
@@ -179,8 +175,7 @@ class Server:
 
         try:
             if query.form.get("to_thread"):
-                async with query.lock:
-                    await io.to_thread(query.executor, *tuple(query.args))
+                await io.ioConf.loop.run_in_executor(app.states[query.sqlliteio_db_path].executor, query.executor, *tuple(query.args))
             else:
                 query.executor(*tuple(query.args))
 

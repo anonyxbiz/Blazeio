@@ -16,6 +16,7 @@ from .Modules.client import SqlSession
 from .Modules.protocol import ServerParser
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 io.Scope.Sql.add_imports(globals())
 
