@@ -121,7 +121,8 @@ class Depreciated:
                     ...
                 elif (idx := value.find(o)) != -1:
                     value, params = value[:idx], value[idx + 1:]
-                temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
+                try: temp[app.url_decode_sync(key)] = app.url_decode_sync(value)
+                except ValueError: raise Abort("Unable to decode url parameters", 403)
 
             if idx == -1 or idx_end != -1: break
 
