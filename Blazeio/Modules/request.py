@@ -217,7 +217,8 @@ class Request(Depreciated):
 
         if isinstance(r.__miscellaneous__, ddict) and (params := r.__miscellaneous__.get("params", None)) is not None: return params
 
-        params = ddict(app.get_params_sync(r))
+        try: params = ddict(app.get_params_sync(r))
+        except ValueError: raise Abort("Unable to decode url parameters", 403)
         if not r.__miscellaneous__:
             r.__miscellaneous__ = ddict(params=params)
 
