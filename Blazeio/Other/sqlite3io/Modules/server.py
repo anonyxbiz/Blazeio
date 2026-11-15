@@ -175,7 +175,8 @@ class Server:
 
         try:
             if query.form.get("to_thread"):
-                await io.ioConf.loop.run_in_executor(app.states[query.sqlliteio_db_path].executor, query.executor, *tuple(query.args))
+                async with app.states[query.sqlliteio_db_path].lock:
+                    await io.ioConf.loop.run_in_executor(app.states[query.sqlliteio_db_path].executor, query.executor, *tuple(query.args))
             else:
                 query.executor(*tuple(query.args))
 

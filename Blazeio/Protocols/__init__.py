@@ -1,5 +1,5 @@
 # Blazeio.Protocols
-__all__ = ('BlazeioProtocol',)
+__all__ = ('BlazeioProtocol', 'ProtocolStream')
 
 class BlazeioProtocol:
     __slots__ = ()
@@ -65,5 +65,26 @@ class BlazeioProtocol:
             await app.ensure_reading()
             while app.__stream__:
                 yield app.__stream__.popleft()
+
+class ProtocolStream:
+    __slots__ = ()
+    @classmethod
+    async def read_exact_bytes(cls, app: BlazeioProtocol, size: int):
+        data, point = bytearray(size), 0
+        view = memoryview(data)
+
+        while point < size:
+            if not (chunk := await app): continue
+
+            len_ = len(chunk)
+            rem = (size-point)
+
+            if len_ > rem:
+                _, chunk = app.prepend(chunk[rem:]), chunk[:rem]
+                len_ = len(chunk)
+
+            view[point: (point := point + len_)] = memoryview(chunk)
+
+        return data
 
 if __name__ == "__main__": ...
